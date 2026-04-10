@@ -1,0 +1,9 @@
+{
+  "session_id": "claude_session_01HYZA1B2C3D4E5F6G7H8J9K0L",
+  "hook_event_name": "InstructionsLoaded",
+  "tool_input": {
+    "path": "/Users/dev/myproject/CLAUDE.md"
+  },
+  "cwd": "/Users/dev/myproject",
+  "model": "claude-sonnet-4"
+}

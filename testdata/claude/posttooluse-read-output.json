@@ -1,0 +1,12 @@
+{
+  "session_id": "claude_session_01HYZA1B2C3D4E5F6G7H8J9K0L",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Read",
+  "tool_input": {
+    "file_path": "/Users/dev/myproject/.env"
+  },
+  "tool_use_id": "toolu_claude_read_0001",
+  "tool_output": "DATABASE_URL=postgres://db.internal/app\n",
+  "cwd": "/Users/dev/myproject",
+  "model": "claude-sonnet-4"
+}

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "cross-version-lineage-state-compatibility",
+  "scenario": "cross_version_lineage_state_compatibility",
+  "description": "Legacy session payloads that persisted active evidence and derived file lineage must continue to load with the same taint labels attached.",
+  "expected": {
+    "source_kind": "mcp_response",
+    "label_sensitivity": "internal"
+  }
+}

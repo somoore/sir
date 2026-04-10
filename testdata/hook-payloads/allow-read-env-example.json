@@ -1,0 +1,15 @@
+{
+  "_test_metadata": {
+    "expected_verdict": "allow",
+    "expected_reason": ".env.example is explicitly excluded from sensitive_paths via sensitive_path_exclusions; safe to read silently",
+    "hook_type": "PreToolUse",
+    "session_state": {
+      "secret_session": false,
+      "recently_read_untrusted": false
+    }
+  },
+  "tool_name": "Read",
+  "tool_input": {
+    "file_path": ".env.example"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "cross-version-state-compatibility",
+  "scenario": "cross_version_state_compatibility",
+  "description": "Legacy session and ledger payloads must keep loading and verifying after newer operability and evidence fields are added.",
+  "expected": {
+    "compatibility": "legacy_payloads_survive"
+  }
+}

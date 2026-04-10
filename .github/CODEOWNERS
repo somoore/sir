@@ -1,0 +1,29 @@
+# Security-critical paths require review.
+# When branch protection is enabled, these paths require approval.
+
+# CI/CD and supply chain
+/.github/                @somoore
+/deny.toml               @somoore
+/go-supply-chain.sh      @somoore
+/install.sh              @somoore
+/Makefile                @somoore
+/scripts/checksum.sh     @somoore
+/aibom.json              @somoore
+
+# Rust policy oracle (zero-dependency core)
+/mister-core/            @somoore
+/mister-shared/          @somoore
+/Cargo.toml              @somoore
+/Cargo.lock              @somoore
+
+# Go hook handlers and policy bridge
+/pkg/core/               @somoore
+/pkg/hooks/              @somoore
+/pkg/session/            @somoore
+/pkg/lease/              @somoore
+
+# Security policy and documentation
+/SECURITY.md             @somoore
+/CLAUDE.md               @somoore
+/docs/contributor/supply-chain-policy.md       @somoore
+/docs/research/security-verification-guide.md  @somoore

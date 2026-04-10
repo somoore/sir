@@ -1,0 +1,16 @@
+{
+  "_test_metadata": {
+    "expected_verdict": "allow",
+    "expected_reason": "curl to localhost is net_local (loopback); always allowed even without explicit approval, low-risk dev operation",
+    "hook_type": "PreToolUse",
+    "session_state": {
+      "secret_session": false,
+      "recently_read_untrusted": false
+    }
+  },
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "curl localhost:3000/api/health",
+    "description": "Check local dev server health"
+  }
+}

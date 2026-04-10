@@ -1,0 +1,77 @@
+{
+  "meta": {
+    "design_system": "Paper MCP (paper.design)",
+    "reference": "https://www.typeui.sh/design-skills/paper",
+    "note": "ANSI codes are standard 16-color only. Hex values are for web/documentation use."
+  },
+  "primary": {
+    "hex": "#111111",
+    "rgb": [17, 17, 17],
+    "ansi": "0",
+    "paper_token": "primary",
+    "usage": "Default text, headings, logo, body content"
+  },
+  "surface_light": {
+    "hex": "#FAFAF8",
+    "rgb": [250, 250, 248],
+    "ansi": "",
+    "paper_token": "surface",
+    "usage": "Light mode background (web/docs only, terminal inherits theme)"
+  },
+  "surface_dark": {
+    "hex": "#0A0A0A",
+    "rgb": [10, 10, 10],
+    "ansi": "",
+    "paper_token": "surface",
+    "usage": "Dark mode background (web/docs only, terminal inherits theme)"
+  },
+  "allow": {
+    "hex": "#16A34A",
+    "rgb": [22, 163, 74],
+    "ansi": "32",
+    "paper_token": "success",
+    "usage": "Allow verdicts, passing checks, success states"
+  },
+  "ask": {
+    "hex": "#D97706",
+    "rgb": [217, 119, 6],
+    "ansi": "33",
+    "paper_token": "warning",
+    "usage": "Ask prompts, caution indicators, developer decision required"
+  },
+  "block": {
+    "hex": "#DC2626",
+    "rgb": [220, 38, 38],
+    "ansi": "31",
+    "paper_token": "danger",
+    "usage": "Block/deny verdicts, failed checks, error states"
+  },
+  "fatal": {
+    "hex": "#DC2626",
+    "rgb": [220, 38, 38],
+    "ansi": "1;31",
+    "paper_token": "danger (bold)",
+    "usage": "Session-fatal deny-all, maximum severity"
+  },
+  "info": {
+    "hex": "#0891B2",
+    "rgb": [8, 145, 178],
+    "ansi": "36",
+    "paper_token": "text (secondary)",
+    "usage": "File paths, informational highlights, cyan accents"
+  },
+  "muted": {
+    "hex": "#6B7280",
+    "rgb": [107, 114, 128],
+    "ansi": "2",
+    "paper_token": "—",
+    "usage": "Metadata, timestamps, hashes, session IDs, dim text"
+  },
+  "bold": {
+    "hex": "#111111",
+    "rgb": [17, 17, 17],
+    "ansi": "1",
+    "paper_token": "primary (emphasis)",
+    "usage": "Verdict keywords, section headers, emphasis"
+  }
+}

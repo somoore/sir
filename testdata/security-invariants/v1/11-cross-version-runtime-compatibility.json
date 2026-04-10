@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "cross-version-runtime-compatibility",
+  "scenario": "cross_version_runtime_compatibility",
+  "description": "Legacy runtime descriptors must continue to load and classify correctly after newer containment fields are added.",
+  "expected": {
+    "health": "degraded",
+    "proxy_protocols": "http-connect"
+  }
+}

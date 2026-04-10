@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "command": "sir guard post-evaluate",
+        "timeout": 5000,
+        "type": "command"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "command": "sir guard evaluate",
+        "timeout": 5000,
+        "type": "command"
+      }
+    ]
+  }
+}

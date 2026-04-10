@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "name": "hook-tamper-restore",
+  "scenario": "hook_tamper_restore",
+  "description": "Global hook tampering must be auto-restored, logged, and escalate the session to deny-all.",
+  "tampered_agent": "claude",
+  "expected": {
+    "decision": "deny",
+    "alert_type": "hook_tamper",
+    "agent_id": "claude"
+  }
+}

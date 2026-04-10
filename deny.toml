@@ -1,0 +1,48 @@
+# cargo-deny configuration for sir
+# https://embarkstudios.github.io/cargo-deny/
+#
+# mister-core and mister-shared have ZERO external dependencies by design.
+# This configuration enforces that constraint going forward — any new
+# dependency will be checked against these rules.
+
+[graph]
+targets = []
+all-features = false
+no-default-features = false
+
+[advisories]
+yanked = "deny"
+ignore = []
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+]
+confidence-threshold = 0.8
+exceptions = []
+
+[licenses.private]
+ignore = false
+
+[bans]
+multiple-versions = "deny"
+# Path dependencies have no version specifier by design — they are local
+# workspace crates, not fetched from a registry. Exempt them from the
+# wildcard check; only external registry deps require pinned versions.
+wildcards = "allow"
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+allow = []
+deny = []
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

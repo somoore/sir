@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!-- sir logo — boundary + inverted diamond + blue grant -->
+  <!-- Designed in Paper MCP. Pixel-matched to Paper artboard O-0. -->
+  <rect x="8" y="8" width="104" height="104" rx="8" fill="none" stroke="#71717A" stroke-width="3"/>
+  <line x1="8" y1="8" x2="40" y2="8" stroke="#3B82F6" stroke-width="3" stroke-linecap="round"/>
+  <path d="M60 28 L92 60 L60 92 L28 60 Z" fill="none" stroke="#D4D4D8" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M60 42 L78 60 L60 78 L42 60 Z" fill="#3B82F6"/>
+</svg>

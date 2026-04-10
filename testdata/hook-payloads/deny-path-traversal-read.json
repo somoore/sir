@@ -1,0 +1,15 @@
+{
+  "_test_metadata": {
+    "expected_verdict": "ask",
+    "expected_reason": "Path traversal read of ../.env resolves to sensitive file via tail matching; sir asks before reading any sensitive path regardless of traversal depth",
+    "hook_type": "PreToolUse",
+    "session_state": {
+      "secret_session": false,
+      "recently_read_untrusted": false
+    }
+  },
+  "tool_name": "Read",
+  "tool_input": {
+    "file_path": "../.env"
+  }
+}

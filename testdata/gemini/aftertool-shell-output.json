@@ -1,0 +1,17 @@
+{
+  "session_id": "gemini_01HYZA1B2C3D4E5F6G7H8J9K0L",
+  "hook_event_name": "AfterTool",
+  "tool_name": "run_shell_command",
+  "tool_input": {
+    "command": "echo hello"
+  },
+  "tool_use_id": "call_gem_aftercmd_0006",
+  "tool_response": {
+    "llmContent": "hello\n",
+    "returnDisplay": "hello\n",
+    "error": null
+  },
+  "cwd": "/Users/dev/myproject",
+  "timestamp": "2026-04-07T10:00:05Z",
+  "transcript_path": "/Users/dev/.gemini/sessions/gemini_01HYZA/transcript.jsonl"
+}

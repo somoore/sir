@@ -1,0 +1,8 @@
+{
+  "session_id": "gemini_01HYZA1B2C3D4E5F6G7H8J9K0L",
+  "hook_event_name": "SessionStart",
+  "source": "startup",
+  "cwd": "/Users/dev/myproject",
+  "timestamp": "2026-04-07T10:00:10Z",
+  "transcript_path": "/Users/dev/.gemini/sessions/gemini_01HYZA/transcript.jsonl"
+}

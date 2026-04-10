@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "runtime-containment-failclosed",
+  "scenario": "runtime_containment_failclosed",
+  "description": "Linux host-agent containment must fail closed when the current agent's protected paths do not exist.",
+  "expected": {
+    "error_contains": "pre-existing protected paths"
+  }
+}

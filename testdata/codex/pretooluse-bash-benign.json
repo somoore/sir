@@ -1,0 +1,13 @@
+{
+  "session_id": "01HXXAE5N2P9K6M7V3R8T4Q1ZB",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "ls -la"
+  },
+  "tool_use_id": "call_1a2b3c4d5e6f7a8b9c0d",
+  "cwd": "/Users/dev/myproject",
+  "model": "o3",
+  "turn_id": "turn_7",
+  "transcript_path": "/Users/dev/.codex/sessions/01HXXAE5N2P9K6M7V3R8T4Q1ZB/transcript.jsonl"
+}

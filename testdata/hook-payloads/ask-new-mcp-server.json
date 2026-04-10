@@ -1,0 +1,16 @@
+{
+  "_test_metadata": {
+    "expected_verdict": "ask",
+    "expected_reason": "MCP tool call to unknown/unapproved server; server not in project .mcp.json requires approval",
+    "hook_type": "PreToolUse",
+    "session_state": {
+      "secret_session": false,
+      "recently_read_untrusted": false
+    }
+  },
+  "tool_name": "mcp__unknown_server__execute_query",
+  "tool_input": {
+    "query": "SELECT * FROM users WHERE admin = true",
+    "database": "production"
+  }
+}

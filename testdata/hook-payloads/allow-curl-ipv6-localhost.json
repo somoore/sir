@@ -1,0 +1,16 @@
+{
+  "_test_metadata": {
+    "expected_verdict": "allow",
+    "expected_reason": "curl to [::1] is IPv6 loopback (net_local); always allowed even in secret sessions as traffic never leaves the machine",
+    "hook_type": "PreToolUse",
+    "session_state": {
+      "secret_session": false,
+      "recently_read_untrusted": false
+    }
+  },
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "curl http://[::1]:8080/status",
+    "description": "Check local service status via IPv6 loopback"
+  }
+}

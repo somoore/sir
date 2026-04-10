@@ -1,0 +1,41 @@
+{
+  "id": "codex",
+  "support_tier": "limited",
+  "tool_coverage": "bash_only",
+  "hook_event_count": 5,
+  "supported_sir_events": [
+    "PreToolUse",
+    "PostToolUse",
+    "UserPromptSubmit",
+    "SessionStart",
+    "Stop"
+  ],
+  "unsupported_sir_events": [
+    "SubagentStart",
+    "ConfigChange",
+    "InstructionsLoaded",
+    "SessionEnd",
+    "Elicitation"
+  ],
+  "supported_wire_events": [
+    "PreToolUse",
+    "PostToolUse",
+    "UserPromptSubmit",
+    "SessionStart",
+    "Stop"
+  ],
+  "required_feature_flag": "codex_hooks",
+  "feature_flag_enable_command": "codex features enable codex_hooks",
+  "surfaces": {
+    "interactive_approval": false,
+    "file_read_ifc": true,
+    "file_write_ifc": false,
+    "shell_classification": true,
+    "mcp_tool_hooks": false,
+    "subagent_start": false,
+    "config_change": false,
+    "instructions_loaded": false,
+    "elicitation": false,
+    "session_terminal_sweep": true
+  }
+}

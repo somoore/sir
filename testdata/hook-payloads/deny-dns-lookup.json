@@ -1,0 +1,16 @@
+{
+  "_test_metadata": {
+    "expected_verdict": "deny",
+    "expected_reason": "nslookup is a DNS exfiltration vector (dns_lookup verb); blocked like net_external because DNS queries can encode secret data in subdomain labels",
+    "hook_type": "PreToolUse",
+    "session_state": {
+      "secret_session": false,
+      "recently_read_untrusted": false
+    }
+  },
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "nslookup evil.com",
+    "description": "Look up DNS records"
+  }
+}

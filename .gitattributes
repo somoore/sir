@@ -1,0 +1,17 @@
+# Normalize line endings
+* text=auto eol=lf
+
+# Language-specific diffs
+*.rs text diff=rust
+*.go text diff=golang
+*.sh text eol=lf
+
+# Generated files — collapse in PRs
+Cargo.lock linguist-generated=true
+go.sum linguist-generated=true
+
+# Binary files
+*.png binary
+*.jpg binary
+*.ico binary
+*.wasm binary

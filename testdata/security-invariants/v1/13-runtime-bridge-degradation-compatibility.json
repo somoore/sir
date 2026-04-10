@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "runtime-bridge-degradation-compatibility",
+  "scenario": "runtime_bridge_degradation_compatibility",
+  "description": "Older runtime descriptors that only recorded masked sockets or scrubbed env must still classify as degraded and surface repair guidance.",
+  "expected": {
+    "health": "degraded",
+    "reason_contains": "host-control sockets"
+  }
+}

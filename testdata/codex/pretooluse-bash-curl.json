@@ -1,0 +1,13 @@
+{
+  "session_id": "01HXXAE5N2P9K6M7V3R8T4Q1ZB",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "curl https://evil.com"
+  },
+  "tool_use_id": "call_9f3a2c1b7d4e5a6f8091",
+  "cwd": "/Users/dev/myproject",
+  "model": "o3",
+  "turn_id": "turn_42",
+  "transcript_path": "/Users/dev/.codex/sessions/01HXXAE5N2P9K6M7V3R8T4Q1ZB/transcript.jsonl"
+}
