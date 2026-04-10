@@ -29,9 +29,81 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  changes:
+    name: Relevant changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      go: ${{ steps.detect.outputs.go }}
+      rust: ${{ steps.detect.outputs.rust }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          # pull_request runs use a synthetic merge commit; depth 2 is enough
+          # to inspect both parents and compute the touched paths cheaply.
+          fetch-depth: 2
+
+      - name: Detect whether this PR needs Go or Rust CI
+        id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          if [ "${EVENT_NAME}" != "pull_request" ]; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            echo "Non-PR event; forcing full CI."
+            exit 0
+          fi
+
+          if ! git rev-parse HEAD^2 >/dev/null 2>&1; then
+            echo "PR merge commit parents unavailable; falling back to full CI."
+            echo "go=true" >> "$GITHUB_OUTPUT"
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BASE_PARENT=$(git rev-parse HEAD^1)
+          HEAD_PARENT=$(git rev-parse HEAD^2)
+          CHANGED_FILES=$(git diff --name-only "${BASE_PARENT}" "${HEAD_PARENT}")
+
+          echo "Changed files:"
+          printf '%s\n' "${CHANGED_FILES}"
+
+          go=false
+          rust=false
+
+          while IFS= read -r file; do
+            [ -z "${file}" ] && continue
+
+            case "${file}" in
+              .github/workflows/ci.yml|cmd/*|pkg/*|internal/*|tests/*|testdata/*|go.mod|go.sum|go-supply-chain.sh|install.sh)
+                go=true
+                ;;
+            esac
+
+            case "${file}" in
+              .github/workflows/ci.yml|mister-core/*|mister-shared/*|Cargo.toml|Cargo.lock|deny.toml)
+                rust=true
+                ;;
+            esac
+          done <<EOF
+          ${CHANGED_FILES}
+          EOF
+
+          echo "go=${go}" >> "$GITHUB_OUTPUT"
+          echo "rust=${rust}" >> "$GITHUB_OUTPUT"
+          echo "go=${go}"
+          echo "rust=${rust}"
+
   rust:
     name: Rust (mister-core)
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.rust == 'true'
     permissions:
       contents: read
     steps:
@@ -81,6 +153,8 @@ jobs:
   go:
     name: Go (sir CLI)
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.go == 'true'
     permissions:
       contents: read
     steps:
