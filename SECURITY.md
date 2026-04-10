@@ -66,6 +66,8 @@ The following are documented limitations, not vulnerabilities:
 sir's supply chain posture is documented in `docs/contributor/supply-chain-policy.md`. Key points:
 
 - mister-core (Rust) has **zero** external dependencies
+- `main` accepts changes through pull requests gated by signed commits and required CI checks
+- Release tags (`v*`) are immutable and GitHub releases are approval-gated through the `release` environment
 - All CI actions are pinned to SHA hashes
 - All toolchain versions are pinned
 - Release artifacts include SHA-256 and SHA-512 checksums
