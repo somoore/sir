@@ -67,8 +67,9 @@ CHECKSUMS.sha512
 *.tar.gz
 *.zip
 
-# sir runtime state (lives in ~/.sir/, not in repo)
-.claude/.sir/
+# Local Claude workspace state
+/.claude/*
+!/.claude/.gitignore
 
 # GTM and internal planning — kept locally, not committed
 gtm/
