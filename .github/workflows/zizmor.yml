@@ -1,0 +1,99 @@
+name: Zizmor Actions analysis
+
+# Zizmor: static analysis for GitHub Actions workflows.
+# Catches template injection, unpinned actions, excessive token
+# permissions, pull_request_target misuse, script injection via
+# ${{ github.* }} expansion, secret exfiltration vectors.
+#
+# This workflow is active now that the repository is public and Code
+# Scanning upload is available.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - '.github/actions/**'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/**'
+      - '.github/actions/**'
+
+permissions: {}
+
+concurrency:
+  group: zizmor-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  zizmor:
+    name: Zizmor scan
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install zizmor
+        env:
+          ZIZMOR_VERSION: "1.23.1"
+          ZIZMOR_SHA256: "67a8df0a14352dd81882e14876653d097b99b0f4f6b6fe798edc0320cff27aff"
+        run: |
+          set -euo pipefail
+          curl -fsSLO \
+            "https://github.com/woodruffw/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${ZIZMOR_SHA256}  zizmor-x86_64-unknown-linux-gnu.tar.gz" | sha256sum --check
+          tar -xzf "zizmor-x86_64-unknown-linux-gnu.tar.gz"
+          sudo mv zizmor /usr/local/bin/zizmor
+          zizmor --version
+
+      - name: Run zizmor
+        id: zizmor
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          targets=(.github/workflows/)
+          if [[ -d .github/actions ]]; then
+            targets+=(.github/actions/)
+          fi
+          # The hosted Actions token in this repo does not have stable access
+          # to the GitHub advisories API that powers zizmor's online
+          # known-vulnerable-actions audit. Run in explicit offline mode so the
+          # static workflow analysis remains deterministic instead of failing on
+          # API 403s/rate limits. Keep PR gating at medium/high so low-severity
+          # hygiene notes still surface in non-PR SARIF uploads without blocking.
+          zizmor --offline --min-severity medium "${targets[@]}"
+
+      - name: Generate SARIF
+        if: always() && github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          targets=(.github/workflows/)
+          if [[ -d .github/actions ]]; then
+            targets+=(.github/actions/)
+          fi
+          zizmor --offline --format=sarif "${targets[@]}" > zizmor.sarif
+
+      - name: Upload SARIF to code scanning
+        id: upload_sarif
+        if: always() && github.event_name != 'pull_request'
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
+        with:
+          sarif_file: zizmor.sarif
+
+      - name: Warn if SARIF upload is rate limited
+        if: steps.upload_sarif.outcome == 'failure'
+        run: |
+          echo "::warning::Zizmor scan completed, but SARIF upload to GitHub code scanning failed."
+
+      - name: Fail on zizmor findings
+        if: steps.zizmor.outcome == 'failure'
+        run: exit 1

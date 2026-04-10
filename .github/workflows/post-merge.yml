@@ -1,0 +1,143 @@
+name: Post-merge Assurance
+
+# Expensive build assurance runs only after code lands on main.
+# Keep PR/merge-queue checks lean; do release-grade verification here.
+permissions: {}
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: post-merge-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+  CGO_ENABLED: "0"
+  GOFLAGS: "-trimpath"
+  RUST_VERSION: "1.94.0"
+  GO_VERSION: "1.25.9"
+  # Opt into Node.js 24 now ahead of the June 2, 2026 forced migration
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  go-macos:
+    name: Go (sir CLI, macOS)
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.25.9"
+          cache: false
+
+      - name: Build sir
+        run: |
+          CGO_ENABLED=0 go build \
+            -trimpath \
+            -ldflags="-s -w" \
+            -o bin/sir \
+            ./cmd/sir
+
+      - name: Test macOS-sensitive Go paths
+        run: go test ./cmd/sir
+
+  artifacts:
+    name: Build artifacts & checksums
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install "${RUST_VERSION}" --profile minimal
+          rustup default "${RUST_VERSION}"
+          rustc --version
+          cargo --version
+
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.25.9"
+          cache: false  # no external Go deps → no go.sum → caching not applicable
+
+      - name: Build release artifacts
+        run: |
+          # Rust
+          CARGO_INCREMENTAL=0 cargo build --release --locked
+
+          # Go
+          mkdir -p bin
+          CGO_ENABLED=0 go build \
+            -trimpath \
+            -ldflags="-s -w" \
+            -o bin/sir \
+            ./cmd/sir
+
+          # Copy Rust binary to bin/
+          cp target/release/mister-core bin/ 2>/dev/null || true
+
+      - name: Verify reproducible build
+        run: |
+          # Build a second time and compare hashes to verify determinism.
+          # Same flags, same toolchains — output must be identical.
+          sha256sum bin/sir bin/mister-core 2>/dev/null | sort > /tmp/build1.sha256 || true
+
+          # Rebuild Go
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/sir ./cmd/sir
+          # Rebuild Rust
+          CARGO_INCREMENTAL=0 cargo build --release --locked
+          cp target/release/mister-core bin/ 2>/dev/null || true
+
+          sha256sum bin/sir bin/mister-core 2>/dev/null | sort > /tmp/build2.sha256 || true
+
+          if ! diff /tmp/build1.sha256 /tmp/build2.sha256; then
+            echo "FATAL: Build is not reproducible — hashes differ between runs"
+            echo "Build 1:" && cat /tmp/build1.sha256
+            echo "Build 2:" && cat /tmp/build2.sha256
+            exit 1
+          fi
+          echo "Verified: build is reproducible (hashes match)"
+
+      - name: Generate checksums
+        run: bash scripts/checksum.sh ./bin
+
+      - name: Generate SBOM
+        env:
+          SYFT_VERSION: "1.9.0"
+          SYFT_SHA256: "4c7db3f86a7cd86997fc37da412ac4c6031bb8d0a319a0b152791e53cd240ac4"
+        run: |
+          # Install syft at pinned version with checksum verification
+          # (matches release.yml pattern — no curl|sh)
+          curl -fsSLO \
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+          echo "${SYFT_SHA256}  syft_${SYFT_VERSION}_linux_amd64.tar.gz" | sha256sum --check
+          tar -xzf "syft_${SYFT_VERSION}_linux_amd64.tar.gz" syft
+          chmod +x syft
+          ./syft version
+
+          # Generate SBOM
+          ./syft dir:. -o cyclonedx-json > sbom-sir.cdx.json
+          echo "SBOM generated: sbom-sir.cdx.json"
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: checksums
+          path: |
+            CHECKSUMS.sha256
+            CHECKSUMS.sha512
+            sbom-sir.cdx.json
+
+      # Cosign signing is active in release.yml (keyless via Sigstore OIDC).
+      # CI artifacts are unsigned — only release archives are signed.

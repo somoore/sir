@@ -1,0 +1,141 @@
+name: CI
+
+# Least privilege — no permissions by default
+permissions: {}
+
+on:
+  pull_request:
+    branches: [main]
+  # Required checks must also run for merge queues.
+  merge_group:
+    types: [checks_requested]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Reproducible builds
+  CARGO_INCREMENTAL: "0"
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+  CGO_ENABLED: "0"
+  GOFLAGS: "-trimpath"
+  # Pin toolchain versions
+  RUST_VERSION: "1.94.0"
+  GO_VERSION: "1.25.9"
+  GOVULNCHECK_VERSION: "v1.1.4"
+  GOSEC_VERSION: "v2.25.0"
+  # Opt into Node.js 24 now ahead of the June 2, 2026 forced migration
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  rust:
+    name: Rust (mister-core)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install "${RUST_VERSION}" --profile minimal --component clippy
+          rustup default "${RUST_VERSION}"
+          rustc --version
+          cargo --version
+
+      - name: Verify zero external dependencies
+        run: |
+          # mister-core and mister-shared must have ZERO external crate dependencies.
+          # Cargo.lock must contain exactly 2 packages: mister-core and mister-shared.
+          PKG_COUNT=$(grep -c '^\[\[package\]\]' Cargo.lock)
+          if [ "$PKG_COUNT" -ne 2 ]; then
+            echo "FATAL: Expected 2 packages in Cargo.lock, found $PKG_COUNT"
+            echo "mister-core MUST have zero external dependencies."
+            cat Cargo.lock
+            exit 1
+          fi
+          echo "Verified: Cargo.lock contains exactly 2 packages (mister-core + mister-shared)"
+
+      - name: Build (locked)
+        run: cargo build --release --locked
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Clippy
+        run: cargo clippy --locked -- -D warnings
+
+      - name: cargo-deny
+        run: |
+          cargo install cargo-deny@0.16.1 --locked
+          # mister-core has zero external dependencies (Cargo.lock contains only
+          # mister-core + mister-shared), so the advisories check can never find
+          # anything. We skip it to avoid a cargo-deny/rustsec bug where CVSS 4.0
+          # advisory entries cause a hard parse failure regardless of cargo-deny
+          # version. bans, licenses, and sources are the checks that matter here.
+          cargo deny check bans licenses sources
+
+  go:
+    name: Go (sir CLI)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.25.9"
+          cache: false  # no external Go deps → no go.sum → caching not applicable
+
+      - name: Verify go.mod is tidy
+        run: |
+          go mod tidy
+          if [ -n "$(git status --porcelain go.mod go.sum 2>/dev/null)" ]; then
+            echo "FATAL: go.mod is not tidy. Run 'go mod tidy' and commit."
+            git status go.mod go.sum
+            exit 1
+          fi
+
+      - name: Build (static, stripped)
+        run: |
+          CGO_ENABLED=0 go build \
+            -trimpath \
+            -ldflags="-s -w" \
+            -o bin/sir \
+            ./cmd/sir
+
+      - name: Test
+        run: go test ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Install govulncheck
+        run: go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
+
+      - name: Install gosec
+        run: go install "github.com/securego/gosec/v2/cmd/gosec@${GOSEC_VERSION}"
+
+      - name: Run gosec (static security analysis)
+        run: |
+          # Exclude rules that are architectural false positives for a security CLI:
+          #   G104: unhandled errors in cleanup/defer paths (intentional)
+          #   G115: int conversions for fd values and bounded payload lengths (safe)
+          #   G204: subprocess launch with variable (sir launches mister-core by design)
+          #   G301: MkdirAll perms >0750 — Claude Code expects ~/.claude at 0755
+          #   G302: Chmod >0600 — 0700 is correct for directories (execute bit needed)
+          #   G304: file read via variable (sir reads config/state files by computed path)
+          #   G306: WriteFile >0600 — settings.json needs 0644 for Claude Code compat
+          #   G703: path traversal via taint — restore functions write to controlled paths
+          gosec -quiet \
+            -exclude=G104,G115,G204,G301,G302,G304,G306,G703 \
+            ./...
+
+      - name: Go supply chain check
+        run: bash go-supply-chain.sh
