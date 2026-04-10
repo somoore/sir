@@ -1,0 +1,539 @@
+name: Release
+
+# Trigger policy (fork/dispatch hardening):
+# This workflow triggers ONLY on tag pushes matching semver v[0-9]+.[0-9]+.[0-9]+.
+# Explicitly NOT configured: pull_request, pull_request_target, workflow_dispatch,
+# schedule, release (reverse trigger). Pull-request-based triggers could allow a
+# fork PR author to run the release workflow with elevated permissions.
+# workflow_dispatch would allow any actor with Actions write permission to cut a
+# release without going through the tag → branch-protection → signed-commit path.
+permissions: {}
+
+# Concurrency control: a release in flight is never cancelled. Two simultaneous
+# runs against the same tag are serialized so they never race on the Sigstore
+# OIDC token, the release creation, or the SLSA provenance upload.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+  CGO_ENABLED: "0"
+  GOFLAGS: "-trimpath"
+  RUST_VERSION: "1.94.0"
+  GO_VERSION: "1.25.9"
+  # Opt into Node.js 24 now ahead of the June 2, 2026 forced migration
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  build:
+    name: Build / ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    # NOTE: matrix jobs cannot reliably expose per-leg outputs — each matrix
+    # leg overwrites the same `outputs` map, so only one leg's subjects
+    # survive (known slsa-github-generator issue). Instead, each leg writes
+    # its subject line to a file and uploads it as an artifact; the
+    # `collect-subjects` job downstream concatenates all legs into a single
+    # base64 blob that feeds the SLSA generator.
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux_amd64
+            runner: ubuntu-latest
+          - target: linux_arm64
+            runner: ubuntu-24.04-arm
+          - target: darwin_arm64
+            runner: macos-latest      # Apple Silicon (macos-15)
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install "${RUST_VERSION}" --profile minimal
+          rustup default "${RUST_VERSION}"
+          rustc --version
+          cargo --version
+
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.25.9"
+          cache: false  # no external Go deps → no go.sum → caching not applicable
+
+      - name: Build mister-core (Rust)
+        run: CARGO_INCREMENTAL=0 cargo build --release --locked
+
+      - name: Build sir (Go)
+        run: |
+          CGO_ENABLED=0 go build \
+            -trimpath \
+            -ldflags="-s -w" \
+            -o bin/sir \
+            ./cmd/sir
+
+      - name: Package archive
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          TARGET="${{ matrix.target }}"
+          ARCHIVE="sir_${VERSION}_${TARGET}.tar.gz"
+
+          mkdir -p dist
+          cp target/release/mister-core dist/
+          cp bin/sir dist/
+          cp README.md dist/ 2>/dev/null || true
+          cp LICENSE dist/ 2>/dev/null || true
+
+          tar -czf "${ARCHIVE}" -C dist .
+
+          # sha256sum on Linux, shasum on macOS
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${ARCHIVE}" > "${ARCHIVE}.sha256"
+          else
+            shasum -a 256 "${ARCHIVE}" > "${ARCHIVE}.sha256"
+          fi
+
+      - name: Write subject line for SLSA provenance
+        run: |
+          # One sha256sum line per archive (this leg builds exactly one).
+          # On macOS, `shasum -a 256` produces the same format as `sha256sum`.
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum sir_*.tar.gz > "subjects-${{ matrix.target }}.txt"
+          else
+            shasum -a 256 sir_*.tar.gz > "subjects-${{ matrix.target }}.txt"
+          fi
+          cat "subjects-${{ matrix.target }}.txt"
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: release-${{ matrix.target }}
+          path: |
+            sir_*.tar.gz
+            sir_*.sha256
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: subjects-${{ matrix.target }}
+          path: subjects-${{ matrix.target }}.txt
+          if-no-files-found: error
+
+  collect-subjects:
+    name: Collect SLSA subjects
+    runs-on: ubuntu-latest
+    needs: [build]
+    permissions:
+      contents: read
+    outputs:
+      subjects: ${{ steps.aggregate.outputs.subjects }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
+        with:
+          pattern: subjects-*
+          merge-multiple: true
+          path: subjects
+
+      - name: Aggregate subjects across matrix legs
+        id: aggregate
+        run: |
+          set -euo pipefail
+          # Concatenate every matrix leg's subject line into a single
+          # sha256sum-compatible manifest, then base64-encode (no wrapping)
+          # for slsa-github-generator.
+          cat subjects/subjects-*.txt > all-subjects.txt
+          echo "--- aggregated subjects ---"
+          cat all-subjects.txt
+          SUBJECTS=$(base64 -w0 < all-subjects.txt)
+          echo "subjects=${SUBJECTS}" >> "$GITHUB_OUTPUT"
+
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      # Install syft at a pinned version and verify its checksum before use.
+      # Update SYFT_VERSION + SYFT_SHA256 together when bumping.
+      - name: Install syft
+        env:
+          SYFT_VERSION: "1.9.0"
+          SYFT_SHA256: "4c7db3f86a7cd86997fc37da412ac4c6031bb8d0a319a0b152791e53cd240ac4"
+        run: |
+          curl -fsSLO \
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+          echo "${SYFT_SHA256}  syft_${SYFT_VERSION}_linux_amd64.tar.gz" | sha256sum --check
+          tar -xzf "syft_${SYFT_VERSION}_linux_amd64.tar.gz" syft
+          chmod +x syft
+          ./syft version
+
+      - name: Generate SBOM (CycloneDX JSON)
+        run: |
+          ./syft scan dir:. \
+            --output cyclonedx-json=sbom.cyclonedx.json \
+            --output spdx-json=sbom.spdx.json \
+            --source-name "sir" \
+            --source-version "${GITHUB_REF_NAME}"
+
+      # AI Bill of Materials (AIBOM) — hand-maintained manifest at repo
+      # root declaring zero AI/ML components. Release policy lives in
+      # docs/contributor/supply-chain-policy.md.
+      # Verify the version field matches the git tag before publishing
+      # so a stale aibom.json never ships with a new release.
+      - name: Verify AIBOM version matches tag
+        run: |
+          set -euo pipefail
+          AIBOM_VERSION=$(jq -r '.version' aibom.json)
+          TAG_VERSION="${GITHUB_REF_NAME}"
+          echo "aibom.json version: ${AIBOM_VERSION}"
+          echo "git tag:             ${TAG_VERSION}"
+          if [ "${AIBOM_VERSION}" != "${TAG_VERSION}" ]; then
+            echo "ERROR: aibom.json::version (${AIBOM_VERSION}) does not match git tag (${TAG_VERSION})."
+            echo "Bump aibom.json::version and aibom.json::attestation.cosign_identity before tagging."
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: sbom
+          path: |
+            sbom.cyclonedx.json
+            sbom.spdx.json
+            aibom.json
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build, sbom, provenance]
+    # Environment gating: the `release` environment is configured in GitHub
+    # repo settings with required reviewers. No release publishes without a
+    # human clicking approve — protects against accidental tag pushes,
+    # compromised developer machines, and unreviewed tag creation.
+    environment:
+      name: release
+      url: ${{ steps.publish.outputs.release_url }}
+    permissions:
+      contents: write    # create releases and upload assets
+      id-token: write    # Sigstore OIDC token for cosign keyless signing
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: artifacts
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
+        with:
+          name: sbom
+          path: artifacts
+
+      # SLSA provenance is generated and signed by the `provenance` job using
+      # slsa-github-generator v2.1.0, but its built-in upload-assets step has
+      # compatibility issues with actions/download-artifact v4+ (fails in
+      # secure-download-artifact with an empty UNTRUSTED_PATH). We bypass
+      # that by downloading the provenance artifact here and attaching it
+      # to the release in our own gh release create call.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
+        with:
+          name: ${{ needs.provenance.outputs.provenance-name }}
+          path: artifacts
+
+      - name: Combine checksums
+        run: |
+          cd artifacts
+          sort ./*.sha256 > checksums.txt
+          echo "--- checksums ---"
+          cat checksums.txt
+
+      # Cosign keyless signing via Sigstore OIDC (GitHub Actions identity)
+      # Users verify with:
+      #   cosign verify-blob --certificate-identity <workflow-ref> \
+      #     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+      #     --signature checksums.txt.sig --certificate checksums.txt.pem checksums.txt
+      - name: Install cosign
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # v3.7.0
+
+      - name: Sign checksums with Sigstore
+        run: |
+          cosign sign-blob --yes \
+            --output-signature artifacts/checksums.txt.sig \
+            --output-certificate artifacts/checksums.txt.pem \
+            artifacts/checksums.txt
+
+      - name: Sign each archive
+        run: |
+          for archive in artifacts/sir_*.tar.gz; do
+            cosign sign-blob --yes \
+              --output-signature "${archive}.sig" \
+              --output-certificate "${archive}.pem" \
+              "${archive}"
+          done
+
+      - name: Sign AIBOM
+        run: |
+          cosign sign-blob --yes \
+            --output-signature artifacts/aibom.json.sig \
+            --output-certificate artifacts/aibom.json.pem \
+            artifacts/aibom.json
+
+      # In-toto attestations (cosign attest-blob) — wraps each SBOM/AIBOM in
+      # an in-toto statement bound to the artifact's sha256. Stronger than
+      # detached sign-blob because verifiers can ask "is this SBOM the one
+      # for this specific binary?" via `cosign verify-blob-attestation
+      # --type cyclonedx` rather than just "is this signature valid over
+      # this file?" The detached .sig/.pem files remain for backwards-
+      # compatible verification paths.
+      - name: Attest CycloneDX SBOM
+        run: |
+          cosign attest-blob --yes \
+            --predicate artifacts/sbom.cyclonedx.json \
+            --type cyclonedx \
+            --output-attestation artifacts/sbom.cyclonedx.json.intoto.jsonl \
+            artifacts/sbom.cyclonedx.json
+
+      - name: Attest SPDX SBOM
+        run: |
+          cosign attest-blob --yes \
+            --predicate artifacts/sbom.spdx.json \
+            --type spdxjson \
+            --output-attestation artifacts/sbom.spdx.json.intoto.jsonl \
+            artifacts/sbom.spdx.json
+
+      - name: Attest AIBOM
+        run: |
+          cosign attest-blob --yes \
+            --predicate artifacts/aibom.json \
+            --type custom \
+            --output-attestation artifacts/aibom.json.intoto.jsonl \
+            artifacts/aibom.json
+
+      - name: Create release
+        id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Mark any 0.x.y tag as a GitHub prerelease. The semver 0.x range
+          # signals "API may change" — surface that explicitly to consumers.
+          PRERELEASE_FLAG=""
+          if [[ "${GITHUB_REF_NAME}" == v0.* ]]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${{ github.repository }}" \
+            --title "sir ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            ${PRERELEASE_FLAG} \
+            artifacts/sir_*.tar.gz \
+            artifacts/sir_*.sig \
+            artifacts/sir_*.pem \
+            artifacts/checksums.txt \
+            artifacts/checksums.txt.sig \
+            artifacts/checksums.txt.pem \
+            artifacts/sbom.cyclonedx.json \
+            artifacts/sbom.spdx.json \
+            artifacts/sbom.cyclonedx.json.intoto.jsonl \
+            artifacts/sbom.spdx.json.intoto.jsonl \
+            artifacts/aibom.json \
+            artifacts/aibom.json.sig \
+            artifacts/aibom.json.pem \
+            artifacts/aibom.json.intoto.jsonl \
+            artifacts/sir.intoto.jsonl
+
+          RELEASE_URL="$(gh release view "${GITHUB_REF_NAME}" --repo "${{ github.repository }}" --json url --jq .url)"
+          echo "release_url=${RELEASE_URL}" >> "$GITHUB_OUTPUT"
+
+      # Binary size sanity check (post-publish).
+      # Cheap canary against injected code: compare each platform tarball
+      # against the same asset from the previous release. Anything >20%
+      # larger is suspicious and fails the workflow. Gracefully skips when
+      # this is the first release (no previous to compare against).
+      - name: Binary size sanity check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIZE_BUDGET_PERCENT: "20"
+        run: |
+          set -euo pipefail
+          PREV_TAG=$(gh release list --repo "${{ github.repository }}" \
+                       --exclude-drafts --limit 10 \
+                       --json tagName,isPrerelease \
+                       --jq "[.[] | select(.tagName != \"${GITHUB_REF_NAME}\")][0].tagName" || echo "")
+          if [ -z "${PREV_TAG}" ] || [ "${PREV_TAG}" = "null" ]; then
+            echo "No previous release found — skipping size delta check (first release)."
+            exit 0
+          fi
+          echo "Comparing artifact sizes against previous release: ${PREV_TAG}"
+          mkdir -p prev
+          for asset in artifacts/sir_*.tar.gz; do
+            name=$(basename "${asset}")
+            prev_name="${name/${GITHUB_REF_NAME}/${PREV_TAG}}"
+            if ! gh release download "${PREV_TAG}" \
+                   --repo "${{ github.repository }}" \
+                   --pattern "${prev_name}" \
+                   --dir prev 2>/dev/null; then
+              echo "  ${name}: no previous asset ${prev_name} — skipping"
+              continue
+            fi
+            cur_size=$(stat -c%s "${asset}" 2>/dev/null || stat -f%z "${asset}")
+            prev_size=$(stat -c%s "prev/${prev_name}" 2>/dev/null || stat -f%z "prev/${prev_name}")
+            delta_pct=$(( (cur_size - prev_size) * 100 / prev_size ))
+            echo "  ${name}: ${prev_size} → ${cur_size} bytes (${delta_pct}%)"
+            if [ "${delta_pct}" -gt "${SIZE_BUDGET_PERCENT}" ]; then
+              echo "  ERROR: ${name} grew ${delta_pct}% (budget: ${SIZE_BUDGET_PERCENT}%)."
+              echo "  Investigate before shipping — unexpected growth may indicate injected code."
+              exit 1
+            fi
+          done
+
+  # SLSA provenance — generates a signed provenance attestation
+  # that proves this release was built by this GitHub repo's CI.
+  # Verification: slsa-verifier verify-artifact sir_v1.0.0_linux_amd64.tar.gz \
+  #   --provenance-path sir.intoto.jsonl \
+  #   --source-uri github.com/somoore/sir --source-tag v1.0.0
+  #
+  # Subjects come from collect-subjects (aggregated across all matrix legs),
+  # not the build job — matrix outputs race and only surface one leg.
+  #
+  # We set upload-assets: false and attach the provenance to the release
+  # ourselves from the `release` job — the generator's built-in
+  # upload-assets job is broken on actions/download-artifact v4+ (its
+  # secure-download-artifact helper fails with empty UNTRUSTED_PATH).
+  provenance:
+    needs: [collect-subjects]
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a # v2.1.0
+    with:
+      base64-subjects: "${{ needs.collect-subjects.outputs.subjects }}"
+      provenance-name: "sir.intoto.jsonl"
+      upload-assets: false
+      private-repository: false
+
+  # Post-release self-verification smoke test.
+  # Downloads the just-published artifacts and runs the exact cosign and
+  # slsa-verifier commands documented in docs/research/security-verification-guide.md
+  # against them. Fails the workflow if verification doesn't succeed.
+  #
+  # Purpose: cryptographically validate that the verification recipe we
+  # publish to users actually works end-to-end. Catches regressions where
+  # signatures/attestations ship but can't be verified by the documented
+  # commands — a silent failure that would otherwise only surface when a
+  # user tries to verify and it doesn't work.
+  smoke-verify:
+    name: Post-release verification smoke test
+    runs-on: ubuntu-latest
+    needs: [release]
+    permissions:
+      contents: read
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # v3.7.0
+
+      - name: Install slsa-verifier
+        env:
+          SLSA_VERIFIER_VERSION: "2.7.1"
+          SLSA_VERIFIER_SHA256: "946dbec729094195e88ef78e1734324a27869f03e2c6bd2f61cbc06bd5350339"
+        run: |
+          set -euo pipefail
+          curl -fsSLO \
+            "https://github.com/slsa-framework/slsa-verifier/releases/download/v${SLSA_VERIFIER_VERSION}/slsa-verifier-linux-amd64"
+          echo "${SLSA_VERIFIER_SHA256}  slsa-verifier-linux-amd64" | sha256sum --check
+          chmod +x slsa-verifier-linux-amd64
+          sudo mv slsa-verifier-linux-amd64 /usr/local/bin/slsa-verifier
+          slsa-verifier version
+
+      - name: Download release artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p verify
+          gh release download "${GITHUB_REF_NAME}" \
+            --repo "${{ github.repository }}" \
+            --dir verify
+          ls -la verify/
+
+      - name: Verify cosign signatures on every archive
+        run: |
+          set -euo pipefail
+          CERT_IDENTITY="https://github.com/${{ github.repository }}/.github/workflows/release.yml@${GITHUB_REF}"
+          OIDC_ISSUER="https://token.actions.githubusercontent.com"
+          for archive in verify/sir_*.tar.gz; do
+            echo "=== Verifying ${archive} ==="
+            cosign verify-blob \
+              --certificate "${archive}.pem" \
+              --signature "${archive}.sig" \
+              --certificate-identity "${CERT_IDENTITY}" \
+              --certificate-oidc-issuer "${OIDC_ISSUER}" \
+              "${archive}"
+          done
+
+      - name: Verify cosign signature on checksums.txt
+        run: |
+          CERT_IDENTITY="https://github.com/${{ github.repository }}/.github/workflows/release.yml@${GITHUB_REF}"
+          cosign verify-blob \
+            --certificate verify/checksums.txt.pem \
+            --signature verify/checksums.txt.sig \
+            --certificate-identity "${CERT_IDENTITY}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            verify/checksums.txt
+
+      - name: Verify cosign signature on AIBOM
+        run: |
+          CERT_IDENTITY="https://github.com/${{ github.repository }}/.github/workflows/release.yml@${GITHUB_REF}"
+          cosign verify-blob \
+            --certificate verify/aibom.json.pem \
+            --signature verify/aibom.json.sig \
+            --certificate-identity "${CERT_IDENTITY}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            verify/aibom.json
+
+      - name: Verify SLSA provenance on every archive
+        run: |
+          set -euo pipefail
+          for archive in verify/sir_*.tar.gz; do
+            echo "=== SLSA verify ${archive} ==="
+            slsa-verifier verify-artifact "${archive}" \
+              --provenance-path verify/sir.intoto.jsonl \
+              --source-uri "github.com/${{ github.repository }}" \
+              --source-tag "${GITHUB_REF_NAME}"
+          done
+
+      - name: Verify checksums manifest matches archives
+        run: |
+          set -euo pipefail
+          cd verify
+          sha256sum --check --ignore-missing checksums.txt
+
+      - name: Verify AIBOM declares zero ML components
+        run: |
+          set -euo pipefail
+          cd verify
+          # Guard against a release that accidentally ships an AIBOM with
+          # non-empty ML inventories. If we ever add real ML components,
+          # this check fails loudly and forces a conscious review of the
+          # aibom.json zero-claim before it ships.
+          for field in ml_components model_weights training_data prompts embeddings fine_tuning; do
+            len=$(jq -r ".${field} | length" aibom.json)
+            echo "aibom.json::${field} length = ${len}"
+            if [ "${len}" != "0" ]; then
+              echo "ERROR: aibom.json::${field} is non-empty (${len} entries)."
+              echo "sir is documented as ML-free. If this is intentional,"
+              echo "update docs/contributor/supply-chain-policy.md and remove this smoke-test guard."
+              exit 1
+            fi
+          done

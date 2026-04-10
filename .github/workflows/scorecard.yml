@@ -1,0 +1,58 @@
+name: OpenSSF Scorecard
+
+# Weekly supply-chain security scan via OpenSSF Scorecard.
+#
+# This workflow is active now that the repository is public. It publishes
+# Scorecard results and uploads SARIF to GitHub Code Scanning.
+#
+# Do not run this on every push to main: the Scorecard action's GitHub API
+# usage is high enough to exhaust the installation rate limit on active repos,
+# which turns routine merges into long-running false failures. Keep it on
+# schedule/manual and branch protection changes instead.
+
+on:
+  workflow_dispatch:
+  branch_protection_rule:
+  schedule:
+    - cron: '18 4 * * 1'   # Mondays, 04:18 UTC
+
+permissions: {}
+
+concurrency:
+  group: scorecard-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write    # upload SARIF to code scanning (public only)
+      id-token: write           # publish results to the Scorecard registry
+      contents: read
+      actions: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@99c09fe975337306107572b4fdf4db224cf8e2f2 # v2.4.3
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - name: Upload SARIF to code scanning
+        id: upload_sarif
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
+        with:
+          sarif_file: results.sarif
+
+      - name: Warn if SARIF upload is rate limited
+        if: steps.upload_sarif.outcome == 'failure'
+        run: |
+          echo "::warning::Scorecard scan completed, but SARIF upload to GitHub code scanning failed."
