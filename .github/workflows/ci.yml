@@ -80,7 +80,7 @@ jobs:
             [ -z "${file}" ] && continue
 
             case "${file}" in
-              .github/workflows/ci.yml|cmd/*|pkg/*|internal/*|testdata/*|go.mod|go.sum|go-supply-chain.sh|install.sh)
+              .github/workflows/ci.yml|cmd/*|pkg/*|internal/*|tests/*|testdata/*|go.mod|go.sum|go-supply-chain.sh|install.sh)
                 go=true
                 ;;
             esac
