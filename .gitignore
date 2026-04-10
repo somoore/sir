@@ -69,7 +69,6 @@ CHECKSUMS.sha512
 
 # Local Claude workspace state
 /.claude/*
-!/.claude/.gitignore
 
 # GTM and internal planning — kept locally, not committed
 gtm/
