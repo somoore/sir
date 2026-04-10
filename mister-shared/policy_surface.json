@@ -1,0 +1,44 @@
+{
+  "session_schema_version": 1,
+  "verbs": [
+    { "name": "NetLocal", "wire": "net_local" },
+    { "name": "NetAllowlisted", "wire": "net_allowlisted" },
+    { "name": "NetExternal", "wire": "net_external" },
+    { "name": "PushOrigin", "wire": "push_origin" },
+    { "name": "PushRemote", "wire": "push_remote" },
+    { "name": "RunEphemeral", "wire": "run_ephemeral" },
+    { "name": "ReadRef", "wire": "read_ref" },
+    { "name": "StageWrite", "wire": "stage_write" },
+    { "name": "ExecuteDryRun", "wire": "execute_dry_run" },
+    { "name": "RunTests", "wire": "run_tests" },
+    { "name": "Commit", "wire": "commit" },
+    { "name": "ListFiles", "wire": "list_files" },
+    { "name": "SearchCode", "wire": "search_code" },
+    { "name": "EnvRead", "wire": "env_read" },
+    { "name": "DnsLookup", "wire": "dns_lookup" },
+    { "name": "Persistence", "wire": "persistence" },
+    { "name": "Sudo", "wire": "sudo" },
+    { "name": "DeletePosture", "wire": "delete_posture" },
+    { "name": "Delegate", "wire": "delegate" },
+    { "name": "McpUnapproved", "wire": "mcp_unapproved" },
+    { "name": "McpCredentialLeak", "wire": "mcp_credential_leak" },
+    { "name": "McpInjectionDetected", "wire": "mcp_injection_detected" },
+    { "name": "CredentialDetected", "wire": "credential_detected" },
+    { "name": "ElicitationHarvest", "wire": "elicitation_harvest" },
+    { "name": "SirSelf", "wire": "sir_self" }
+  ],
+  "verdicts": [
+    { "name": "Allow", "wire": "allow" },
+    { "name": "Deny", "wire": "deny" },
+    { "name": "Ask", "wire": "ask" }
+  ],
+  "posture_states": [
+    { "name": "Normal", "wire": "normal" },
+    { "name": "Elevated", "wire": "elevated" },
+    { "name": "Critical", "wire": "critical" }
+  ],
+  "approval_scopes": [
+    { "name": "Session", "wire": "session" },
+    { "name": "Turn", "wire": "turn" }
+  ]
+}

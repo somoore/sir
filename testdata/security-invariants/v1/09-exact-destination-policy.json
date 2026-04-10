@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "name": "exact-destination-policy",
+  "scenario": "exact_destination_policy",
+  "description": "Runtime allowlists must stay exact at the destination layer rather than silently broadening to extra ports.",
+  "allowed_hosts": [
+    "api.anthropic.com:8443"
+  ],
+  "expected": {
+    "exact_destinations": "api.anthropic.com:8443"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "session_id": "gemini_01HYZA1B2C3D4E5F6G7H8J9K0L",
+  "hook_event_name": "BeforeTool",
+  "tool_name": "mcp_slack_post_message",
+  "tool_input": {
+    "channel": "#general",
+    "text": "deploy complete"
+  },
+  "tool_use_id": "call_gem_mcp_0005",
+  "cwd": "/Users/dev/myproject",
+  "timestamp": "2026-04-07T10:00:04Z",
+  "transcript_path": "/Users/dev/.gemini/sessions/gemini_01HYZA/transcript.jsonl"
+}

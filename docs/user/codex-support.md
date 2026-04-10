@@ -1,0 +1,73 @@
+# Codex Support
+
+**Minimum supported version: 0.118.0** (`sir doctor` warns on older versions).
+
+<!-- BEGIN GENERATED SUPPORT DOC -->
+## Status: limited support on codex-cli 0.118.0+ (Bash-only)
+
+| Surface | Status | Notes |
+|---|---|---|
+| Hook events wired | ✅ 5 events | PreToolUse, PostToolUse, UserPromptSubmit, SessionStart, Stop |
+| Tool-path coverage | ⚠ Bash-only | Shell classification is enforced, but non-Bash tools bypass sir entirely. |
+| Feature flag | ⚠ Required | Enable `codex_hooks` before any registered hooks can fire. |
+| Interactive approvals | ❌ No | Codex folds sir's internal ask verdict into block with remediation text. |
+| File-read IFC labeling | ✅ Yes | Bash-mediated sensitive reads (cat/sed/head/tail/grep/etc.) are promoted to read_ref before execution. |
+| File-write pre-gating | ❌ No | Native apply_patch writes bypass PreToolUse on codex-cli 0.118.x; posture tamper is caught post-hoc. |
+| Shell classification | ✅ Yes | Every hooked Codex tool call is Bash, so sir's shell classifier is the primary enforcement path. |
+| MCP tool hooks | ❌ No | Codex does not fire hooks for MCP tools today. |
+| Delegation gating | ❌ No | Codex exposes no SubagentStart-equivalent hook. |
+| Config change detection | ❌ No | Codex exposes no ConfigChange-equivalent hook. |
+| InstructionsLoaded scanning | ❌ No | Codex exposes no InstructionsLoaded-equivalent hook. |
+| Elicitation interception | ❌ No | Codex exposes no Elicitation-equivalent hook. |
+| Terminal posture sweep | ✅ Yes | The final posture sweep runs on Stop because Codex exposes no SessionEnd hook. |
+<!-- END GENERATED SUPPORT DOC -->
+
+## Required setup
+
+Codex hooks do not fire until you enable the feature flag:
+
+```bash
+codex features enable codex_hooks
+sir install --agent codex
+sir doctor
+```
+
+sir writes `~/.codex/hooks.json`, but it does not edit `~/.codex/config.toml` for you.
+
+## What works today
+
+Codex is useful with sir when the workflow stays on the Bash path:
+
+- external egress blocking
+- DNS and `sudo` classification
+- package-install and posture sentinel checks
+- Bash-mediated sensitive reads such as `cat .env` or `sed -n ... .env`
+- credential output scanning
+
+If your Codex session is mostly shell, build, test, and git, you still get meaningful enforcement.
+
+## The important limitation
+
+Codex does not currently expose a full-tool hook surface. Native non-Bash tools stay outside `PreToolUse`.
+
+The biggest consequence is the `apply_patch` gap:
+
+- sir cannot pre-gate native `apply_patch` writes
+- posture drift is caught after the fact by sentinel hashing
+- the final posture sweep runs on `Stop` because Codex has no `SessionEnd`
+
+That is why Codex is documented as limited support, not near-parity.
+
+## Other gaps
+
+- no MCP argument or response hooks
+- no sub-agent delegation hook
+- no config-change hook
+- no instructions-loaded hook
+- no elicitation hook
+
+## Troubleshooting
+
+- `sir doctor` warns about `codex_hooks`: run `codex features enable codex_hooks`.
+- `sir status` shows missing Codex hooks: rerun `sir install --agent codex`.
+- A file write was not pre-gated: confirm whether Codex used native `apply_patch` instead of a Bash write path.

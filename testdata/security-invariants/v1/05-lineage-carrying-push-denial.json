@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "name": "lineage-carrying-push-denial",
+  "scenario": "lineage_carrying_push_denial",
+  "description": "Derived secret lineage must survive the turn boundary and gate a later push.",
+  "sensitive_path": ".env",
+  "derived_path": "debug.txt",
+  "push_command": "git push origin main",
+  "expected": {
+    "decision": "ask"
+  }
+}

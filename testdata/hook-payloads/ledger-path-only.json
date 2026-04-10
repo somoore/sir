@@ -1,0 +1,19 @@
+{
+  "_test_metadata": {
+    "expected_verdict": "ask",
+    "expected_reason": "Read of .aws/credentials triggers ask; verify ledger stores only path + SHA-256 hash + verdict + labels, never the credential file content",
+    "hook_type": "PreToolUse",
+    "ledger_assertions": {
+      "must_contain": [".aws/credentials", "sensitivity:secret", "verdict:ask"],
+      "must_not_contain_patterns": ["AKIA", "aws_secret_access_key", "BEGIN RSA", "-----BEGIN"]
+    },
+    "session_state": {
+      "secret_session": false,
+      "recently_read_untrusted": false
+    }
+  },
+  "tool_name": "Read",
+  "tool_input": {
+    "file_path": ".aws/credentials"
+  }
+}

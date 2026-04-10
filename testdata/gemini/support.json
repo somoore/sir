@@ -1,0 +1,40 @@
+{
+  "id": "gemini",
+  "support_tier": "near_parity",
+  "tool_coverage": "full",
+  "hook_event_count": 6,
+  "supported_sir_events": [
+    "PreToolUse",
+    "PostToolUse",
+    "UserPromptSubmit",
+    "SessionStart",
+    "SessionEnd",
+    "Stop"
+  ],
+  "unsupported_sir_events": [
+    "SubagentStart",
+    "ConfigChange",
+    "InstructionsLoaded",
+    "Elicitation"
+  ],
+  "supported_wire_events": [
+    "BeforeTool",
+    "AfterTool",
+    "BeforeAgent",
+    "SessionStart",
+    "SessionEnd",
+    "AfterAgent"
+  ],
+  "surfaces": {
+    "interactive_approval": false,
+    "file_read_ifc": true,
+    "file_write_ifc": true,
+    "shell_classification": true,
+    "mcp_tool_hooks": true,
+    "subagent_start": false,
+    "config_change": false,
+    "instructions_loaded": false,
+    "elicitation": false,
+    "session_terminal_sweep": true
+  }
+}

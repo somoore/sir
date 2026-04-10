@@ -1,0 +1,78 @@
+# Build artifacts
+/bin/*
+!/bin/.gitignore
+/sir
+/target/*
+!/target/.gitignore
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go build, test, and coverage output
+*.test
+*.out
+*.coverprofile
+cover.out
+coverage.out
+coverage.html
+*.prof
+*.pprof
+
+# Python helper caches
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+
+# IDE and editor state
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100/
+.Trashes/
+.fseventsd
+Icon?
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Environment and secrets — NEVER commit these
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+.aws/
+.ssh/
+
+# Release artifacts (generated, not committed)
+CHECKSUMS.sha256
+CHECKSUMS.sha512
+*.tar.gz
+*.zip
+
+# sir runtime state (lives in ~/.sir/, not in repo)
+.claude/.sir/
+
+# GTM and internal planning — kept locally, not committed
+gtm/
+docs/competitive-analysis.md
+docs/brand-guide.md
+docs/onboarding-review.md
+docs/docs-qa-report.md

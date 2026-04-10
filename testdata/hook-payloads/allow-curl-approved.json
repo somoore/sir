@@ -1,0 +1,16 @@
+{
+  "_test_metadata": {
+    "expected_verdict": "allow",
+    "expected_reason": "curl to 127.0.0.1 is loopback (net_local); in approved_hosts and special-cased as always allowed",
+    "hook_type": "PreToolUse",
+    "session_state": {
+      "secret_session": false,
+      "recently_read_untrusted": false
+    }
+  },
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "curl http://127.0.0.1:8080/api/v1/status",
+    "description": "Check API status"
+  }
+}

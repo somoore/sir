@@ -1,0 +1,4 @@
+# Single source of truth for Rust version.
+# CI workflows, Makefile, and install.sh all reference this.
+[toolchain]
+channel = "1.94.0"

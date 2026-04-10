@@ -1,0 +1,16 @@
+{
+  "_test_metadata": {
+    "expected_verdict": "allow",
+    "expected_reason": "host.docker.internal is a loopback equivalent (net_local) for Docker container workflows; always allowed to avoid false positives in containerized dev environments",
+    "hook_type": "PreToolUse",
+    "session_state": {
+      "secret_session": false,
+      "recently_read_untrusted": false
+    }
+  },
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "curl http://host.docker.internal:5000/api",
+    "description": "Call API on Docker host"
+  }
+}

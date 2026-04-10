@@ -1,0 +1,81 @@
+{
+  "command": "go test ./cmd/sir ./pkg/core ./pkg/hooks ./pkg/ledger ./pkg/session ./pkg/runtime ./pkg/mcp ./pkg/telemetry -run '^$' -bench . -benchmem",
+  "benchmarks": {
+    "github.com/somoore/sir/cmd/sir": {
+      "BenchmarkBuildCausalChainLargeLedger": {
+        "max_ns_op": 20000,
+        "max_b_op": 1500,
+        "max_allocs_op": 32
+      },
+      "BenchmarkCmdStatusLargeState": {
+        "max_ns_op": 3000000,
+        "max_b_op": 650000,
+        "max_allocs_op": 6500
+      },
+      "BenchmarkCmdDoctorLargeState": {
+        "max_ns_op": 4500000,
+        "max_b_op": 950000,
+        "max_allocs_op": 9500
+      }
+    },
+    "github.com/somoore/sir/pkg/core": {
+      "BenchmarkLocalEvaluateNetExternal": {
+        "max_ns_op": 500,
+        "max_b_op": 256,
+        "max_allocs_op": 4
+      }
+    },
+    "github.com/somoore/sir/pkg/hooks": {
+      "BenchmarkMapToolToIntentBashCurl": {
+        "max_ns_op": 10000,
+        "max_b_op": 1600,
+        "max_allocs_op": 32
+      },
+      "BenchmarkEvaluatePayloadNetExternal": {
+        "max_ns_op": 600000,
+        "max_b_op": 12000,
+        "max_allocs_op": 80
+      }
+    },
+    "github.com/somoore/sir/pkg/ledger": {
+      "BenchmarkVerifyLargeLedger": {
+        "max_ns_op": 3000000,
+        "max_b_op": 700000,
+        "max_allocs_op": 5000
+      }
+    },
+    "github.com/somoore/sir/pkg/session": {
+      "BenchmarkUpdateSessionMutation": {
+        "max_ns_op": 900000,
+        "max_b_op": 50000,
+        "max_allocs_op": 400
+      }
+    },
+    "github.com/somoore/sir/pkg/runtime": {
+      "BenchmarkBuildDarwinProfile": {
+        "max_ns_op": 300000,
+        "max_b_op": 85000,
+        "max_allocs_op": 900
+      },
+      "BenchmarkProxyHostMatch": {
+        "max_ns_op": 300,
+        "max_b_op": 16,
+        "max_allocs_op": 1
+      }
+    },
+    "github.com/somoore/sir/pkg/mcp": {
+      "BenchmarkDiscoverInventory": {
+        "max_ns_op": 600000,
+        "max_b_op": 120000,
+        "max_allocs_op": 1200
+      }
+    },
+    "github.com/somoore/sir/pkg/telemetry": {
+      "BenchmarkEmitBuffered": {
+        "max_ns_op": 10000,
+        "max_b_op": 2500,
+        "max_allocs_op": 35
+      }
+    }
+  }
+}

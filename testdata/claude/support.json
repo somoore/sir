@@ -1,0 +1,43 @@
+{
+  "id": "claude",
+  "support_tier": "reference",
+  "tool_coverage": "full",
+  "hook_event_count": 10,
+  "supported_sir_events": [
+    "PreToolUse",
+    "PostToolUse",
+    "SubagentStart",
+    "UserPromptSubmit",
+    "SessionStart",
+    "ConfigChange",
+    "InstructionsLoaded",
+    "Stop",
+    "SessionEnd",
+    "Elicitation"
+  ],
+  "unsupported_sir_events": [],
+  "supported_wire_events": [
+    "PreToolUse",
+    "PostToolUse",
+    "SubagentStart",
+    "UserPromptSubmit",
+    "SessionStart",
+    "ConfigChange",
+    "InstructionsLoaded",
+    "Stop",
+    "SessionEnd",
+    "Elicitation"
+  ],
+  "surfaces": {
+    "interactive_approval": true,
+    "file_read_ifc": true,
+    "file_write_ifc": true,
+    "shell_classification": true,
+    "mcp_tool_hooks": true,
+    "subagent_start": true,
+    "config_change": true,
+    "instructions_loaded": true,
+    "elicitation": true,
+    "session_terminal_sweep": true
+  }
+}

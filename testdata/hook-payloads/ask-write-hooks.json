@@ -1,0 +1,16 @@
+{
+  "_test_metadata": {
+    "expected_verdict": "allow",
+    "expected_reason": "Legacy project-local .claude/hooks/hooks.json is no longer a first-class posture target. Claude's managed hook surface lives in ~/.claude/settings.json, so this write does not trigger a posture ask.",
+    "hook_type": "PreToolUse",
+    "session_state": {
+      "secret_session": false,
+      "recently_read_untrusted": false
+    }
+  },
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": ".claude/hooks/hooks.json",
+    "content": "{\n  \"hooks\": {\n    \"PreToolUse\": [\n      {\n        \"matcher\": \".*\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"sir guard evaluate\"\n          }\n        ]\n      }\n    ]\n  }\n}"
+  }
+}

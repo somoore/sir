@@ -1,0 +1,8 @@
+{
+  "session_id": "01HXXAE5N2P9K6M7V3R8T4Q1ZB",
+  "hook_event_name": "SessionStart",
+  "source": "startup",
+  "cwd": "/Users/dev/myproject",
+  "model": "o3",
+  "transcript_path": "/Users/dev/.codex/sessions/01HXXAE5N2P9K6M7V3R8T4Q1ZB/transcript.jsonl"
+}

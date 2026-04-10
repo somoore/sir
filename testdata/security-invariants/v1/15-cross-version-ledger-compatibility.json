@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "cross-version-ledger-compatibility",
+  "scenario": "cross_version_ledger_compatibility",
+  "description": "Legacy ledger entries must continue to verify and mix cleanly with new entries after ledger schema growth.",
+  "expected": {
+    "alert_type": "hook_tamper"
+  }
+}

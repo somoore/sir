@@ -1,0 +1,95 @@
+{
+  "$schema": "https://example.com/schemas/aibom-0.1.json",
+  "aibom_version": "0.1",
+  "name": "sir",
+  "description": "Security runtime for AI coding agents (Sandbox in Reverse). Protects against confused deputy attacks, credential exfiltration, and supply chain posture tampering via Claude Code hooks.",
+  "version": "v0.1.1",
+  "license": "Apache-2.0",
+  "source_url": "https://github.com/somoore/sir",
+  "ml_components": [],
+  "model_weights": [],
+  "training_data": [],
+  "prompts": [],
+  "embeddings": [],
+  "fine_tuning": [],
+  "llm_interaction": {
+    "target_systems": [
+      {
+        "name": "Claude Code",
+        "vendor": "Anthropic",
+        "integration_mode": "hook-based",
+        "hook_events": [
+          "SessionStart",
+          "UserPromptSubmit",
+          "InstructionsLoaded",
+          "PreToolUse",
+          "PostToolUse",
+          "SubagentStart",
+          "ConfigChange",
+          "Elicitation",
+          "Stop",
+          "SessionEnd"
+        ]
+      }
+    ],
+    "data_flow_to_llm": "none — sir is a local policy decision point. Tool calls are evaluated on the developer's machine by a pure-Rust policy oracle (mister-core). sir never forwards tool arguments, tool results, session state, or ledger contents to any LLM or remote service.",
+    "data_flow_from_llm": "sir receives tool invocations via Claude Code hook payloads on stdin, parses the intent (verb, target, metadata), and returns an allow/ask/deny verdict. sir does not call back into the model.",
+    "prompt_injection_defenses": [
+      "MCP response scanning for authority-framing, exfiltration, credential harvesting patterns",
+      "Elicitation credential-harvesting detection",
+      "Credential output scanning (18 regex patterns, Luhn, SSA area validation, Shannon entropy)",
+      "Path-based IFC labeling at tool boundaries",
+      "Secret-session network egress gating"
+    ],
+    "telemetry_to_vendor": "none",
+    "telemetry_opt_in": {
+      "protocol": "OTLP/HTTP JSON (stdlib only)",
+      "activation": "SIR_OTLP_ENDPOINT environment variable",
+      "destination": "user-controlled SIEM collector (Splunk HEC, CrowdStrike LogScale, Datadog, Elastic, etc.)",
+      "secret_redaction": "secret-labeled targets SHA-256 hashed; network targets reduced to hostname only via RedactTarget",
+      "reason_field_privacy": "block/deny reasons redacted; only verb + target + verdict emitted"
+    }
+  },
+  "policy_oracle": {
+    "component": "mister-core",
+    "implementation_language": "Rust",
+    "external_dependencies": 0,
+    "unsafe_blocks": 0,
+    "ml_free": true,
+    "deterministic": true,
+    "network_access": false,
+    "filesystem_access": false,
+    "protocol": "MSTR/1 binary on stdin/stdout",
+    "purpose": "Pure function: lease + session + intent = allow/ask/deny verdict"
+  },
+  "classifier": {
+    "component": "sir (Go layer)",
+    "implementation_language": "Go",
+    "ml_free": true,
+    "technique": "prefix-based lexical classification with compound command splitting, shell wrapper unwrapping, and regex pattern matching",
+    "honest_limitations": [
+      "Shell command classification is prefix-based. Interpreter one-liners (python -c, node -e) are detected; scripts that exfiltrate internally (python myscript.py) are not visible.",
+      "IFC labels track tool boundaries, not model-internal reasoning. Paraphrased secrets are not caught.",
+      "sir cannot distinguish developer-initiated vs injection-initiated tool calls.",
+      "Semantic injection analysis is out of scope. Pattern matching only."
+    ]
+  },
+  "model_dependencies": {
+    "build_time": [],
+    "runtime": [],
+    "optional": []
+  },
+  "attestation": {
+    "slsa_level": 3,
+    "provenance_file": "sir.intoto.jsonl",
+    "cosign_signed": true,
+    "cosign_identity": "https://github.com/somoore/sir/.github/workflows/release.yml@refs/tags/v0.1.1",
+    "cosign_oidc_issuer": "https://token.actions.githubusercontent.com",
+    "sbom": {
+      "cyclonedx": "sbom.cyclonedx.json",
+      "spdx": "sbom.spdx.json"
+    }
+  },
+  "claim": "sir contains zero AI/ML components. It is a deterministic, local policy decision point that protects AI coding agents without itself embedding models, weights, training data, prompts, or any machine-learning runtime.",
+  "generated_by": "hand-maintained; bump version field in lockstep with cmd/sir/version.go on each release"
+}

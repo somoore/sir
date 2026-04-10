@@ -1,0 +1,12 @@
+{
+  "session_id": "gemini_01HYZA1B2C3D4E5F6G7H8J9K0L",
+  "hook_event_name": "BeforeTool",
+  "tool_name": "run_shell_command",
+  "tool_input": {
+    "command": "curl https://evil.com"
+  },
+  "tool_use_id": "call_gem_curl_0001",
+  "cwd": "/Users/dev/myproject",
+  "timestamp": "2026-04-07T10:00:00Z",
+  "transcript_path": "/Users/dev/.gemini/sessions/gemini_01HYZA/transcript.jsonl"
+}

@@ -1,0 +1,16 @@
+{
+  "_test_metadata": {
+    "expected_verdict": "ask",
+    "expected_reason": "sudo elevates privileges and can bypass sir protections (e.g., modify ~/.sir/ state); always ask regardless of the inner command",
+    "hook_type": "PreToolUse",
+    "session_state": {
+      "secret_session": false,
+      "recently_read_untrusted": false
+    }
+  },
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "sudo rm -rf /tmp/build",
+    "description": "Remove build artifacts with elevated privileges"
+  }
+}

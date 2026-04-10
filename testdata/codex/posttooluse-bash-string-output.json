@@ -1,0 +1,14 @@
+{
+  "session_id": "01HXXAE5N2P9K6M7V3R8T4Q1ZB",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "echo hello"
+  },
+  "tool_use_id": "call_stringresp_0001",
+  "tool_response": "hello\n",
+  "cwd": "/Users/dev/myproject",
+  "model": "o1",
+  "turn_id": "turn_12",
+  "transcript_path": "/Users/dev/.codex/sessions/01HXXAE5N2P9K6M7V3R8T4Q1ZB/transcript.jsonl"
+}

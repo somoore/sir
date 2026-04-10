@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "managed-mode-refusal",
+  "scenario": "managed_mode_refusal",
+  "description": "Managed mode must refuse local commands that widen the lease.",
+  "disabled_command": "allow-host",
+  "expected": {
+    "error_contains": "allow-host is disabled by"
+  }
+}

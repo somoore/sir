@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "name": "evidence-redaction",
+  "scenario": "evidence_redaction",
+  "description": "Opt-in evidence logging must preserve investigation value without ever persisting raw secrets."
+}

@@ -1,0 +1,9 @@
+[package]
+name = "mister-core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+mister-shared = { path = "../mister-shared" }
+# NO other dependencies. ZERO external crates.
