@@ -1,5 +1,11 @@
-# Security-critical paths require review.
-# When branch protection is enabled, these paths require approval.
+# Default owner for the whole repository.
+# This keeps solo-maintainer PRs reviewable today, and can be replaced
+# with teams or additional maintainers as the project grows.
+*                               @somoore
+
+# Security-critical paths require explicit ownership.
+# When the repo has multiple maintainers, keep these paths narrow and
+# promote the owners below to teams or specific trusted reviewers.
 
 # CI/CD and supply chain
 /.github/                @somoore
