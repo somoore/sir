@@ -44,6 +44,27 @@ func TestSelectLauncherMatchesPlatform(t *testing.T) {
 	}
 }
 
+func TestContainmentDirectSocketBoundaryKeepsNetworkOutboundLoopbackOnly(t *testing.T) {
+	homeDir := t.TempDir()
+	projectRoot := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	profile, err := BuildDarwinProfile(projectRoot, Options{Agent: agent.NewClaudeAgent()})
+	if err != nil {
+		t.Fatalf("BuildDarwinProfile: %v", err)
+	}
+
+	if !strings.Contains(profile, "(deny network-outbound)") {
+		t.Fatalf("sandbox profile missing network-outbound deny:\n%s", profile)
+	}
+	if !strings.Contains(profile, `(allow network-outbound (remote ip "localhost:*"))`) {
+		t.Fatalf("sandbox profile missing loopback-only network allowance:\n%s", profile)
+	}
+	if got := strings.Count(profile, "(allow network-outbound"); got != 2 {
+		t.Fatalf("sandbox profile allows %d network-outbound rules, want 2:\n%s", got, profile)
+	}
+}
+
 func TestLinuxContainmentBootstrapScriptIncludesReadonlyGuards(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
