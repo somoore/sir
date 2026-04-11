@@ -142,6 +142,19 @@ Expected result:
 - if evidence logging is enabled, the stored evidence includes the redacted
   head/tail window that tripped the detector
 
+### Opaque MCP pivot still fails closed downstream
+
+Trigger MCP output that leaks a known credential but phrases the follow-on
+instruction in a form the literal scanner does not match directly, such as a
+non-English sentence.
+
+Expected result:
+
+- PostToolUse still marks the session secret because of the credential output
+- no broader prompt-scanner guarantee is implied by this check
+- the next external egress attempt is denied
+- the next Agent delegation attempt is denied
+
 ### MCP proxy caveats
 
 - Claude Code is the reference-support target.

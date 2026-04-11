@@ -88,7 +88,9 @@ Mitigations:
 - elevated posture after injection signals
 - optional `sir mcp` and `sir mcp wrap` hardening for command-based servers
 
-Residual risk: novel prompt-injection techniques that avoid the known patterns are not guaranteed to be caught.
+Residual risk: encoded or non-English prompt-injection techniques that avoid the known literal patterns are not guaranteed to be caught at `PostToolUse`.
+
+The fail-closed backstop is downstream: credential detection can still mark the session secret, and secret-session IFC plus delegation gating still apply on the next tool use even when the original MCP framing was opaque to the literal scanner.
 
 ### Posture disablement
 
