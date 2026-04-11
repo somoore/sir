@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -151,6 +152,70 @@ func runInvariantMCPResponseMiddleWindowInjection(t *testing.T, fixture security
 	}
 	if !state.IsMCPServerTainted(fixture.Expected["server"]) {
 		t.Fatalf("expected %q to be tainted", fixture.Expected["server"])
+	}
+}
+
+func runInvariantMCPOpaquePivotBackstop(t *testing.T, fixture securityInvariantFixture) {
+	t.Helper()
+	forceLocalPolicyFallbackForCLI(t)
+
+	env := newTestEnv(t)
+	l := env.writeDefaultLease()
+	state := session.NewState(env.projectRoot)
+	env.writeSession(state)
+
+	payload := &hooks.PostHookPayload{
+		ToolName:   fixture.ToolName,
+		ToolInput:  fixture.ToolInput,
+		ToolOutput: loadInvariantToolOutputFixture(t, fixture),
+	}
+
+	postResp, err := hooks.ExportPostEvaluatePayload(payload, l, state, env.projectRoot)
+	if err != nil {
+		t.Fatalf("post-evaluate opaque MCP pivot: %v", err)
+	}
+	if got, want := string(postResp.Decision), fixture.Expected["post_decision"]; got != want {
+		t.Fatalf("post decision = %q, want %q (reason=%s)", got, want, postResp.Reason)
+	}
+	if got, want := state.SecretSession, fixture.Expected["secret_session"] == "true"; got != want {
+		t.Fatalf("secret session = %t, want %t", got, want)
+	}
+	if got, want := state.PendingInjectionAlert, fixture.Expected["pending_injection_alert"] == "true"; got != want {
+		t.Fatalf("pending injection alert = %t, want %t", got, want)
+	}
+	wantSignals, err := strconv.Atoi(fixture.Expected["injection_signal_count"])
+	if err != nil {
+		t.Fatalf("parse injection_signal_count: %v", err)
+	}
+	if got := len(state.MCPInjectionSignals); got != wantSignals {
+		t.Fatalf("injection signal count = %d, want %d", got, wantSignals)
+	}
+
+	if err := state.Save(); err != nil {
+		t.Fatalf("save state after opaque MCP pivot: %v", err)
+	}
+
+	egressResp, err := hooks.ExportEvaluatePayload(&hooks.HookPayload{
+		ToolName:  "Bash",
+		ToolInput: map[string]interface{}{"command": fixture.EgressCommand},
+	}, l, state, env.projectRoot)
+	if err != nil {
+		t.Fatalf("evaluate external egress: %v", err)
+	}
+	if got, want := string(egressResp.Decision), fixture.Expected["egress_decision"]; got != want {
+		t.Fatalf("egress decision = %q, want %q (reason=%s)", got, want, egressResp.Reason)
+	}
+
+	delegateResp, err := hooks.ExportEvaluatePayload(&hooks.HookPayload{
+		ToolName:  "Agent",
+		ToolInput: map[string]interface{}{"task": "delegate work to a sub-agent"},
+		CWD:       env.projectRoot,
+	}, l, state, env.projectRoot)
+	if err != nil {
+		t.Fatalf("evaluate Agent delegation: %v", err)
+	}
+	if got, want := string(delegateResp.Decision), fixture.Expected["agent_decision"]; got != want {
+		t.Fatalf("Agent delegation decision = %q, want %q (reason=%s)", got, want, delegateResp.Reason)
 	}
 }
 
