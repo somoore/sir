@@ -103,15 +103,20 @@ jobs:
     name: Rust (mister-core)
     runs-on: ubuntu-latest
     needs: [changes]
-    if: needs.changes.outputs.rust == 'true'
     permissions:
       contents: read
     steps:
+      - name: Skip when Rust CI is not required
+        if: needs.changes.outputs.rust != 'true'
+        run: echo "No Rust-relevant changes; required check succeeds without full Rust CI."
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        if: needs.changes.outputs.rust == 'true'
         with:
           persist-credentials: false
 
       - name: Install Rust toolchain
+        if: needs.changes.outputs.rust == 'true'
         run: |
           rustup toolchain install "${RUST_VERSION}" --profile minimal --component clippy
           rustup default "${RUST_VERSION}"
@@ -119,6 +124,7 @@ jobs:
           cargo --version
 
       - name: Verify zero external dependencies
+        if: needs.changes.outputs.rust == 'true'
         run: |
           # mister-core and mister-shared must have ZERO external crate dependencies.
           # Cargo.lock must contain exactly 2 packages: mister-core and mister-shared.
@@ -132,15 +138,19 @@ jobs:
           echo "Verified: Cargo.lock contains exactly 2 packages (mister-core + mister-shared)"
 
       - name: Build (locked)
+        if: needs.changes.outputs.rust == 'true'
         run: cargo build --release --locked
 
       - name: Test
+        if: needs.changes.outputs.rust == 'true'
         run: cargo test --locked
 
       - name: Clippy
+        if: needs.changes.outputs.rust == 'true'
         run: cargo clippy --locked -- -D warnings
 
       - name: cargo-deny
+        if: needs.changes.outputs.rust == 'true'
         run: |
           cargo install cargo-deny@0.16.1 --locked
           # mister-core has zero external dependencies (Cargo.lock contains only
@@ -154,20 +164,26 @@ jobs:
     name: Go (sir CLI)
     runs-on: ubuntu-latest
     needs: [changes]
-    if: needs.changes.outputs.go == 'true'
     permissions:
       contents: read
     steps:
+      - name: Skip when Go CI is not required
+        if: needs.changes.outputs.go != 'true'
+        run: echo "No Go-relevant changes; required check succeeds without full Go CI."
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        if: needs.changes.outputs.go == 'true'
         with:
           persist-credentials: false
 
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        if: needs.changes.outputs.go == 'true'
         with:
           go-version: "1.25.9"
           cache: false  # no external Go deps → no go.sum → caching not applicable
 
       - name: Verify go.mod is tidy
+        if: needs.changes.outputs.go == 'true'
         run: |
           go mod tidy
           if [ -n "$(git status --porcelain go.mod go.sum 2>/dev/null)" ]; then
@@ -177,6 +193,7 @@ jobs:
           fi
 
       - name: Build (static, stripped)
+        if: needs.changes.outputs.go == 'true'
         run: |
           CGO_ENABLED=0 go build \
             -trimpath \
@@ -185,18 +202,23 @@ jobs:
             ./cmd/sir
 
       - name: Test
+        if: needs.changes.outputs.go == 'true'
         run: go test ./...
 
       - name: Vet
+        if: needs.changes.outputs.go == 'true'
         run: go vet ./...
 
       - name: Install govulncheck
+        if: needs.changes.outputs.go == 'true'
         run: go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
 
       - name: Install gosec
+        if: needs.changes.outputs.go == 'true'
         run: go install "github.com/securego/gosec/v2/cmd/gosec@${GOSEC_VERSION}"
 
       - name: Run gosec (static security analysis)
+        if: needs.changes.outputs.go == 'true'
         run: |
           # Exclude rules that are architectural false positives for a security CLI:
           #   G104: unhandled errors in cleanup/defer paths (intentional)
@@ -212,4 +234,5 @@ jobs:
             ./...
 
       - name: Go supply chain check
+        if: needs.changes.outputs.go == 'true'
         run: bash go-supply-chain.sh

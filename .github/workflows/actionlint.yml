@@ -14,12 +14,14 @@ on:
     paths:
       - '.github/workflows/**'
       - '.github/actions/**'
+      - 'scripts/check_workflow_policy.rb'
   push:
     branches:
       - main
     paths:
       - '.github/workflows/**'
       - '.github/actions/**'
+      - 'scripts/check_workflow_policy.rb'
   merge_group:
     types: [checks_requested]
 
@@ -59,3 +61,7 @@ jobs:
       - name: Run actionlint
         run: |
           actionlint -color
+
+      - name: Ban privileged workflow triggers
+        run: |
+          ruby scripts/check_workflow_policy.rb

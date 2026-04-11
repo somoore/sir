@@ -11,7 +11,7 @@ import (
 )
 
 // TestEnforcementGradientDocParity treats the "Enforcement Gradient" table in
-// .claude/rules/security.md as an executable spec. Every row is parsed and
+// docs/contributor/security-engineering-core.md as an executable spec. Every row is parsed and
 // exercised against localEvaluate; the verdict must be "no more permissive
 // than documented".
 //
@@ -34,10 +34,10 @@ import (
 // enforces it with no wiggle room.
 //
 // To regenerate this test's coverage when the gradient changes: edit
-// .claude/rules/security.md, then run `go test ./pkg/core/ -run
+// docs/contributor/security-engineering-core.md, then run `go test ./pkg/core/ -run
 // TestEnforcementGradientDocParity` and address any drift.
 func TestEnforcementGradientDocParity(t *testing.T) {
-	rows, err := parseEnforcementGradient(findSecurityRulesPath(t))
+	rows, err := parseEnforcementGradient(findSecurityEngineeringCorePath(t))
 	if err != nil {
 		t.Fatalf("parse enforcement gradient: %v", err)
 	}
@@ -64,8 +64,8 @@ func TestEnforcementGradientDocParity(t *testing.T) {
 	// Coverage in the other direction: every verb listed in the verb model
 	// (architecture.md) must appear in the gradient table OR be in the
 	// implicit "Everything else → allow" bucket. The bucket is documented
-	// per-verb in .claude/rules/architecture.md::Verb Model — the gradient
-	// table only enumerates verbs that deviate from the default allow.
+	// per-verb in the local verb model — the gradient table only enumerates
+	// verbs that deviate from the default allow.
 	t.Run("documented_verbs_are_recognized", func(t *testing.T) {
 		for verb := range docVerbs {
 			req := buildRequestForVerb(verb, false)
@@ -344,23 +344,23 @@ func assertGradient(t *testing.T, row gradientRow, secretSession bool, want stri
 	}
 }
 
-// findSecurityRulesPath walks up from the test's working directory until
-// it finds .claude/rules/security.md, so the test works from any module
-// invocation (e.g., go test ./..., go test ./pkg/core/...).
-func findSecurityRulesPath(t *testing.T) string {
+// findSecurityEngineeringCorePath walks up from the test's working directory
+// until it finds docs/contributor/security-engineering-core.md, so the test
+// works from any module invocation (e.g., go test ./..., go test ./pkg/core/...).
+func findSecurityEngineeringCorePath(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("getwd: %v", err)
 	}
 	for {
-		candidate := filepath.Join(dir, ".claude", "rules", "security.md")
+		candidate := filepath.Join(dir, "docs", "contributor", "security-engineering-core.md")
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			t.Fatalf(".claude/rules/security.md not found walking up from %s", dir)
+			t.Fatalf("docs/contributor/security-engineering-core.md not found walking up from %s", dir)
 		}
 		dir = parent
 	}
