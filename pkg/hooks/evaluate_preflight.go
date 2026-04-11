@@ -77,6 +77,7 @@ func evaluateTaintedMCPInput(payload *HookPayload, l *lease.Lease, state *sessio
 		return nil, false
 	}
 	if state.SecretSession {
+		saveSessionBestEffort(state)
 		return &HookResponse{
 			Decision: policy.VerdictAsk,
 			Reason:   "MCP calls require approval while the session carries credentials.",
@@ -168,6 +169,7 @@ func evaluateElevatedPosture(intent Intent, state *session.State) (*HookResponse
 	if intent.Verb != policy.VerbStageWrite && intent.Verb != policy.VerbExecuteDryRun {
 		return nil, false
 	}
+	saveSessionBestEffort(state)
 	return &HookResponse{
 		Decision: policy.VerdictAsk,
 		Reason:   FormatAskPostureElevated(string(intent.Verb), intent.Target, string(state.Posture), state.MCPInjectionSignals),

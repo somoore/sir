@@ -78,49 +78,41 @@ func evaluatePayload(payload *HookPayload, l *lease.Lease, state *session.State,
 		ag = agOpt[0]
 	}
 	if resp, handled := evaluateSessionIntegrityGuard(state); handled {
-		saveSessionBestEffort(state)
 		return resp, nil
 	}
 
 	state.MaybeAdvanceTurn(time.Now())
 
 	if resp, handled := evaluateDenyAllGuard(state); handled {
-		saveSessionBestEffort(state)
 		return resp, nil
 	}
 
 	pendingInjectionDetail := consumePendingInjectionAlert(state)
 
 	if resp, handled := evaluateLeaseIntegrityGuard(projectRoot, state); handled {
-		saveSessionBestEffort(state)
 		return resp, nil
 	}
 
 	intent := MapToolToIntent(payload.ToolName, payload.ToolInput, l)
 
 	if resp, handled := evaluateMCPCredentialLeak(payload, l, state, projectRoot); handled {
-		saveSessionBestEffort(state)
 		return resp, nil
 	}
 
 	if resp, handled := evaluateTaintedMCPServer(payload, state); handled {
-		saveSessionBestEffort(state)
 		return resp, nil
 	}
 
 	if resp, handled := evaluateTaintedMCPInput(payload, l, state, projectRoot); handled {
-		saveSessionBestEffort(state)
 		return resp, nil
 	}
 
 	if resp, handled := evaluateElevatedPosture(intent, state); handled {
-		saveSessionBestEffort(state)
 		return resp, nil
 	}
 
 	labels := labelsForEvaluation(payload, intent, l, projectRoot)
 	if resp, handled := prepareInstallEvaluation(intent, state, l, projectRoot); handled {
-		saveSessionBestEffort(state)
 		return resp, nil
 	}
 

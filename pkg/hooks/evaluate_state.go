@@ -24,6 +24,7 @@ func evaluateDenyAllGuard(state *session.State) (*HookResponse, bool) {
 	if !state.DenyAll {
 		return nil, false
 	}
+	saveSessionBestEffort(state)
 	return &HookResponse{
 		Decision: policy.VerdictDeny,
 		Reason:   FormatDenyAll(state.DenyAllReason),
