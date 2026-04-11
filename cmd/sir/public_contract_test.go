@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -107,6 +109,8 @@ func TestPublicContractParity(t *testing.T) {
 		requireContainsFile(t, root, "Makefile", "bench:", "Makefile bench target")
 		requireContainsFile(t, root, "Makefile", "bench-check:", "Makefile bench-check target")
 		requireContainsFile(t, root, "Makefile", "verify-release:", "Makefile verify-release target")
+		requireFileExists(t, root, ".github/workflows/actionlint.yml")
+		requireFileExists(t, root, ".github/workflows/post-merge.yml")
 		requireFileExists(t, root, "scripts/check_review_context.sh")
 		requireFileExists(t, root, "scripts/verify-release.sh")
 		requireFileExists(t, root, "docs/contributor/core-mental-model.md")
@@ -121,6 +125,50 @@ func TestPublicContractParity(t *testing.T) {
 		requireContainsFile(t, root, "docs/contributor/supply-chain-policy.md", "make verify-release RELEASE_TAG=vX.Y.Z", "supply-chain release wrapper guidance")
 		requireContainsFile(t, root, "docs/user/faq.md", "make verify-release RELEASE_TAG=vX.Y.Z", "FAQ release wrapper guidance")
 		requireContainsFile(t, root, ".github/pull_request_template.md", "make contributor-check", "PR template contributor-check guidance")
+	})
+
+	t.Run("workflow_policy_contract", func(t *testing.T) {
+		requireFileExists(t, root, "scripts/check_workflow_policy.rb")
+		requireContainsFile(t, root, ".github/workflows/actionlint.yml", "ruby scripts/check_workflow_policy.rb", "actionlint banned-trigger guard")
+		requireContainsFile(t, root, ".github/workflows/actionlint.yml", "scripts/check_workflow_policy.rb", "actionlint self-test path filter")
+		requireContainsFile(t, root, ".github/workflows/ci.yml", "Skip when Rust CI is not required", "ci rust no-op required check")
+		requireContainsFile(t, root, ".github/workflows/ci.yml", "Skip when Go CI is not required", "ci go no-op required check")
+		requireContainsFile(t, root, ".github/workflows/post-merge.yml", "name: Post-merge Assurance", "post-merge workflow name")
+		requireContainsFile(t, root, ".github/workflows/post-merge.yml", "Build artifacts & checksums", "post-merge artifact assurance")
+		requireContainsFile(t, root, ".github/workflows/post-merge.yml", "Generate SBOM", "post-merge sbom assurance")
+		requireContainsFile(t, root, ".github/workflows/zizmor.yml", "--offline", "zizmor workflow mode")
+		requireContainsFile(t, root, "docs/contributor/supply-chain-policy.md", "explicit offline mode in both PR and `main` workflows", "supply-chain zizmor mode")
+		requireContainsFile(t, root, "scripts/check_workflow_policy.rb", "BANNED_TRIGGERS = %w[pull_request_target workflow_run].freeze", "workflow policy banned trigger list")
+		requireContainsFile(t, root, "scripts/check_workflow_policy.rb", "Dir[\".github/workflows/*.{yml,yaml}\"]", "workflow policy yml/yaml coverage")
+		requireWorkflowPolicyFixture(t, root, map[string]string{
+			".github/workflows/allowed.yaml": strings.TrimSpace(`
+name: allowed
+on:
+  pull_request:
+  push:
+`),
+			".github/actions/nested/action.yml": strings.TrimSpace(`
+name: nested
+on:
+  workflow_dispatch:
+`),
+		})
+		requireWorkflowPolicyFixtureFailure(t, root, map[string]string{
+			".github/workflows/banned.yml": strings.TrimSpace(`
+name: banned
+on:
+  workflow_run:
+`),
+		}, ".github/workflows/banned.yml: banned workflow trigger(s): workflow_run")
+		requireWorkflowPolicyFixtureFailure(t, root, map[string]string{
+			".github/workflows/coerced.yml": strings.TrimSpace(`
+name: coerced
+on:
+  pull_request_target:
+    branches:
+      - main
+`),
+		}, ".github/workflows/coerced.yml: banned workflow trigger(s): pull_request_target")
 	})
 
 	t.Run("release_trust_contract", func(t *testing.T) {
@@ -353,6 +401,51 @@ func requireGeneratedBlock(t *testing.T, root, rel, blockName, expected string) 
 	if got != want {
 		t.Fatalf("%s generated block drifted\nwant:\n%s\n\ngot:\n%s", rel, want, got)
 	}
+}
+
+func requireWorkflowPolicyFixture(t *testing.T, root string, fixtures map[string]string) {
+	t.Helper()
+	stdout, stderr, err := runWorkflowPolicyScript(t, root, fixtures)
+	if err != nil {
+		t.Fatalf("workflow policy fixture failed: %v\nstdout:\n%s\nstderr:\n%s", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "workflow trigger policy OK") {
+		t.Fatalf("workflow policy fixture missing success output: %q", stdout)
+	}
+}
+
+func requireWorkflowPolicyFixtureFailure(t *testing.T, root string, fixtures map[string]string, needle string) {
+	t.Helper()
+	stdout, stderr, err := runWorkflowPolicyScript(t, root, fixtures)
+	if err == nil {
+		t.Fatalf("workflow policy fixture unexpectedly passed\nstdout:\n%s\nstderr:\n%s", stdout, stderr)
+	}
+	if !strings.Contains(stderr, needle) {
+		t.Fatalf("workflow policy fixture missing failure %q\nstdout:\n%s\nstderr:\n%s", needle, stdout, stderr)
+	}
+}
+
+func runWorkflowPolicyScript(t *testing.T, root string, fixtures map[string]string) (string, string, error) {
+	t.Helper()
+	tempRoot := t.TempDir()
+	for rel, body := range fixtures {
+		path := filepath.Join(tempRoot, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", rel, err)
+		}
+		if err := os.WriteFile(path, []byte(body+"\n"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", rel, err)
+		}
+	}
+
+	cmd := exec.Command("ruby", filepath.Join(root, "scripts", "check_workflow_policy.rb"))
+	cmd.Dir = tempRoot
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return stdout.String(), stderr.String(), err
 }
 
 func requireMaxLines(t *testing.T, root, rel string, max int) {

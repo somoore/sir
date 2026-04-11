@@ -150,8 +150,8 @@ func evaluatePayload(payload *HookPayload, l *lease.Lease, state *session.State,
 	// prompt (without having read a credential file) must still be caught.
 	//
 	// Verdict is DENY, not ask. The documented policy in
-	// .claude/rules/security.md::Enforcement Gradient, ARCHITECTURE.md, and
-	// docs/contributor/security-engineering-core.md all say block.
+	// docs/contributor/security-engineering-core.md::Enforcement Gradient and
+	// ARCHITECTURE.md both say block.
 	// Credential disclosure to an untrusted MCP server is an
 	// unambiguous denial — the escape hatch is `sir trust <server>`, not
 	// a per-call approval prompt.
