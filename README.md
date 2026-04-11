@@ -7,23 +7,27 @@
 
 <div align="center">
 
-[![Build](https://github.com/somoore/sir/actions/workflows/post-merge.yml/badge.svg?branch=main)](https://github.com/somoore/sir/actions/workflows/post-merge.yml) [![Pre-alpha release](https://img.shields.io/github/v/release/somoore/sir?include_prereleases&label=pre-alpha&color=orange)](https://github.com/somoore/sir/releases/latest) [![Status: experimental](https://img.shields.io/badge/status-experimental-orange)](#hard-limits)
+[![Pre-alpha release](https://img.shields.io/github/v/release/somoore/sir?include_prereleases&label=pre-alpha&color=orange)](https://github.com/somoore/sir/releases/latest) [![Supports](https://img.shields.io/badge/supports-Claude_%7C_Gemini_%7C_Codex-blueviolet)](#supported-agents) [![Status: experimental](https://img.shields.io/badge/status-experimental-orange)](#hard-limits)
 
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/somoore/sir/badge)](https://securityscorecards.dev/viewer/?uri=github.com/somoore/sir) [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12462/badge)](https://www.bestpractices.dev/projects/12462) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 </div>
 
-Your AI coding agent can read `.env`, run shell, call MCP servers, and push code — all in the same session. sir puts a local policy checkpoint at every tool call, uses information flow control to track secret taint across operations, and stops the dangerous transitions before they run. Install once, then use **Claude Code**, **Gemini CLI**, or **Codex** exactly as you do today.
+Traditional sandboxes constrain a process from below — syscall filters, filesystem jails, namespaces. **We built sir to constrain the agent from above.** sir intercepts tool calls at the hook layer, decides allow / ask / deny against a local policy oracle, and writes every verdict to an immutable hash-chained ledger. The agent never knows it's being watched until it tries something dangerous.
+
+We don't think sandboxes are *wrong* — we think they're incomplete for AI coding agents, because:
+
+- Agents don't run as a single process you can sandbox. They orchestrate tools, spawn subprocesses, and call MCP servers.
+- The dangerous surface isn't syscalls — it's *intents*: "read `.env`, then `curl` an external host." No syscall filter sees that as one risky operation.
+- A traditional sandbox can't express "allow this network call *unless* the agent just read a secret file."
+
+sir is defense in depth for the layer where AI coding agents actually operate. The information flow control lattice in [`mister-core/src/ifc.rs`](mister-core/src/ifc.rs) is the load-bearing piece: read `.env`, and that taint propagates to any file the agent writes, any commit it makes, any push it attempts. That's real IFC, not a blocklist.
 
 ## What it is
 
-sir is a local runtime with two moving parts and an audit trail.
-
 - **Go CLI (`sir`)** — collects facts on every tool call, manages session state, writes the ledger.
 - **Rust policy oracle (`mister-core`)** — zero-dependency, zero-unsafe. Decides allow / ask / deny.
-- **Hash-chained ledger** — append-only, verifiable with `sir log verify`.
-
-No daemon. No phone-home. No external dependency on the normal path.
+- **Hash-chained ledger** — append-only, verifiable with `sir log verify`. No daemon, no phone-home, no external dependency on the normal path.
 
 ```mermaid
 flowchart LR
