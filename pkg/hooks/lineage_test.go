@@ -263,6 +263,161 @@ func TestTaintedMCPLineageAttachesToLaterWrite(t *testing.T) {
 	}
 }
 
+func TestTaintedMCPInputGatesOnGenericPathLikeKeys(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	l := lease.DefaultLease()
+	l.ApprovedMCPServers = []string{"jira"}
+	state := session.NewState(projectRoot)
+	derivedPath := ResolveTarget(projectRoot, "report.txt")
+	state.DerivedFileLineage[derivedPath] = session.DerivedPathRecord{
+		Labels: []session.LineageLabel{{
+			Sensitivity: "secret",
+			Trust:       "trusted",
+			Provenance:  "user",
+		}},
+	}
+
+	cases := []struct {
+		name string
+		key  string
+	}{
+		{name: "snake_case source_path", key: "source_path"},
+		{name: "camelCase outputPath", key: "outputPath"},
+		{name: "camelCase localFilePath", key: "localFilePath"},
+		{name: "camelCase filePath", key: "filePath"},
+		{name: "camelCase artifactPath", key: "artifactPath"},
+		{name: "camelCase attachmentPath", key: "attachmentPath"},
+		{name: "snake_case file_path", key: "file_path"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, handled := evaluateTaintedMCPInput(&HookPayload{
+				ToolName:  "mcp__jira__write",
+				ToolInput: map[string]interface{}{tc.key: "report.txt"},
+			}, l, state, projectRoot)
+			if !handled || resp == nil || resp.Decision != "ask" {
+				t.Fatalf("evaluateTaintedMCPInput(%q) = %+v, handled=%v, want ask", tc.key, resp, handled)
+			}
+			targets := derivedSecretLineageTargets(map[string]any{tc.key: "report.txt"}, projectRoot, state)
+			if len(targets) != 1 || targets[0] != "report.txt" {
+				t.Fatalf("derivedSecretLineageTargets(%q) = %v, want [report.txt]", tc.key, targets)
+			}
+		})
+	}
+}
+
+func TestDerivedSecretLineageTargetsIgnoreNestedMetadataUnderArtifactAndAttachmentObjects(t *testing.T) {
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	derivedPath := ResolveTarget(projectRoot, "report.txt")
+	state.DerivedFileLineage[derivedPath] = session.DerivedPathRecord{
+		Labels: []session.LineageLabel{{
+			Sensitivity: "secret",
+			Trust:       "trusted",
+			Provenance:  "user",
+		}},
+	}
+
+	cases := []struct {
+		name  string
+		input map[string]any
+	}{
+		{
+			name: "artifact metadata string",
+			input: map[string]any{
+				"artifact": map[string]any{
+					"metadata": "report.txt",
+				},
+			},
+		},
+		{
+			name: "attachment nested metadata string",
+			input: map[string]any{
+				"attachment": map[string]any{
+					"details": map[string]any{
+						"summary": "report.txt",
+					},
+				},
+			},
+		},
+		{
+			name: "artifact list of metadata objects",
+			input: map[string]any{
+				"artifacts": []interface{}{
+					map[string]any{
+						"note": "report.txt",
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			targets := derivedSecretLineageTargets(tc.input, projectRoot, state)
+			if len(targets) != 0 {
+				t.Fatalf("derivedSecretLineageTargets(%q) = %v, want no targets", tc.name, targets)
+			}
+		})
+	}
+}
+
+func TestDerivedSecretLineageTargetsRecognizeNestedExplicitPathFields(t *testing.T) {
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	derivedPath := ResolveTarget(projectRoot, "report.txt")
+	state.DerivedFileLineage[derivedPath] = session.DerivedPathRecord{
+		Labels: []session.LineageLabel{{
+			Sensitivity: "secret",
+			Trust:       "trusted",
+			Provenance:  "user",
+		}},
+	}
+
+	cases := []struct {
+		name  string
+		input map[string]any
+	}{
+		{
+			name: "artifact path field",
+			input: map[string]any{
+				"artifact": map[string]any{
+					"path": "report.txt",
+				},
+			},
+		},
+		{
+			name: "attachment camelCase path field",
+			input: map[string]any{
+				"attachment": map[string]any{
+					"filePath": "report.txt",
+				},
+			},
+		},
+		{
+			name: "nested explicit path field",
+			input: map[string]any{
+				"artifact": map[string]any{
+					"metadata": map[string]any{
+						"artifactPath": "report.txt",
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			targets := derivedSecretLineageTargets(tc.input, projectRoot, state)
+			if len(targets) != 1 || targets[0] != "report.txt" {
+				t.Fatalf("derivedSecretLineageTargets(%q) = %v, want [report.txt]", tc.name, targets)
+			}
+		})
+	}
+}
+
 func initGitRepo(t *testing.T, dir string) {
 	t.Helper()
 	runGit(t, dir, "init")
