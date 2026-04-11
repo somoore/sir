@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -20,7 +21,39 @@ import (
 	"time"
 
 	"github.com/somoore/sir/pkg/agent"
+	"github.com/somoore/sir/pkg/lease"
+	"github.com/somoore/sir/pkg/session"
 )
+
+type runtimeTestAgent struct{}
+
+func (runtimeTestAgent) ID() agent.AgentID { return agent.AgentID("runtime-test") }
+func (runtimeTestAgent) Name() string      { return "Runtime Test Agent" }
+func (runtimeTestAgent) ParsePreToolUse([]byte) (*agent.HookPayload, error) {
+	return nil, nil
+}
+func (runtimeTestAgent) ParsePostToolUse([]byte) (*agent.HookPayload, error) {
+	return nil, nil
+}
+func (runtimeTestAgent) FormatPreToolUseResponse(string, string) ([]byte, error) {
+	return nil, nil
+}
+func (runtimeTestAgent) FormatPostToolUseResponse(string, string) ([]byte, error) {
+	return nil, nil
+}
+func (runtimeTestAgent) FormatLifecycleResponse(string, string, string, string) ([]byte, error) {
+	return nil, nil
+}
+func (runtimeTestAgent) SupportedEvents() []string { return nil }
+func (runtimeTestAgent) ConfigPath() string        { return "" }
+func (runtimeTestAgent) GenerateHooksConfig(string, string) ([]byte, error) {
+	return nil, nil
+}
+func (runtimeTestAgent) DetectInstallation() bool { return true }
+func (runtimeTestAgent) MinVersion() string       { return "" }
+func (runtimeTestAgent) GetSpec() *agent.AgentSpec {
+	return &agent.AgentSpec{ID: agent.AgentID("runtime-test"), Name: "Runtime Test Agent"}
+}
 
 func TestSelectLauncherMatchesPlatform(t *testing.T) {
 	launcher := SelectLauncher()
@@ -46,7 +79,7 @@ func TestSelectLauncherMatchesPlatform(t *testing.T) {
 
 func TestContainmentDirectSocketBoundaryKeepsNetworkOutboundLoopbackOnly(t *testing.T) {
 	if runtime.GOOS != "darwin" {
-		t.Skip("sandbox-exec direct-socket proof is macOS-only")
+		t.Skip("Darwin launcher direct-socket proof is macOS-only")
 	}
 	if _, err := exec.LookPath("sandbox-exec"); err != nil {
 		t.Skip("sandbox-exec not available")
@@ -60,9 +93,16 @@ func TestContainmentDirectSocketBoundaryKeepsNetworkOutboundLoopbackOnly(t *test
 	projectRoot := t.TempDir()
 	t.Setenv("HOME", homeDir)
 
-	profile, err := BuildDarwinProfile(projectRoot, Options{Agent: agent.NewClaudeAgent()})
-	if err != nil {
-		t.Fatalf("BuildDarwinProfile: %v", err)
+	if err := os.MkdirAll(filepath.Join(homeDir, ".sir", "projects"), 0o755); err != nil {
+		t.Fatalf("mkdir .sir/projects: %v", err)
+	}
+	l := lease.DefaultLease()
+	l.ApprovedHosts = []string{"localhost", "127.0.0.1", "::1"}
+	if err := l.Save(filepath.Join(session.DurableStateDir(projectRoot), "lease.json")); err != nil {
+		t.Fatalf("write loopback-only runtime lease: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, ".mcp.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatalf("write .mcp.json: %v", err)
 	}
 
 	loopbackListener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -80,47 +120,92 @@ func TestContainmentDirectSocketBoundaryKeepsNetworkOutboundLoopbackOnly(t *test
 		}
 	}()
 
-	allowLoopback := exec.Command(
-		"sandbox-exec",
-		"-p",
-		profile,
-		pythonBin,
-		"-c",
-		fmt.Sprintf("import socket; s=socket.create_connection(('127.0.0.1', %d), 1); s.close()", loopbackPort),
-	)
-	if output, err := allowLoopback.CombinedOutput(); err != nil {
-		t.Fatalf("expected loopback direct socket to stay allowed: %v\n%s", err, string(output))
+	outputPath := filepath.Join(projectRoot, "direct-socket-proof.json")
+	exitCode, err := runAgentDarwin(projectRoot, pythonBin, Options{
+		Agent: runtimeTestAgent{},
+		Passthrough: []string{
+			"-c",
+			`import json, os, socket, sys
+output_path = sys.argv[1]
+loopback_port = int(sys.argv[2])
+result = {
+    "http_proxy": os.environ.get("HTTP_PROXY", ""),
+    "no_proxy": os.environ.get("NO_PROXY", ""),
+}
+sock = socket.socket()
+sock.settimeout(2)
+try:
+    sock.connect(("127.0.0.1", loopback_port))
+    result["loopback_ok"] = True
+except OSError as exc:
+    result["loopback_ok"] = False
+    result["loopback_error"] = str(exc)
+finally:
+    sock.close()
+
+sock = socket.socket()
+sock.settimeout(1)
+try:
+    sock.connect(("203.0.113.10", 443))
+    result["non_loopback_error"] = "unexpected success"
+except OSError as exc:
+    result["non_loopback_error"] = str(exc)
+finally:
+    sock.close()
+
+with open(output_path, "w", encoding="utf-8") as fh:
+    json.dump(result, fh)
+
+blocked = result["non_loopback_error"]
+if result["loopback_ok"] and ("Operation not permitted" in blocked or "Permission denied" in blocked):
+    sys.exit(0)
+sys.exit(1)
+`,
+			outputPath,
+			fmt.Sprintf("%d", loopbackPort),
+		},
+	})
+	if err != nil {
+		t.Fatalf("runAgentDarwin: %v", err)
+	}
+	if exitCode != 0 {
+		data, _ := os.ReadFile(outputPath)
+		t.Fatalf("expected Darwin containment to allow loopback but block non-loopback direct socket, exit=%d output=%s", exitCode, string(data))
 	}
 	select {
 	case <-accepted:
 	case <-time.After(2 * time.Second):
-		t.Fatal("sandboxed loopback direct socket never reached local listener")
+		t.Fatal("contained loopback direct socket never reached local listener")
 	}
 
-	blockNonLoopback := exec.Command(
-		"sandbox-exec",
-		"-p",
-		profile,
-		pythonBin,
-		"-c",
-		`import socket, sys
-s = socket.socket()
-s.settimeout(1)
-try:
-    s.connect(("203.0.113.10", 443))
-except OSError as exc:
-    msg = str(exc)
-    if "Operation not permitted" in msg or "Permission denied" in msg:
-        sys.exit(0)
-    print(msg, file=sys.stderr)
-    sys.exit(2)
-else:
-    print("unexpected non-loopback direct socket success", file=sys.stderr)
-    sys.exit(1)
-`,
-	)
-	if output, err := blockNonLoopback.CombinedOutput(); err != nil {
-		t.Fatalf("expected non-loopback direct socket to be blocked by sandbox policy: %v\n%s", err, string(output))
+	var proof struct {
+		HTTPProxy        string `json:"http_proxy"`
+		NoProxy          string `json:"no_proxy"`
+		LoopbackOK       bool   `json:"loopback_ok"`
+		LoopbackError    string `json:"loopback_error"`
+		NonLoopbackError string `json:"non_loopback_error"`
+	}
+	rawProof, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read direct-socket proof: %v", err)
+	}
+	if err := json.Unmarshal(rawProof, &proof); err != nil {
+		t.Fatalf("unmarshal direct-socket proof: %v\n%s", err, string(rawProof))
+	}
+	if proof.HTTPProxy == "" {
+		t.Fatal("expected Darwin launcher to inject HTTP_PROXY into contained agent")
+	}
+	if proof.NoProxy != "localhost,127.0.0.1,::1" {
+		t.Fatalf("NO_PROXY = %q, want loopback-only list", proof.NoProxy)
+	}
+	if !proof.LoopbackOK {
+		t.Fatalf("expected direct loopback socket to be allowed, got %q", proof.LoopbackError)
+	}
+	if strings.Contains(proof.NonLoopbackError, "unexpected success") || proof.NonLoopbackError == "" {
+		t.Fatalf("expected non-loopback direct socket to be blocked, got %q", proof.NonLoopbackError)
+	}
+	if !strings.Contains(proof.NonLoopbackError, "Operation not permitted") && !strings.Contains(proof.NonLoopbackError, "Permission denied") {
+		t.Fatalf("expected sandbox-denied non-loopback direct socket, got %q", proof.NonLoopbackError)
 	}
 }
 
