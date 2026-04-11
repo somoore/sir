@@ -40,7 +40,6 @@ type SessionStats struct {
 // It reads ledger entries, computes summary statistics, and writes
 // a summary entry to the ledger.
 func EvaluateSessionSummary(projectRoot string, ag agent.Agent) error {
-	_ = ag // accepted for API symmetry; Stop summary writes to stderr only
 	// Read stdin
 	limited := io.LimitReader(os.Stdin, maxPayloadBytes)
 	data, err := io.ReadAll(limited)
@@ -57,7 +56,7 @@ func EvaluateSessionSummary(projectRoot string, ag agent.Agent) error {
 	// Without this call, a one-shot `codex exec` that used apply_patch
 	// to modify a posture file would go unalerted. Must run BEFORE the session_summary
 	// stats are computed so the new posture_change alerts are counted.
-	if err := runSessionTerminalPostureSweep(projectRoot); err != nil {
+	if err := runSessionTerminalPostureSweep(projectRoot, ag); err != nil {
 		return fmt.Errorf("session-summary posture sweep: %w", err)
 	}
 
