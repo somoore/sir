@@ -1,5 +1,8 @@
 # Contributing to sir
 
+> [!WARNING]
+> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+
 sir is an experimental security runtime for AI coding agents. It is a "sandbox in reverse": instead of wrapping an agent process from below with syscalls or filesystem jails, sir constrains the agent from above by intercepting tool calls at the host's hook layer, normalizing them into verbs, and deciding allow / ask / deny through a pure Rust policy oracle. Information flow control propagates taint across operations, so a secret read contaminates any downstream write, commit, or push.
 
 > **Note:** If that framing is new, read [docs/contributor/core-mental-model.md](docs/contributor/core-mental-model.md) before this file. The single invariant that shapes every contribution: `mister-core` (Rust) is the upper bound on what sir will allow, and the Go layer may only be stricter, never looser.

@@ -1,5 +1,8 @@
 # Gemini CLI Support
 
+> [!WARNING]
+> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+
 sir — Sandbox in Reverse — is an experimental security runtime for AI coding agents. Gemini CLI has **near-parity support**: it fires hooks on the full tool path (not just Bash), so sir's file IFC labeling, shell classification, MCP argument and response scanning, and credential output scanning all run end to end. The main gap versus Claude Code is lifecycle hooks — Gemini has no sub-agent delegation, config-change, instructions-loaded, or elicitation hook, and it has no native `ask` verdict, so sir converts internal `ask` decisions into deny-with-remediation.
 
 > **Note:** Minimum supported version is `0.36.0`. `sir doctor` warns on older versions.

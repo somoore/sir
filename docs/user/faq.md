@@ -1,5 +1,8 @@
 # sir Troubleshooting
 
+> [!WARNING]
+> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+
 sir — Sandbox in Reverse — is an experimental security runtime for AI coding agents. It mediates tool calls at the hook layer and tracks secret taint via IFC, so a lot of its "blocks" are the intended design: you read a secret, and a later external sink is denied because the session is tainted. Use this page when sir is blocking something and you want the shortest path to the cause and the fix.
 
 ## First checks

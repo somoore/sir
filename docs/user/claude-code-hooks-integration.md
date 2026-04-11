@@ -1,5 +1,8 @@
 # sir and Claude Code Hooks Integration
 
+> [!WARNING]
+> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+
 sir — Sandbox in Reverse — constrains AI coding agents at the intent layer by mediating their tool calls through host-agent hooks. Claude Code is the reference target: it exposes the richest hook surface sir supports today, so every core protection (file IFC labeling, shell classification, MCP argument and response scanning, delegation gating, credential output scanning) runs end to end.
 
 This page explains how sir hooks into Claude Code, where the decisions are made, and how to debug the installation.

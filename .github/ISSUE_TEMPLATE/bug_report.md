@@ -6,6 +6,9 @@ labels: bug
 assignees: ''
 ---
 
+> [!WARNING]
+> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+
 > **Note:** sir is experimental. It is a small-team project and triage is best-effort. We read every report, but response time varies and not every issue will get an immediate fix. The best reports include the ledger output and reproduction steps below — those unblock triage fastest.
 >
 > **Warning:** If this looks like a security bypass (sir allowed something it should have blocked, or a way to disable sir without detection), please use the private security vulnerability process instead. See [SECURITY.md](../../SECURITY.md).
