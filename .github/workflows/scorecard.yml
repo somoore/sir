@@ -45,14 +45,15 @@ jobs:
           results_format: sarif
           publish_results: true
 
+      # Scorecard's workflow verification requires every step in this job to
+      # use an action (`uses:`). Shell `run:` steps cause the scorecard-action
+      # publish step to reject the run with "scorecard job must only have
+      # steps with `uses`" (HTTP 400 from api.securityscorecards.dev). That
+      # rules out an inline warning echo for the SARIF-upload outcome — if
+      # you need that warning, put it in a follow-up job, not this one.
       - name: Upload SARIF to code scanning
         id: upload_sarif
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
         with:
           sarif_file: results.sarif
-
-      - name: Warn if SARIF upload is rate limited
-        if: steps.upload_sarif.outcome == 'failure'
-        run: |
-          echo "::warning::Scorecard scan completed, but SARIF upload to GitHub code scanning failed."
