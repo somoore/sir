@@ -32,6 +32,9 @@ func cmdDoctor(projectRoot string) {
 	if err != nil {
 		bootstrap, bootstrapErr := doctorNoSessionBootstrap(projectRoot, policy, l)
 		if bootstrapErr != nil {
+			if bootstrap != nil {
+				printDoctorLines(bootstrap.lines)
+			}
 			fatal("%v", bootstrapErr)
 		}
 		state = bootstrap.state
@@ -50,6 +53,11 @@ func cmdDoctor(projectRoot string) {
 
 	repair, repairedLease, repairErr := runDoctorRepairs(projectRoot, policy, l, state)
 	if repairErr != nil {
+		if repair != nil {
+			printDoctorLines(repair.preAuditLines)
+			printDoctorLines(repair.preOperability)
+			printDoctorLines(repair.lateLines)
+		}
 		fatal("%v", repairErr)
 	}
 	l = repairedLease

@@ -506,6 +506,72 @@ func TestCmdDoctor_RepairOrdering(t *testing.T) {
 	)
 }
 
+func TestDoctorNoSessionBootstrap_PreservesLinesOnSessionStartError(t *testing.T) {
+	env := newTestEnv(t)
+
+	sirDir := filepath.Join(env.home, ".sir")
+	if err := os.RemoveAll(sirDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sirDir, []byte("not-a-directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := doctorNoSessionBootstrap(env.projectRoot, nil, lease.DefaultLease())
+	if err == nil {
+		t.Fatal("expected bootstrap to fail when ~/.sir is a file")
+	}
+	if report == nil {
+		t.Fatal("expected bootstrap report on error")
+	}
+	if got := strings.Join(report.lines, "\n"); !strings.Contains(got, "No active session found. Initializing fresh session.") {
+		t.Fatalf("bootstrap report missing initialization line:\n%s", got)
+	}
+}
+
+func TestRunDoctorRepairs_PreservesPartialOutputOnHookRepairError(t *testing.T) {
+	env := newTestEnv(t)
+	createDoctorPostureFiles(t, env)
+
+	managedLease := lease.DefaultLease()
+	policyPath := writeManagedPolicyForEnv(t, env, managedLease)
+	env.writeSettingsJSON(mustHooksConfigMap(t, agent.NewClaudeAgent(), sirBinaryPath, managedLease.Mode))
+
+	policy, err := loadManagedPolicyForCLI()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if policy == nil {
+		t.Fatal("expected managed policy to load")
+	}
+
+	state := session.NewState(env.projectRoot)
+	state.SetDenyAll("test reason")
+	state.LeaseHash = "stale-lease-hash"
+	state.GlobalHookHash = "stale-global-hook-hash"
+
+	if err := os.WriteFile(policyPath, []byte("{not-json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	report, _, err := runDoctorRepairs(env.projectRoot, policy, managedLease, state)
+	if err == nil {
+		t.Fatal("expected hook repair to fail after corrupting managed policy")
+	}
+	if report == nil {
+		t.Fatal("expected repair report on error")
+	}
+	got := strings.Join(report.preAuditLines, "\n")
+	for _, want := range []string{
+		"Cleared: session deny-all (test reason)",
+		"Restored: lease.json from managed policy",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("repair report missing %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestCmdDoctor_ReportsDegradedRuntimeContainment(t *testing.T) {
 	env := newTestEnv(t)
 	env.writeDefaultLease()

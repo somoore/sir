@@ -60,11 +60,11 @@ func doctorNoSessionBootstrap(projectRoot string, policy *session.ManagedPolicy,
 	report := &doctorBootstrapReport{}
 	if policy != nil {
 		if err := restoreManagedLease(projectRoot, policy); err != nil {
-			return nil, fmt.Errorf("restore managed lease: %w", err)
+			return report, fmt.Errorf("restore managed lease: %w", err)
 		}
 		restored, err := restoreManagedHooks()
 		if err != nil {
-			return nil, fmt.Errorf("restore managed hooks: %w", err)
+			return report, fmt.Errorf("restore managed hooks: %w", err)
 		}
 		for _, f := range restored {
 			report.lines = append(report.lines, fmt.Sprintf("  [x] Restored: %s from managed policy", f.DisplayPath))
@@ -74,7 +74,7 @@ func doctorNoSessionBootstrap(projectRoot string, policy *session.ManagedPolicy,
 	report.lines = append(report.lines, "  No active session found. Initializing fresh session.")
 	state, err := hooks.SessionStart(projectRoot, l)
 	if err != nil {
-		return nil, fmt.Errorf("session start: %w", err)
+		return report, fmt.Errorf("session start: %w", err)
 	}
 	report.state = state
 	return report, nil
@@ -92,7 +92,7 @@ func runDoctorRepairs(projectRoot string, policy *session.ManagedPolicy, l *leas
 
 	hookRepair, err := repairDoctorGlobalHooks(projectRoot, policy, state)
 	if err != nil {
-		return nil, l, err
+		return report, l, err
 	}
 	report.addEarly(hookRepair)
 
