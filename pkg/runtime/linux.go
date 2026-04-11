@@ -147,16 +147,8 @@ func runAgentLinuxAllowlist(projectRoot, bin string, opts Options) (int, error) 
 					_, _ = slirp.Process.Wait()
 				}
 			}
-			defer func() {
-				if err != nil {
-					cleanup()
-				}
-			}()
-
-			if err := os.WriteFile(readyFile, []byte("ready\n"), 0o600); err != nil {
-				_ = cmd.Process.Kill()
-				_, _ = cmd.Process.Wait()
-				return nil, nil, fmt.Errorf("signal linux containment readiness: %w", err)
+			if err := signalLinuxContainmentReady(cmd, readyFile, cleanup); err != nil {
+				return nil, nil, err
 			}
 
 			allowedHosts := allowlist.Hosts()
@@ -245,4 +237,16 @@ func runAgentLinuxLifecycle(projectRoot, bin string, opts Options, plan linuxLau
 		return 0, err
 	}
 	return exitCode, nil
+}
+
+func signalLinuxContainmentReady(cmd *exec.Cmd, readyFile string, cleanup func()) error {
+	if err := os.WriteFile(readyFile, []byte("ready\n"), 0o600); err != nil {
+		if cleanup != nil {
+			cleanup()
+		}
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		return fmt.Errorf("signal linux containment readiness: %w", err)
+	}
+	return nil
 }
