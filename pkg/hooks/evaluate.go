@@ -94,6 +94,7 @@ func evaluatePayload(payload *HookPayload, l *lease.Lease, state *session.State,
 	}
 
 	intent := MapToolToIntent(payload.ToolName, payload.ToolInput, l)
+	labels := labelsForEvaluation(payload, intent, l, projectRoot)
 
 	if resp, handled := evaluateMCPCredentialLeak(payload, l, state, projectRoot); handled {
 		return resp, nil
@@ -103,7 +104,25 @@ func evaluatePayload(payload *HookPayload, l *lease.Lease, state *session.State,
 		return resp, nil
 	}
 
+	if resp, handled := evaluateDelegationHardDeny(intent, l, state, ag); handled {
+		overlayPendingInjectionWarning(resp, pendingInjectionDetail)
+		appendEvaluationLedgerEntry(projectRoot, payload, intent, labels, resp.Decision, resp.Reason, state, ag)
+		return resp, nil
+	}
+
+	if intent.Verb == policy.VerbDelegate && (pendingInjectionDetail != "" || delegationRequiresApproval(state)) {
+		resp := &HookResponse{
+			Decision: policy.VerdictAsk,
+			Reason:   FormatAskPostureElevated(string(intent.Verb), intent.Target, string(state.Posture), state.MCPInjectionSignals),
+		}
+		overlayPendingInjectionWarning(resp, pendingInjectionDetail)
+		saveSessionBestEffort(state)
+		appendEvaluationLedgerEntry(projectRoot, payload, intent, labels, resp.Decision, resp.Reason, state, ag)
+		return resp, nil
+	}
+
 	if resp, handled := evaluateTaintedMCPInput(payload, l, state, projectRoot); handled {
+		overlayPendingInjectionWarning(resp, pendingInjectionDetail)
 		return resp, nil
 	}
 
@@ -111,7 +130,6 @@ func evaluatePayload(payload *HookPayload, l *lease.Lease, state *session.State,
 		return resp, nil
 	}
 
-	labels := labelsForEvaluation(payload, intent, l, projectRoot)
 	if resp, handled := prepareInstallEvaluation(intent, state, l, projectRoot); handled {
 		return resp, nil
 	}

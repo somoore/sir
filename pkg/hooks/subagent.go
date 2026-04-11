@@ -82,7 +82,7 @@ func EvaluateSubagentStart(projectRoot string, ag agent.Agent) error {
 					"Update lease to allow delegation: sir install",
 				),
 			}
-			logSubagentDecision(projectRoot, payload.AgentName, "deny", "lease disallows delegation")
+			logSubagentDecision(projectRoot, payload.AgentName, "deny", "lease disallows delegation", state, ag)
 			return nil
 		}
 
@@ -104,7 +104,7 @@ func EvaluateSubagentStart(projectRoot string, ag agent.Agent) error {
 						"       sir unlock                       (lift the lock now, then retry)",
 				),
 			}
-			logSubagentDecision(projectRoot, payload.AgentName, "deny", "secret session active")
+			logSubagentDecision(projectRoot, payload.AgentName, "deny", "secret session active", state, ag)
 			return nil
 		}
 
@@ -122,6 +122,15 @@ func EvaluateSubagentStart(projectRoot string, ag agent.Agent) error {
 			return nil
 		}
 
+		if subagentDelegationRequiresApproval(state) {
+			resp = &HookResponse{
+				Decision: policy.VerdictAsk,
+				Reason:   FormatAskPostureElevated("delegate", fmt.Sprintf("delegate to sub-agent: %s", payload.AgentName), string(state.Posture), state.MCPInjectionSignals),
+			}
+			logSubagentDecision(projectRoot, payload.AgentName, "ask", "tainted/elevated/pending-injection session", state, ag)
+			return nil
+		}
+
 		// Check if sub-agent has dangerous tools (network, file write to posture)
 		hasDangerousTools := false
 		for _, tool := range payload.Tools {
@@ -131,7 +140,8 @@ func EvaluateSubagentStart(projectRoot string, ag agent.Agent) error {
 			}
 		}
 
-		// If recently read untrusted content, ask before delegating to agent with dangerous tools
+		// Preserve the existing untrusted + dangerous-tools behavior, but
+		// allow read-only sub-agent launches to proceed.
 		if state.RecentlyReadUntrusted && hasDangerousTools {
 			resp = &HookResponse{
 				Decision: policy.VerdictAsk,
@@ -141,12 +151,12 @@ func EvaluateSubagentStart(projectRoot string, ag agent.Agent) error {
 					"Review the delegation carefully.",
 				),
 			}
-			logSubagentDecision(projectRoot, payload.AgentName, "ask", "untrusted content + dangerous tools")
+			logSubagentDecision(projectRoot, payload.AgentName, "ask", "untrusted content + dangerous tools", state, ag)
 			return nil
 		}
 
 		// Allow delegation
-		logSubagentDecision(projectRoot, payload.AgentName, "allow", "clean session, delegation permitted")
+		logSubagentDecision(projectRoot, payload.AgentName, "allow", "clean session, delegation permitted", state, ag)
 		return nil
 	})
 	if lockErr != nil {
@@ -160,7 +170,7 @@ func EvaluateSubagentStart(projectRoot string, ag agent.Agent) error {
 	return nil
 }
 
-func logSubagentDecision(projectRoot, agentName, decision, reason string) {
+func logSubagentDecision(projectRoot, agentName, decision, reason string, state *session.State, ag agent.Agent) {
 	entry := &ledger.Entry{
 		ToolName: "sir-hook",
 		Verb:     string(policy.VerbDelegate),
@@ -171,6 +181,17 @@ func logSubagentDecision(projectRoot, agentName, decision, reason string) {
 	if err := ledger.Append(projectRoot, entry); err != nil {
 		fmt.Fprintf(os.Stderr, "sir: ledger append error: %v\n", err)
 	}
+	emitTelemetryEvent(entry, state, ag)
+}
+
+func subagentDelegationRequiresApproval(state *session.State) bool {
+	if state.PendingInjectionAlert {
+		return true
+	}
+	if state.Posture == policy.PostureStateElevated || state.Posture == policy.PostureStateCritical {
+		return true
+	}
+	return len(state.TaintedMCPServers) > 0
 }
 
 func writeSubagentResponse(w io.Writer, resp *HookResponse, ag agent.Agent) error {

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "delegation-after-risky-state",
+  "scenario": "delegation_after_risky_state",
+  "description": "Delegation must stay gated after tainted MCP output, elevated posture, or a pending injection alert.",
+  "expected": {
+    "agent_decision": "ask",
+    "subagent_decision": "ask"
+  }
+}
