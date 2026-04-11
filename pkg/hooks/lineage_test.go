@@ -133,7 +133,7 @@ func TestDerivedLineageSurvivesArchiveRenameAndLinkLaundering(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	launderCmd := "cp report.txt archive/report.txt && mv archive/report.txt renamed/report.txt && ln -s renamed/report.txt linked/report.txt"
+	launderCmd := "cp report.txt archive/report.txt && mv archive/report.txt renamed/report.txt && ln -s ../renamed/report.txt linked/report.txt"
 	if _, err := postEvaluatePayload(&PostHookPayload{
 		ToolName:  "Bash",
 		ToolInput: map[string]interface{}{"command": launderCmd},
@@ -256,7 +256,7 @@ func TestBashLineageMutationParsesTargetDirectoryFlags(t *testing.T) {
 		},
 		{
 			name:     "ln combined target-directory",
-			command:  "ln -s -t linked report.txt",
+			command:  "ln -s -t linked ../report.txt",
 			destPath: "linked/report.txt",
 		},
 	}
@@ -422,7 +422,7 @@ func TestBashLineageMutationSplitsMultilineScripts(t *testing.T) {
 		Provenance:  "user",
 	})
 
-	script := "cp report.txt archive/report.txt\nmv archive/report.txt renamed/report.txt\nln -s renamed/report.txt linked/report.txt"
+	script := "cp report.txt archive/report.txt\nmv archive/report.txt renamed/report.txt\nln -s ../renamed/report.txt linked/report.txt"
 	propagateBashLineageMutation(projectRoot, state, &PostHookPayload{
 		ToolName:  "Bash",
 		ToolInput: map[string]interface{}{"command": script},
@@ -435,6 +435,78 @@ func TestBashLineageMutationSplitsMultilineScripts(t *testing.T) {
 		}
 		if labels[0].Sensitivity != "secret" || labels[0].Trust != "trusted" || labels[0].Provenance != "user" {
 			t.Fatalf("%s labels = %+v, want copied lineage from multiline script", path, labels)
+		}
+	}
+}
+
+func TestBashLineageMutationResolvesRelativeSymlinkSourcesAgainstLinkParent(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, dir := range []string{"renamed", "linked"} {
+		if err := os.MkdirAll(filepath.Join(projectRoot, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	seedLineageRecord(t, state, projectRoot, "renamed/report.txt", session.LineageLabel{
+		Sensitivity: "secret",
+		Trust:       "trusted",
+		Provenance:  "user",
+	})
+
+	propagateBashLineageMutation(projectRoot, state, &PostHookPayload{
+		ToolName:  "Bash",
+		ToolInput: map[string]interface{}{"command": "ln -s ../renamed/report.txt linked/report.txt"},
+	})
+
+	labels := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "linked/report.txt"))
+	if len(labels) != 1 {
+		t.Fatalf("linked/report.txt labels = %+v, want copied source lineage", labels)
+	}
+	if labels[0].Sensitivity != "secret" || labels[0].Trust != "trusted" || labels[0].Provenance != "user" {
+		t.Fatalf("linked/report.txt labels = %+v, want copied source lineage", labels)
+	}
+}
+
+func TestBashLineageMutationSplitsShellWrapperInnerScriptsBeforeParsing(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, dir := range []string{"archive", "renamed", "linked"} {
+		if err := os.MkdirAll(filepath.Join(projectRoot, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	seedLineageRecord(t, state, projectRoot, "report.txt", session.LineageLabel{
+		Sensitivity: "secret",
+		Trust:       "trusted",
+		Provenance:  "user",
+	})
+
+	wrapped := `bash -c 'cp report.txt archive/report.txt && mv archive/report.txt renamed/report.txt; ln -s ../renamed/report.txt linked/report.txt
+cp renamed/report.txt archive/final.txt'`
+	propagateBashLineageMutation(projectRoot, state, &PostHookPayload{
+		ToolName:  "Bash",
+		ToolInput: map[string]interface{}{"command": wrapped},
+	})
+
+	for _, path := range []string{"archive/report.txt", "renamed/report.txt", "linked/report.txt", "archive/final.txt"} {
+		labels := state.DerivedLabelsForPath(ResolveTarget(projectRoot, path))
+		if len(labels) != 1 {
+			t.Fatalf("%s labels = %+v, want copied lineage from wrapped inner script", path, labels)
+		}
+		if labels[0].Sensitivity != "secret" || labels[0].Trust != "trusted" || labels[0].Provenance != "user" {
+			t.Fatalf("%s labels = %+v, want copied lineage from wrapped inner script", path, labels)
 		}
 	}
 }

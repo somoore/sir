@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/somoore/sir/pkg/session"
 )
@@ -27,22 +28,37 @@ func propagateBashLineageMutation(projectRoot string, state *session.State, payl
 	}
 
 	for _, segment := range splitBashScriptSegments(command) {
-		segment = normalizeCommand(strings.TrimSpace(segment))
-		if segment == "" {
-			continue
+		propagateBashLineageMutationSegment(projectRoot, state, segment)
+	}
+}
+
+func propagateBashLineageMutationSegment(projectRoot string, state *session.State, command string) {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return
+	}
+	if inner, ok := extractShellWrapperInnerPreservingWhitespace(command); ok {
+		for _, segment := range splitBashScriptSegments(inner) {
+			propagateBashLineageMutationSegment(projectRoot, state, segment)
 		}
-		if inner, ok := extractShellWrapperInner(segment); ok {
-			segment = inner
+		return
+	}
+	command = normalizeCommand(command)
+	if command == "" {
+		return
+	}
+	sources, dest, ok := parseBashLineageMutation(command)
+	if !ok {
+		return
+	}
+	symbolicLink := isSymbolicLinkMutation(command)
+	for _, source := range sources {
+		sourcePath := ResolveTarget(projectRoot, source)
+		destPath := resolveLineageMutationDestination(projectRoot, sourcePath, dest)
+		if symbolicLink {
+			sourcePath = resolveSymbolicLinkSource(destPath, source)
 		}
-		sources, dest, ok := parseBashLineageMutation(segment)
-		if !ok {
-			continue
-		}
-		for _, source := range sources {
-			sourcePath := ResolveTarget(projectRoot, source)
-			destPath := resolveLineageMutationDestination(projectRoot, sourcePath, dest)
-			mirrorDerivedLineage(state, sourcePath, destPath)
-		}
+		mirrorDerivedLineage(state, sourcePath, destPath)
 	}
 }
 
@@ -223,6 +239,109 @@ func resolveLineageMutationDestination(projectRoot, sourcePath, dest string) str
 		return destPath
 	}
 	return ResolveTarget(projectRoot, filepath.Join(dest, base))
+}
+
+func resolveSymbolicLinkSource(linkPath, source string) string {
+	if linkPath == "" {
+		return ""
+	}
+	return ResolveTarget(filepath.Dir(linkPath), source)
+}
+
+func extractShellWrapperInnerPreservingWhitespace(cmd string) (string, bool) {
+	trimmed := strings.TrimSpace(cmd)
+	parts := strings.Fields(trimmed)
+	if len(parts) < 3 {
+		return "", false
+	}
+
+	shell := strings.ToLower(filepath.Base(parts[0]))
+	switch shell {
+	case "bash", "sh", "zsh", "dash", "ksh":
+	default:
+		return "", false
+	}
+
+	cIndex := -1
+	for i := 1; i < len(parts); i++ {
+		p := parts[i]
+		if p == "-c" {
+			cIndex = i
+			break
+		}
+		if strings.HasPrefix(p, "-") && !strings.HasPrefix(p, "--") && strings.HasSuffix(p, "c") {
+			cIndex = i
+			break
+		}
+		if strings.HasPrefix(p, "-") {
+			continue
+		}
+		return "", false
+	}
+
+	if cIndex < 0 || cIndex+1 >= len(parts) {
+		return "", false
+	}
+
+	start := nthFieldStart(trimmed, cIndex+1)
+	if start < 0 || start >= len(trimmed) {
+		return "", false
+	}
+
+	inner := strings.TrimSpace(trimmed[start:])
+	if len(inner) >= 2 {
+		if (inner[0] == '\'' && inner[len(inner)-1] == '\'') ||
+			(inner[0] == '"' && inner[len(inner)-1] == '"') {
+			inner = inner[1 : len(inner)-1]
+		}
+	}
+
+	inner = strings.TrimSpace(inner)
+	if inner == "" {
+		return "", false
+	}
+	return inner, true
+}
+
+func nthFieldStart(s string, fieldIndex int) int {
+	if fieldIndex < 0 {
+		return -1
+	}
+	inField := false
+	count := 0
+	for i, r := range s {
+		if unicode.IsSpace(r) {
+			inField = false
+			continue
+		}
+		if !inField {
+			if count == fieldIndex {
+				return i
+			}
+			count++
+			inField = true
+		}
+	}
+	return -1
+}
+
+func isSymbolicLinkMutation(cmd string) bool {
+	parts := strings.Fields(strings.TrimSpace(cmd))
+	if len(parts) == 0 || filepath.Base(parts[0]) != "ln" {
+		return false
+	}
+	for _, part := range parts[1:] {
+		if part == "--" {
+			break
+		}
+		if part == "-s" || part == "--symbolic" {
+			return true
+		}
+		if strings.HasPrefix(part, "-") && !strings.HasPrefix(part, "--") && strings.ContainsRune(part[1:], 's') {
+			return true
+		}
+	}
+	return false
 }
 
 func isLineageMutationDirectoryDestination(dest, resolvedDest string) bool {
