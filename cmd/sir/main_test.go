@@ -5,8 +5,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 
+	"github.com/somoore/sir/pkg/agent"
 	"github.com/somoore/sir/pkg/lease"
 	"github.com/somoore/sir/pkg/ledger"
 	"github.com/somoore/sir/pkg/session"
@@ -495,6 +498,68 @@ func TestLoadLeaseForDoctor_ValidLease(t *testing.T) {
 	}
 	if l.LeaseID != saved.LeaseID {
 		t.Error("expected loaded lease to match saved lease")
+	}
+}
+
+func TestParseAgentFlag(t *testing.T) {
+	t.Run("default", func(t *testing.T) {
+		if got := parseAgentFlag(nil); got != string(agent.Claude) {
+			t.Fatalf("parseAgentFlag(nil) = %q, want %q", got, agent.Claude)
+		}
+	})
+
+	t.Run("separate argument", func(t *testing.T) {
+		if got := parseAgentFlag([]string{"--agent", "codex"}); got != "codex" {
+			t.Fatalf("parseAgentFlag(separate) = %q, want codex", got)
+		}
+	})
+
+	t.Run("inline argument", func(t *testing.T) {
+		if got := parseAgentFlag([]string{"--agent=gemini"}); got != "gemini" {
+			t.Fatalf("parseAgentFlag(inline) = %q, want gemini", got)
+		}
+	})
+}
+
+func TestResolveAgent(t *testing.T) {
+	t.Run("known", func(t *testing.T) {
+		ag, ok := resolveAgent("codex")
+		if !ok {
+			t.Fatal("expected codex to resolve")
+		}
+		if ag.ID() != agent.Codex {
+			t.Fatalf("resolveAgent(codex) id = %q, want %q", ag.ID(), agent.Codex)
+		}
+	})
+
+	t.Run("unknown falls back to claude", func(t *testing.T) {
+		ag, ok := resolveAgent("unknown-agent")
+		if ok {
+			t.Fatal("expected unknown agent to be reported as unknown")
+		}
+		if ag.ID() != agent.Claude {
+			t.Fatalf("resolveAgent(unknown) id = %q, want %q", ag.ID(), agent.Claude)
+		}
+	})
+}
+
+func TestGuardCommandNames(t *testing.T) {
+	got := guardCommandNames()
+	sort.Strings(got)
+	want := []string{
+		"compact-reinject",
+		"config-change",
+		"elicitation",
+		"evaluate",
+		"instructions-loaded",
+		"post-evaluate",
+		"session-end",
+		"session-summary",
+		"subagent-start",
+		"user-prompt",
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("guard command names = %v, want %v", got, want)
 	}
 }
 
