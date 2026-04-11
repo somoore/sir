@@ -42,8 +42,7 @@ tests/          higher-level integration coverage
 
 - [ARCHITECTURE.md](ARCHITECTURE.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
+- [docs/contributor/core-mental-model.md](docs/contributor/core-mental-model.md)
 - [docs/contributor/security-engineering-core.md](docs/contributor/security-engineering-core.md)
 - [docs/contributor/supply-chain-policy.md](docs/contributor/supply-chain-policy.md)
-- [.claude/rules/architecture.md](.claude/rules/architecture.md)
-- [.claude/rules/security.md](.claude/rules/security.md)
-- [.claude/rules/testing.md](.claude/rules/testing.md)
+- [docs/research/security-verification-guide.md](docs/research/security-verification-guide.md)

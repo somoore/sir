@@ -31,8 +31,8 @@ CI, `Makefile`, and `install.sh` must match those pins.
 - Post-merge assurance on `main` owns the expensive checks: reproducibility, artifact packaging, checksums, SBOM generation, and macOS validation.
 - Merge queue support must stay enabled on required pre-merge workflows.
 - `pull_request_target` and `workflow_run` stay banned for CI/CD. If the project ever needs privileged PR or issue automation, use a GitHub App instead of a privileged workflow trigger.
-- `actionlint` enforces the ban on `pull_request_target` and `workflow_run` so the policy fails closed when workflow files change.
-- One online `zizmor` audit must run outside the PR fast path so `known-vulnerable-actions` coverage is restored without making contributor CI flaky.
+- `scripts/check_workflow_policy.rb`, wired through the `actionlint` workflow, enforces the ban on `pull_request_target` and `workflow_run` so the policy fails closed when workflow files change.
+- One deterministic `zizmor` audit must run on workflow changes. The current repo-owned workflow is explicit offline mode in both PR and `main` workflows because the hosted token does not have stable GitHub advisories access; if that changes, document the switch back to online coverage.
 
 ### Release artifacts are verifiable
 

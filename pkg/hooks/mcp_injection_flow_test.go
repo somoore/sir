@@ -341,7 +341,8 @@ func TestMCPInjection_PendingAlertClosesWindow(t *testing.T) {
 // TestMCPCredentialScan_Deny verifies that when an MCP tool call contains
 // credential patterns in its arguments, evaluatePayload returns "deny"
 // regardless of session state. This is the documented policy in
-// .claude/rules/security.md::Enforcement Gradient and ARCHITECTURE.md:
+// docs/contributor/security-engineering-core.md::Enforcement Gradient and
+// ARCHITECTURE.md:
 // sending credentials to an untrusted MCP server is an unconditional block.
 // The escape hatch is `sir trust <server>`, not a per-call approval prompt.
 func TestMCPCredentialScan_Deny(t *testing.T) {

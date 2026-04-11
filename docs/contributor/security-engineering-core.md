@@ -46,6 +46,32 @@ or the package docs for the subsystem you are touching.
 - anything that touches `sir run` containment claims
 - anything that changes evidence logging or redaction
 
+## Enforcement Gradient
+
+This is the machine-checked summary of the core enforcement gradient. The
+matching parity test in `pkg/core/doc_parity_test.go` treats these rows as an
+executable contributor-facing contract for the local fallback path.
+
+```text
+net_external         → deny (always, regardless of session state)
+dns_lookup           → deny (same as net_external)
+push_remote          → ask (deny if secret session)
+push_origin          → ask if secret session, allow otherwise
+net_allowlisted      → ask
+run_ephemeral        → ask (always)
+env_read             → ask (marks session secret on approval)
+persistence          → ask
+sudo                 → ask
+sir_self             → ask (self-protection)
+mcp_unapproved       → ask
+mcp_credential_leak  → deny (block)
+delete_posture       → ask
+stage_write posture  → ask
+read_ref sensitive   → ask (marks session secret on approval)
+delegate             → deny in secret session, policy otherwise
+Everything else      → allow
+```
+
 ## Required verification for security-sensitive changes
 
 ```bash
