@@ -17,21 +17,23 @@ import (
 )
 
 type securityInvariantFixture struct {
-	Version         int                    `json:"version"`
-	Name            string                 `json:"name"`
-	Scenario        string                 `json:"scenario"`
-	Description     string                 `json:"description"`
-	SensitivePath   string                 `json:"sensitive_path,omitempty"`
-	ReadOutput      string                 `json:"read_output,omitempty"`
-	EgressCommand   string                 `json:"egress_command,omitempty"`
-	DerivedPath     string                 `json:"derived_path,omitempty"`
-	PushCommand     string                 `json:"push_command,omitempty"`
-	AllowedHosts    []string               `json:"allowed_hosts,omitempty"`
-	ToolName        string                 `json:"tool_name,omitempty"`
-	ToolInput       map[string]interface{} `json:"tool_input,omitempty"`
-	TamperedAgent   string                 `json:"tampered_agent,omitempty"`
-	DisabledCommand string                 `json:"disabled_command,omitempty"`
-	Expected        map[string]string      `json:"expected"`
+	Version           int                    `json:"version"`
+	Name              string                 `json:"name"`
+	Scenario          string                 `json:"scenario"`
+	Description       string                 `json:"description"`
+	SensitivePath     string                 `json:"sensitive_path,omitempty"`
+	ReadOutput        string                 `json:"read_output,omitempty"`
+	EgressCommand     string                 `json:"egress_command,omitempty"`
+	DerivedPath       string                 `json:"derived_path,omitempty"`
+	PushCommand       string                 `json:"push_command,omitempty"`
+	AllowedHosts      []string               `json:"allowed_hosts,omitempty"`
+	ToolName          string                 `json:"tool_name,omitempty"`
+	ToolInput         map[string]interface{} `json:"tool_input,omitempty"`
+	ToolOutput        string                 `json:"tool_output,omitempty"`
+	ToolOutputFixture string                 `json:"tool_output_fixture,omitempty"`
+	TamperedAgent     string                 `json:"tampered_agent,omitempty"`
+	DisabledCommand   string                 `json:"disabled_command,omitempty"`
+	Expected          map[string]string      `json:"expected"`
 }
 
 func TestSecurityInvariantSuiteV1(t *testing.T) {
@@ -48,6 +50,8 @@ func TestSecurityInvariantSuiteV1(t *testing.T) {
 				runInvariantSecretReadThenEgress(t, fixture)
 			case "mcp_credential_leak":
 				runInvariantMCPCredentialLeak(t, fixture)
+			case "mcp_response_middle_window_injection":
+				runInvariantMCPResponseMiddleWindowInjection(t, fixture)
 			case "hook_tamper_restore":
 				runInvariantHookTamperRestore(t, fixture)
 			case "managed_mode_refusal":
