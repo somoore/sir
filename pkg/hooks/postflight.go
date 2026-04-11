@@ -34,3 +34,7 @@ func mcpCredentialOutputEntry(payload *PostHookPayload, serverName string, patte
 func mcpInjectionEntry(payload *PostHookPayload, serverName string, patternNames []string, severity, evidence string) *ledger.Entry {
 	return internalpostflight.MCPInjectionEntry(payload.ToolName, serverName, patternNames, severity, evidence)
 }
+
+func toolTraceEntry(payload *PostHookPayload, target, evidence string) *ledger.Entry {
+	return internalpostflight.ToolTraceEntry(payload.ToolName, target, evidence)
+}

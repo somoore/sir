@@ -13,15 +13,18 @@ import (
 // applyPostEvaluateOutputCredentialAnalysis runs the non-MCP output scan used by
 // Read/Edit/Bash responses. Keep this isolated from orchestration so the output
 // pass can stay easy to reason about without changing evaluation order.
-func applyPostEvaluateOutputCredentialAnalysis(payload *PostHookPayload, state *session.State, projectRoot string, ag agent.Agent) {
+// applyPostEvaluateOutputCredentialAnalysis returns true when a credential
+// alert entry was appended to the ledger. Callers use this to suppress a
+// duplicate tool_trace entry for the same allow-path tool call.
+func applyPostEvaluateOutputCredentialAnalysis(payload *PostHookPayload, state *session.State, projectRoot string, ag agent.Agent) bool {
 	if payload.ToolOutput == "" || isToolMCP(payload.ToolName) {
-		return
+		return false
 	}
 	switch payload.ToolName {
 	case "Read", "Edit", "Bash":
 		credMatches := ScanOutputForCredentials(payload.ToolOutput)
 		if len(credMatches) == 0 {
-			return
+			return false
 		}
 
 		target := extractPostEvaluateTarget(payload)
@@ -40,18 +43,25 @@ func applyPostEvaluateOutputCredentialAnalysis(payload *PostHookPayload, state *
 		entry := credentialOutputEntry(payload, target, patternNames, redactToolOutputEvidenceIfEnabled(payload.ToolOutput))
 		if err := ledger.Append(projectRoot, entry); err != nil {
 			fmt.Fprintf(os.Stderr, "sir: ledger append error: %v\n", err)
+			return false
 		}
 		emitTelemetryEvent(entry, state, ag)
+		return true
 	}
+	return false
 }
 
 // applyPostEvaluateMCPOutputAnalysis runs the MCP-specific output scans.
 // The credential scan and injection scan remain in the same order as the
 // legacy inline implementation.
-func applyPostEvaluateMCPOutputAnalysis(payload *PostHookPayload, state *session.State, projectRoot string, ag agent.Agent) {
+// applyPostEvaluateMCPOutputAnalysis returns true when at least one MCP alert
+// entry (credential leak or injection) was appended to the ledger. Callers
+// use this to suppress a duplicate tool_trace entry.
+func applyPostEvaluateMCPOutputAnalysis(payload *PostHookPayload, state *session.State, projectRoot string, ag agent.Agent) bool {
 	if !isToolMCP(payload.ToolName) || payload.ToolOutput == "" {
-		return
+		return false
 	}
+	var appended bool
 
 	serverName := extractMCPServerName(payload.ToolName)
 	mcpCredMatches := ScanOutputForCredentials(payload.ToolOutput)
@@ -71,13 +81,15 @@ func applyPostEvaluateMCPOutputAnalysis(payload *PostHookPayload, state *session
 		entry := mcpCredentialOutputEntry(payload, serverName, patternNames, redactToolOutputEvidenceIfEnabled(payload.ToolOutput))
 		if err := ledger.Append(projectRoot, entry); err != nil {
 			fmt.Fprintf(os.Stderr, "sir: ledger append error: %v\n", err)
+		} else {
+			appended = true
 		}
 		emitTelemetryEvent(entry, state, ag)
 	}
 
 	signals := ScanMCPResponseForInjection(payload.ToolOutput)
 	if len(signals) == 0 {
-		return
+		return appended
 	}
 
 	severity := HighestSeverity(signals)
@@ -110,6 +122,8 @@ func applyPostEvaluateMCPOutputAnalysis(payload *PostHookPayload, state *session
 	entry := mcpInjectionEntry(payload, serverName, patternNames, severity, redactToolOutputEvidenceIfEnabled(payload.ToolOutput))
 	if err := ledger.Append(projectRoot, entry); err != nil {
 		fmt.Fprintf(os.Stderr, "sir: ledger append error: %v\n", err)
+	} else {
+		appended = true
 	}
 	emitTelemetryEvent(entry, state, ag)
 
@@ -123,4 +137,6 @@ func applyPostEvaluateMCPOutputAnalysis(payload *PostHookPayload, state *session
 	// Warn on stderr so the developer sees it in Claude Code context.
 	fmt.Fprintf(os.Stderr, "\n")
 	fmt.Fprintln(os.Stderr, FormatMCPInjectionWarning(serverName, severity, patternNames))
+
+	return appended
 }
