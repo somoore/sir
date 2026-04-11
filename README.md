@@ -5,11 +5,13 @@
 
 > A local, hook-mediated security runtime for AI coding agents. Quiet on normal coding. Loud on dangerous transitions.
 
-[![Build](https://github.com/somoore/sir/actions/workflows/post-merge.yml/badge.svg?branch=main)](https://github.com/somoore/sir/actions/workflows/post-merge.yml)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/somoore/sir/badge)](https://securityscorecards.dev/viewer/?uri=github.com/somoore/sir)
-[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12462/badge)](https://www.bestpractices.dev/projects/12462)
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Status: experimental](https://img.shields.io/badge/status-experimental-orange)](#hard-limits)
+<div align="center">
+
+[![Build](https://github.com/somoore/sir/actions/workflows/post-merge.yml/badge.svg?branch=main)](https://github.com/somoore/sir/actions/workflows/post-merge.yml) [![Pre-alpha release](https://img.shields.io/github/v/release/somoore/sir?include_prereleases&label=pre-alpha&color=orange)](https://github.com/somoore/sir/releases/latest) [![Status: experimental](https://img.shields.io/badge/status-experimental-orange)](#hard-limits)
+
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/somoore/sir/badge)](https://securityscorecards.dev/viewer/?uri=github.com/somoore/sir) [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12462/badge)](https://www.bestpractices.dev/projects/12462) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
+</div>
 
 Your AI coding agent can read `.env`, run shell, call MCP servers, and push code — all in the same session. sir puts a local policy checkpoint at every tool call, uses information flow control to track secret taint across operations, and stops the dangerous transitions before they run. Install once, then use **Claude Code**, **Gemini CLI**, or **Codex** exactly as you do today.
 
