@@ -19,10 +19,50 @@ env:
   GOFLAGS: "-trimpath"
   RUST_VERSION: "1.94.0"
   GO_VERSION: "1.25.9"
+  GOSEC_VERSION: "v2.25.0"
   # Opt into Node.js 24 now ahead of the June 2, 2026 forced migration
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  gosec-main:
+    name: gosec (SAST, every main commit)
+    # Scorecard's SAST check walks the last ~30 commits on the default branch
+    # looking for a SAST run attached to each one. ci.yml only runs on
+    # pull_request + merge_group, so squashed merge commits on main have no
+    # gosec run associated. Running gosec here on every push to main keeps
+    # the Scorecard SAST signal at 10/10. The flags and exclusion comments
+    # below MUST stay in sync with ci.yml's gosec step.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.25.9"
+          cache: false  # no external Go deps → no go.sum → caching not applicable
+
+      - name: Install gosec
+        run: go install "github.com/securego/gosec/v2/cmd/gosec@${GOSEC_VERSION}"
+
+      - name: Run gosec (static security analysis)
+        run: |
+          # Exclude rules that are architectural false positives for a security CLI:
+          #   G104: unhandled errors in cleanup/defer paths (intentional)
+          #   G115: int conversions for fd values and bounded payload lengths (safe)
+          #   G204: subprocess launch with variable (sir launches mister-core by design)
+          #   G301: MkdirAll perms >0750 — Claude Code expects ~/.claude at 0755
+          #   G302: Chmod >0600 — 0700 is correct for directories (execute bit needed)
+          #   G304: file read via variable (sir reads config/state files by computed path)
+          #   G306: WriteFile >0600 — settings.json needs 0644 for Claude Code compat
+          #   G703: path traversal via taint — restore functions write to controlled paths
+          gosec -quiet \
+            -exclude=G104,G115,G204,G301,G302,G304,G306,G703 \
+            ./...
+
   go-macos:
     name: Go (sir CLI, macOS)
     runs-on: macos-latest
