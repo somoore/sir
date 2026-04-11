@@ -105,6 +105,7 @@ func evaluatePayload(payload *HookPayload, l *lease.Lease, state *session.State,
 	}
 
 	if resp, handled := evaluateDelegationHardDeny(intent, l, state, ag); handled {
+		overlayPendingInjectionWarning(resp, pendingInjectionDetail)
 		appendEvaluationLedgerEntry(projectRoot, payload, intent, labels, resp.Decision, resp.Reason, state, ag)
 		return resp, nil
 	}

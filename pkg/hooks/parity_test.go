@@ -355,6 +355,41 @@ func TestDelegationParity_PreToolUse_RiskyStatePreservesSessionIntegrity(t *test
 	}
 }
 
+func TestDelegationParity_PreToolUse_PendingInjectionWarningSurvivesHardDeny(t *testing.T) {
+	projectRoot := t.TempDir()
+	l := lease.DefaultLease()
+	l.AllowDelegation = false
+
+	stateDir := session.StateDir(projectRoot)
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatalf("mkdir state: %v", err)
+	}
+	if err := l.Save(stateDir + "/lease.json"); err != nil {
+		t.Fatalf("save lease: %v", err)
+	}
+
+	state := session.NewState(projectRoot)
+	state.SetPendingInjectionAlert("pending injection alert")
+	if err := state.Save(); err != nil {
+		t.Fatalf("save initial session: %v", err)
+	}
+
+	resp, err := evaluatePayload(&HookPayload{
+		ToolName:  "Agent",
+		ToolInput: map[string]interface{}{"task": "investigate repository"},
+		CWD:       projectRoot,
+	}, l, state, projectRoot)
+	if err != nil {
+		t.Fatalf("evaluatePayload pending-alert deny: %v", err)
+	}
+	if resp.Decision != policy.VerdictDeny {
+		t.Fatalf("delegation decision = %q, want deny (reason=%s)", resp.Decision, resp.Reason)
+	}
+	if !strings.Contains(resp.Reason, "suspicious patterns") || !strings.Contains(resp.Reason, "pending injection alert") {
+		t.Fatalf("deny reason = %q, want suspicious-output warning with detail", resp.Reason)
+	}
+}
+
 func TestDelegationParity_PreToolUse_RecentlyReadUntrustedDoesNotForceApproval(t *testing.T) {
 	state := session.NewState(t.TempDir())
 	state.MarkUntrustedRead()
