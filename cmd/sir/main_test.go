@@ -545,6 +545,23 @@ func TestLoadLeaseForDoctor_ValidLease(t *testing.T) {
 	}
 }
 
+func TestLoadLeaseForDoctor_MalformedLeaseFallsBackToDefault(t *testing.T) {
+	env := newTestEnv(t)
+	if err := os.WriteFile(env.leasePath, []byte("{not-json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	l, err := loadLeaseForDoctor(env.projectRoot)
+	if err != nil {
+		t.Fatalf("expected malformed lease to fall back to default, got %v", err)
+	}
+
+	want := lease.DefaultLease()
+	if l.LeaseID != want.LeaseID {
+		t.Fatalf("lease id = %q, want %q", l.LeaseID, want.LeaseID)
+	}
+}
+
 func TestParseAgentFlag(t *testing.T) {
 	t.Run("default", func(t *testing.T) {
 		if got := parseAgentFlag(nil); got != string(agent.Claude) {
