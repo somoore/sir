@@ -35,7 +35,7 @@ The optional below-hook layer is `sir run <agent>`:
 - On macOS, host-only allowlist entries expand to exact destinations on `22`, `80`, and `443`; use `host:port` for non-standard ports. Loopback entries stay wildcarded.
 - Linux uses `unshare --net` namespace mode with exact-destination egress allowlisting, durable-state protection, and fail-closed startup if the current-agent policy roots it must guard are missing.
 
-That path is useful, but still experimental. Hook mediation remains the primary shipped boundary.
+That path is a measured preview. Hook mediation remains the primary shipped boundary, and `sir status` now reports the last contained launch mode, the host/destination policy size, and the blocked/allowed egress counts recorded by the runtime layer.
 
 ## Fast verification
 

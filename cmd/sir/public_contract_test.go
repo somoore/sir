@@ -102,7 +102,11 @@ func TestPublicContractParity(t *testing.T) {
 	t.Run("runtime_and_managed_contract", func(t *testing.T) {
 		requireContainsFile(t, root, "README.md", "SIR_MANAGED_POLICY_PATH", "README managed mode activation")
 		requireContainsFile(t, root, "README.md", "`sir run <agent>`", "README runtime containment mention")
-		requireContainsFile(t, root, "README.md", "experimental", "README experimental runtime note")
+		requireContainsFile(t, root, "README.md", "measured preview", "README measured-preview runtime note")
+		requireContainsFile(t, root, "docs/user/runtime-security-overview.md", "measured preview", "runtime overview measured-preview note")
+		requireContainsFile(t, root, "docs/research/validation-summary.md", "measured preview", "validation summary measured-preview note")
+		requireContainsFile(t, root, "docs/user/runtime-security-overview.md", "blocked/allowed egress counts", "runtime overview receipt visibility")
+		requireContainsFile(t, root, "docs/research/validation-summary.md", "blocked/allowed egress counts", "validation summary receipt visibility")
 		requireContainsFile(t, root, "docs/research/sir-threat-model.md", "Managed mode shifts the trust anchor", "threat model managed mode")
 		requireContainsFile(t, root, "docs/research/sir-threat-model.md", "launch-time DNS pinning", "threat model runtime containment")
 	})

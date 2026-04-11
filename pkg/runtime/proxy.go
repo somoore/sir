@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -20,6 +21,14 @@ type LocalProxy struct {
 	resolvedIPs   map[string]struct{}
 	pinnedHosts   map[string][]string
 	dial          func(context.Context, string, string) (net.Conn, error)
+	statsMu       sync.Mutex
+	stats         localProxyStats
+}
+
+type localProxyStats struct {
+	allowedEgressCount int
+	blockedEgressCount int
+	lastBlockedDest    string
 }
 
 // StartLocalProxy starts the local HTTP CONNECT + SOCKS5 proxy used by
@@ -109,4 +118,32 @@ func (p *LocalProxy) Close() error {
 		}
 	}
 	return joined
+}
+
+func (p *LocalProxy) recordAllowedEgress() {
+	if p == nil {
+		return
+	}
+	p.statsMu.Lock()
+	defer p.statsMu.Unlock()
+	p.stats.allowedEgressCount++
+}
+
+func (p *LocalProxy) recordBlockedEgress(dest string) {
+	if p == nil {
+		return
+	}
+	p.statsMu.Lock()
+	defer p.statsMu.Unlock()
+	p.stats.blockedEgressCount++
+	p.stats.lastBlockedDest = dest
+}
+
+func (p *LocalProxy) snapshotStats() localProxyStats {
+	if p == nil {
+		return localProxyStats{}
+	}
+	p.statsMu.Lock()
+	defer p.statsMu.Unlock()
+	return p.stats
 }

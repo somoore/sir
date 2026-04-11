@@ -468,6 +468,59 @@ func TestCmdStatusReportsDegradedRuntimeContainment(t *testing.T) {
 	}
 }
 
+func TestCmdStatusReportsLastRuntimeReceipt(t *testing.T) {
+	env := newTestEnv(t)
+	env.writeDefaultLease()
+	env.writeSettingsJSON(map[string]interface{}{
+		"hooks": map[string]interface{}{
+			"PreToolUse": []interface{}{
+				map[string]interface{}{
+					"matcher": ".*",
+					"hooks": []interface{}{
+						map[string]interface{}{
+							"type":    "command",
+							"command": "sir guard evaluate",
+						},
+					},
+				},
+			},
+		},
+	})
+	env.writeSession(session.NewState(env.projectRoot))
+
+	if err := session.SaveLastRuntimeContainment(env.projectRoot, &session.RuntimeContainment{
+		AgentID:                 string(agent.Claude),
+		Mode:                    runContainmentModeDarwinProxy,
+		ProxyProtocols:          []string{"http-connect", "socks5"},
+		AllowedHosts:            []string{"api.anthropic.com", "localhost"},
+		AllowedHostCount:        2,
+		AllowedDestinations:     []string{"api.anthropic.com:443", "localhost:*"},
+		AllowedDestinationCount: 2,
+		AllowedEgressCount:      3,
+		BlockedEgressCount:      1,
+		LastBlockedDestination:  "api.anthropic.com:8443",
+		EndedAt:                 time.Date(2026, time.April, 10, 20, 0, 0, 0, time.UTC),
+		ExitCode:                0,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureStdout(t, func() {
+		cmdStatus(env.projectRoot)
+	})
+	for _, want := range []string{
+		"runtime   last (claude via darwin_local_proxy)",
+		"Policy size: 2 host(s), 2 destination(s)",
+		"Egress events: 3 allowed, 1 blocked",
+		"Last blocked destination: api.anthropic.com:8443",
+		"Last exit: 0 at 2026-04-10T20:00:00Z",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("status output missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func mustJSON(t *testing.T, v interface{}) []byte {
 	t.Helper()
 	data, err := json.MarshalIndent(v, "", "  ")

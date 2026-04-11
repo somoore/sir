@@ -4,7 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -250,6 +254,89 @@ func TestStartLocalProxyPinsResolvedIPs(t *testing.T) {
 	want := []string{"203.0.113.10:443", "203.0.113.11:443"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("allowedDialTargets = %v, want %v", got, want)
+	}
+}
+
+func TestStartLocalProxyTracksHTTPEgressDecisions(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer upstream.Close()
+
+	proxy, err := StartLocalProxy([]string{NormalizeProxyHost(upstream.URL)})
+	if err != nil {
+		t.Fatalf("StartLocalProxy: %v", err)
+	}
+	defer proxy.Close()
+
+	proxyURL, _ := url.Parse(proxy.URL())
+	client := &http.Client{
+		Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)},
+	}
+
+	resp, err := client.Get(upstream.URL)
+	if err != nil {
+		t.Fatalf("GET via proxy: %v", err)
+	}
+	defer resp.Body.Close()
+	if _, err := io.ReadAll(resp.Body); err != nil {
+		t.Fatalf("read allowed proxy response: %v", err)
+	}
+
+	blockedResp, err := client.Get("http://127.0.0.2/")
+	if err != nil {
+		t.Fatalf("GET blocked host via proxy: %v", err)
+	}
+	defer blockedResp.Body.Close()
+	if blockedResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("blocked status = %d, want %d", blockedResp.StatusCode, http.StatusForbidden)
+	}
+
+	stats := proxy.snapshotStats()
+	if stats.allowedEgressCount != 1 || stats.blockedEgressCount != 1 {
+		t.Fatalf("unexpected proxy stats: %+v", stats)
+	}
+	if stats.lastBlockedDest != "127.0.0.2:80" {
+		t.Fatalf("lastBlockedDest = %q, want %q", stats.lastBlockedDest, "127.0.0.2:80")
+	}
+}
+
+func TestStartLocalProxyTracksSOCKSEgressDecisions(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer upstream.Close()
+
+	proxy, err := StartLocalProxy([]string{NormalizeProxyHost(upstream.URL)})
+	if err != nil {
+		t.Fatalf("StartLocalProxy: %v", err)
+	}
+	defer proxy.Close()
+
+	socksURL, _ := url.Parse(proxy.SOCKSURL())
+	client := &http.Client{
+		Transport: &http.Transport{Proxy: http.ProxyURL(socksURL)},
+	}
+
+	resp, err := client.Get(upstream.URL)
+	if err != nil {
+		t.Fatalf("GET via socks proxy: %v", err)
+	}
+	defer resp.Body.Close()
+	if _, err := io.ReadAll(resp.Body); err != nil {
+		t.Fatalf("read socks proxy response: %v", err)
+	}
+
+	if _, err := client.Get("http://127.0.0.2/"); err == nil {
+		t.Fatal("expected blocked socks proxy request to fail")
+	}
+
+	stats := proxy.snapshotStats()
+	if stats.allowedEgressCount != 1 || stats.blockedEgressCount != 1 {
+		t.Fatalf("unexpected proxy stats: %+v", stats)
+	}
+	if stats.lastBlockedDest != "127.0.0.2:80" {
+		t.Fatalf("lastBlockedDest = %q, want %q", stats.lastBlockedDest, "127.0.0.2:80")
 	}
 }
 

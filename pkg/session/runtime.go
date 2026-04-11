@@ -11,21 +11,28 @@ import (
 // RuntimeContainment captures the active `sir run` launch context so status
 // surfaces outside the sandbox can explain the effective host-agent boundary.
 type RuntimeContainment struct {
-	AgentID             string    `json:"agent_id"`
-	Mode                string    `json:"mode"`
-	ProxyURL            string    `json:"proxy_url,omitempty"`
-	SOCKSProxyURL       string    `json:"socks_proxy_url,omitempty"`
-	ProxyProtocols      []string  `json:"proxy_protocols,omitempty"`
-	AllowedHosts        []string  `json:"allowed_hosts,omitempty"`
-	AllowedDestinations []string  `json:"allowed_destinations,omitempty"`
-	MaskedHostSockets   []string  `json:"masked_host_sockets,omitempty"`
-	ScrubbedEnvVars     []string  `json:"scrubbed_env_vars,omitempty"`
-	DegradedReasons     []string  `json:"degraded_reasons,omitempty"`
-	ShadowStateHome     string    `json:"shadow_state_home,omitempty"`
-	StartedAt           time.Time `json:"started_at"`
-	HeartbeatAt         time.Time `json:"heartbeat_at,omitempty"`
-	LauncherPID         int       `json:"launcher_pid,omitempty"`
-	AgentPID            int       `json:"agent_pid,omitempty"`
+	AgentID                 string    `json:"agent_id"`
+	Mode                    string    `json:"mode"`
+	ProxyURL                string    `json:"proxy_url,omitempty"`
+	SOCKSProxyURL           string    `json:"socks_proxy_url,omitempty"`
+	ProxyProtocols          []string  `json:"proxy_protocols,omitempty"`
+	AllowedHosts            []string  `json:"allowed_hosts,omitempty"`
+	AllowedDestinations     []string  `json:"allowed_destinations,omitempty"`
+	AllowedHostCount        int       `json:"allowed_host_count,omitempty"`
+	AllowedDestinationCount int       `json:"allowed_destination_count,omitempty"`
+	AllowedEgressCount      int       `json:"allowed_egress_count,omitempty"`
+	BlockedEgressCount      int       `json:"blocked_egress_count,omitempty"`
+	LastBlockedDestination  string    `json:"last_blocked_destination,omitempty"`
+	MaskedHostSockets       []string  `json:"masked_host_sockets,omitempty"`
+	ScrubbedEnvVars         []string  `json:"scrubbed_env_vars,omitempty"`
+	DegradedReasons         []string  `json:"degraded_reasons,omitempty"`
+	ShadowStateHome         string    `json:"shadow_state_home,omitempty"`
+	StartedAt               time.Time `json:"started_at"`
+	HeartbeatAt             time.Time `json:"heartbeat_at,omitempty"`
+	EndedAt                 time.Time `json:"ended_at,omitempty"`
+	ExitCode                int       `json:"exit_code,omitempty"`
+	LauncherPID             int       `json:"launcher_pid,omitempty"`
+	AgentPID                int       `json:"agent_pid,omitempty"`
 }
 
 // RuntimeContainmentHealth is the operator-facing state of the recorded
@@ -37,6 +44,7 @@ const (
 	RuntimeContainmentDegraded RuntimeContainmentHealth = "degraded"
 	RuntimeContainmentStale    RuntimeContainmentHealth = "stale"
 	RuntimeContainmentLegacy   RuntimeContainmentHealth = "legacy"
+	RuntimeContainmentInactive RuntimeContainmentHealth = "inactive"
 )
 
 const (
@@ -151,4 +159,29 @@ func (r *RuntimeContainment) EffectiveDegradedReasons() []string {
 		addReason(runtimeDegradedReasonScrubbedHostEnv)
 	}
 	return reasons
+}
+
+// EffectiveAllowedHostCount returns the persisted count when available,
+// falling back to the explicit allowlist length for older descriptors.
+func (r *RuntimeContainment) EffectiveAllowedHostCount() int {
+	if r == nil {
+		return 0
+	}
+	if r.AllowedHostCount > 0 {
+		return r.AllowedHostCount
+	}
+	return len(r.AllowedHosts)
+}
+
+// EffectiveAllowedDestinationCount returns the persisted destination count
+// when available, falling back to the explicit destination list length for
+// older descriptors.
+func (r *RuntimeContainment) EffectiveAllowedDestinationCount() int {
+	if r == nil {
+		return 0
+	}
+	if r.AllowedDestinationCount > 0 {
+		return r.AllowedDestinationCount
+	}
+	return len(r.AllowedDestinations)
 }

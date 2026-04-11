@@ -480,6 +480,30 @@ func TestCmdDoctor_ReportsDegradedRuntimeContainment(t *testing.T) {
 	}
 }
 
+func TestCmdDoctor_ReportsLastRuntimeReceipt(t *testing.T) {
+	env := newTestEnv(t)
+	env.writeDefaultLease()
+	env.writeSession(session.NewState(env.projectRoot))
+
+	if err := session.SaveLastRuntimeContainment(env.projectRoot, &session.RuntimeContainment{
+		AgentID:            string(agent.Claude),
+		Mode:               "darwin_local_proxy",
+		AllowedEgressCount: 4,
+		BlockedEgressCount: 1,
+		ExitCode:           0,
+		EndedAt:            time.Date(2026, time.April, 10, 20, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureStdout(t, func() {
+		cmdDoctor(env.projectRoot)
+	})
+	if !strings.Contains(out, "runtime last launch: claude via darwin_local_proxy exited 0 (4 allowed / 1 blocked)") {
+		t.Fatalf("doctor output missing last runtime receipt:\n%s", out)
+	}
+}
+
 func TestCmdDoctor_ReportsMCPRuntimeWarnings(t *testing.T) {
 	env := newTestEnv(t)
 	env.writeDefaultLease()

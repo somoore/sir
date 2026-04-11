@@ -15,7 +15,17 @@ func InspectRuntimeContainment(projectRoot string, now time.Time) (*RuntimeConta
 	info, err := LoadRuntimeContainment(projectRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			last, lastErr := LoadLastRuntimeContainment(projectRoot)
+			if lastErr != nil {
+				if os.IsNotExist(lastErr) {
+					return nil, nil
+				}
+				return nil, lastErr
+			}
+			return &RuntimeContainmentInspection{
+				Info:   last,
+				Health: RuntimeContainmentInactive,
+			}, nil
 		}
 		return nil, err
 	}

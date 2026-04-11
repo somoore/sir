@@ -86,6 +86,13 @@ func printRuntimeContainmentStatus(inspection *session.RuntimeContainmentInspect
 		for _, fix := range runtimeContainmentFixes(inspection) {
 			fmt.Printf("             Fix: %s\n", fix)
 		}
+	case session.RuntimeContainmentInactive:
+		fmt.Printf("  %-9s last (%s via %s)\n", "runtime", info.AgentID, info.Mode)
+		printRuntimeContainmentDetails(info)
+		printRuntimeContainmentReceipt(info)
+		if reasons := info.EffectiveDegradedReasons(); len(reasons) > 0 {
+			fmt.Printf("             Last launch degraded: %s\n", strings.Join(reasons, "; "))
+		}
 	default:
 		fmt.Printf("  %-9s none\n", "runtime")
 	}
@@ -98,6 +105,10 @@ func printRuntimeContainmentDetails(info *session.RuntimeContainment) {
 	if protocols := info.EffectiveProxyProtocols(); len(protocols) > 0 {
 		fmt.Printf("             Proxy surface: %s\n", strings.Join(protocols, ", "))
 	}
+	fmt.Printf("             Policy size: %d host(s), %d destination(s)\n",
+		info.EffectiveAllowedHostCount(),
+		info.EffectiveAllowedDestinationCount(),
+	)
 	if len(info.AllowedHosts) > 0 {
 		fmt.Printf("             Egress allowlist: %s\n", strings.Join(info.AllowedHosts, ", "))
 	}
@@ -109,5 +120,20 @@ func printRuntimeContainmentDetails(info *session.RuntimeContainment) {
 	}
 	if len(info.ScrubbedEnvVars) > 0 {
 		fmt.Printf("             Scrubbed host-control env: %s\n", strings.Join(info.ScrubbedEnvVars, ", "))
+	}
+}
+
+func printRuntimeContainmentReceipt(info *session.RuntimeContainment) {
+	if info == nil {
+		return
+	}
+	if info.AllowedEgressCount > 0 || info.BlockedEgressCount > 0 || info.LastBlockedDestination != "" {
+		fmt.Printf("             Egress events: %d allowed, %d blocked\n", info.AllowedEgressCount, info.BlockedEgressCount)
+		if info.LastBlockedDestination != "" {
+			fmt.Printf("             Last blocked destination: %s\n", info.LastBlockedDestination)
+		}
+	}
+	if !info.EndedAt.IsZero() {
+		fmt.Printf("             Last exit: %d at %s\n", info.ExitCode, info.EndedAt.Format(time.RFC3339))
 	}
 }

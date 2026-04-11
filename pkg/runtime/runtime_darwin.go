@@ -75,30 +75,36 @@ func runAgentDarwin(projectRoot, bin string, opts Options) (int, error) {
 		return 0, err
 	}
 	runtimeInfo := &session.RuntimeContainment{
-		AgentID:             string(opts.Agent.ID()),
-		Mode:                ContainmentModeDarwinProxy,
-		ProxyURL:            proxy.URL(),
-		SOCKSProxyURL:       proxy.SOCKSURL(),
-		ProxyProtocols:      []string{"http-connect", "socks5"},
-		AllowedHosts:        append([]string(nil), allowedHosts...),
-		AllowedDestinations: append([]string(nil), allowedDestinations...),
-		ScrubbedEnvVars:     append([]string(nil), scrubbedEnv...),
-		ShadowStateHome:     stateHome,
-		StartedAt:           time.Now(),
-		HeartbeatAt:         time.Now(),
-		LauncherPID:         os.Getpid(),
-		AgentPID:            cmd.Process.Pid,
+		AgentID:                 string(opts.Agent.ID()),
+		Mode:                    ContainmentModeDarwinProxy,
+		ProxyURL:                proxy.URL(),
+		SOCKSProxyURL:           proxy.SOCKSURL(),
+		ProxyProtocols:          []string{"http-connect", "socks5"},
+		AllowedHosts:            append([]string(nil), allowedHosts...),
+		AllowedDestinations:     append([]string(nil), allowedDestinations...),
+		AllowedHostCount:        len(allowedHosts),
+		AllowedDestinationCount: len(allowedDestinations),
+		ScrubbedEnvVars:         append([]string(nil), scrubbedEnv...),
+		ShadowStateHome:         stateHome,
+		StartedAt:               time.Now(),
+		HeartbeatAt:             time.Now(),
+		LauncherPID:             os.Getpid(),
+		AgentPID:                cmd.Process.Pid,
 	}
 	if err := persistRuntimeContainment(projectRoot, runtimeInfo, cmd); err != nil {
 		return 0, err
 	}
-	defer session.RemoveRuntimeContainment(projectRoot)
 
 	stopHeartbeat := startRuntimeHeartbeat(projectRoot)
 	defer stopHeartbeat()
 
-	if err := cmd.Wait(); err != nil {
-		return ClassifyWrappedAgentExit(err)
+	exitCode, err := ClassifyWrappedAgentExit(cmd.Wait())
+	if err != nil {
+		return 0, err
 	}
-	return 0, nil
+	applyProxyReceipt(runtimeInfo, proxy)
+	if err := finalizeRuntimeContainment(projectRoot, runtimeInfo, exitCode); err != nil {
+		return 0, err
+	}
+	return exitCode, nil
 }
