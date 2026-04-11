@@ -27,13 +27,15 @@ import (
 // is true and we mark the ledger Entry with Sensitivity="secret". The
 // telemetry exporter then hashes Target via RedactTarget before emitting
 // to OTLP, so raw sensitive paths never leave the host even on clean
-// allow-path reads.
+// allow-path reads. Secret-session context is already exported separately
+// via the sir.session.secret OTLP attribute, so we intentionally do NOT
+// over-broaden the per-entry sensitivity label to the whole session.
 //
-// This trace is additive only on non-alert paths. When an alert entry
-// (credential_in_output, mcp_credential_leak, mcp_injection,
-// sentinel_mutation) already fired for the same tool call, the caller
-// suppresses the tool_trace write — the alert entry already carries the
-// redacted evidence, and duplicating it is noise.
+// This trace is additive only on non-alert paths. When any alert-path
+// ledger entry (credential_in_output, mcp_credential_leak, mcp_injection,
+// sentinel_mutation) was successfully appended for the same tool call,
+// the caller suppresses the tool_trace write — the alert entry already
+// carries the redacted evidence and duplicating it is noise.
 func applyPostEvaluateAllowTrace(payload *PostHookPayload, state *session.State, projectRoot string, ag agent.Agent, sensitiveTarget bool) {
 	if !EnvLogToolContent() {
 		return
@@ -55,7 +57,7 @@ func applyPostEvaluateAllowTrace(payload *PostHookPayload, state *session.State,
 	}
 
 	entry := toolTraceEntry(payload, target, evidence)
-	if sensitiveTarget || state.SecretSession {
+	if sensitiveTarget {
 		entry.Sensitivity = "secret"
 	}
 	if err := ledger.Append(projectRoot, entry); err != nil {

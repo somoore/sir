@@ -146,6 +146,8 @@ func postEvaluatePayload(payload *PostHookPayload, l *lease.Lease, state *sessio
 			entry := sentinelMutationEntry(payload, state.PendingInstall.Command, changed)
 			if err := ledger.Append(projectRoot, entry); err != nil {
 				fmt.Fprintf(os.Stderr, "sir: ledger append error: %v\n", err)
+			} else {
+				alertFired = true
 			}
 			emitTelemetryEvent(entry, state, ag)
 		}
