@@ -257,3 +257,88 @@ func TestSessionEnd_PostureSweep_NoDriftProducesNoAlert(t *testing.T) {
 		}
 	}
 }
+
+// TestSessionEnd_PostureSweep_UsesGlobalGeminiSettingsNotProjectShadow proves
+// the terminal sweep hashes ~/.gemini/settings.json, not a project-local
+// shadow at .gemini/settings.json. A tampered global Gemini config must be
+// detected even if the project tree contains a different file at the same
+// relative path.
+func TestSessionEnd_PostureSweep_UsesGlobalGeminiSettingsNotProjectShadow(t *testing.T) {
+	projectRoot := t.TempDir()
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	projectShadow := filepath.Join(projectRoot, ".gemini", "settings.json")
+	globalGemini := filepath.Join(tmpHome, ".gemini", "settings.json")
+	for _, path := range []string{projectShadow, globalGemini} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
+		}
+	}
+	if err := os.WriteFile(projectShadow, []byte(`{"hooks":{"BeforeTool":"project-shadow"}}`), 0o644); err != nil {
+		t.Fatalf("write project shadow: %v", err)
+	}
+	if err := os.WriteFile(globalGemini, []byte(`{"hooks":{"BeforeTool":"global-original"}}`), 0o644); err != nil {
+		t.Fatalf("write global gemini: %v", err)
+	}
+
+	l := lease.DefaultLease()
+	l.PostureFiles = []string{".gemini/settings.json"}
+	stateDir := session.StateDir(projectRoot)
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatalf("mkdir state: %v", err)
+	}
+	leaseBytes, err := json.Marshal(l)
+	if err != nil {
+		t.Fatalf("marshal lease: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "lease.json"), leaseBytes, 0o600); err != nil {
+		t.Fatalf("write lease: %v", err)
+	}
+
+	state := session.NewState(projectRoot)
+	state.PostureHashes = HashSentinelFiles(projectRoot, l.PostureFiles)
+	if err := state.Save(); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+
+	if err := os.WriteFile(globalGemini, []byte(`{"hooks":{"BeforeTool":"global-tampered"}}`), 0o644); err != nil {
+		t.Fatalf("tamper global gemini: %v", err)
+	}
+
+	beforeEntries, err := ledger.ReadAll(projectRoot)
+	if err != nil {
+		t.Fatalf("read ledger before: %v", err)
+	}
+	beforeCount := len(beforeEntries)
+
+	if err := runSessionTerminalPostureSweep(projectRoot); err != nil {
+		t.Fatalf("runSessionTerminalPostureSweep: %v", err)
+	}
+
+	afterEntries, err := ledger.ReadAll(projectRoot)
+	if err != nil {
+		t.Fatalf("read ledger after: %v", err)
+	}
+	var foundAlert bool
+	for _, e := range afterEntries[beforeCount:] {
+		if e.Verb != "posture_change" {
+			continue
+		}
+		if e.Target != ".gemini/settings.json" {
+			t.Fatalf("posture_change target = %q, want .gemini/settings.json", e.Target)
+		}
+		foundAlert = true
+	}
+	if !foundAlert {
+		t.Fatal("session sweep did not detect Gemini drift; likely hashed the project-local shadow path")
+	}
+
+	projectShadowAfter, err := os.ReadFile(projectShadow)
+	if err != nil {
+		t.Fatalf("read project shadow: %v", err)
+	}
+	if string(projectShadowAfter) != `{"hooks":{"BeforeTool":"project-shadow"}}` {
+		t.Fatalf("project-local shadow was modified unexpectedly: %s", projectShadowAfter)
+	}
+}
