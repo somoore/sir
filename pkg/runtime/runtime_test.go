@@ -331,14 +331,14 @@ while [ ! -f "$release_path" ]; do sleep 0.05; done
 
 	var receipt *session.RuntimeContainment
 	for time.Now().Before(deadline) {
-		receipt, err = session.LoadLastRuntimeContainment(projectRoot)
+		receipt, err = session.LoadRuntimeContainment(projectRoot)
 		if err == nil && receipt != nil && receipt.AgentPID > 0 {
 			break
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
 	if err != nil || receipt == nil {
-		t.Fatalf("load runtime receipt: %v", err)
+		t.Fatalf("load active runtime receipt: %v", err)
 	}
 	if receipt.Mode != ContainmentModeLinuxNamespace {
 		t.Fatalf("runtime mode = %q, want %q", receipt.Mode, ContainmentModeLinuxNamespace)
@@ -368,6 +368,16 @@ while [ ! -f "$release_path" ]; do sleep 0.05; done
 	}
 	if result.exitCode != 0 {
 		t.Fatalf("expected Linux launcher to succeed, exit=%d output=%s", result.exitCode, string(rawProof))
+	}
+	finalReceipt, err := session.LoadLastRuntimeContainment(projectRoot)
+	if err != nil {
+		t.Fatalf("load final runtime receipt: %v", err)
+	}
+	if finalReceipt.Mode != ContainmentModeLinuxNamespace {
+		t.Fatalf("final runtime mode = %q, want %q", finalReceipt.Mode, ContainmentModeLinuxNamespace)
+	}
+	if finalReceipt.AgentPID != receipt.AgentPID {
+		t.Fatalf("final runtime AgentPID = %d, want %d", finalReceipt.AgentPID, receipt.AgentPID)
 	}
 }
 
