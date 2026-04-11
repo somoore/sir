@@ -136,15 +136,8 @@ func (m SupportManifest) featureFlagRow() string {
 		m.RequiredFeatureFlag)
 }
 
-// RenderSupportDocBlock renders the generated support block for one agent doc.
-func RenderSupportDocBlock(id AgentID) string {
-	m, ok := SupportManifestForID(id)
-	if !ok {
-		return ""
-	}
+func renderSupportMatrixTable(m SupportManifest, includeFeatureFlag bool) string {
 	var b strings.Builder
-	b.WriteString(m.StatusHeading())
-	b.WriteString("\n\n")
 	b.WriteString("| Surface | Status | Notes |\n")
 	b.WriteString("|---|---|---|\n")
 	b.WriteString(fmt.Sprintf("| Hook events wired | ✅ %d events | %s |\n",
@@ -155,22 +148,12 @@ func RenderSupportDocBlock(id AgentID) string {
 	default:
 		b.WriteString("| Tool-path coverage | ✅ Full | File IFC labeling, shell classification, MCP scanning, and credential output scanning all run on the hooked tool path. |\n")
 	}
-	if row := m.featureFlagRow(); row != "" {
-		b.WriteString(row)
+	if includeFeatureFlag {
+		if row := m.featureFlagRow(); row != "" {
+			b.WriteString(row)
+		}
 	}
-	for _, key := range []SupportSurfaceKey{
-		SurfaceInteractiveApproval,
-		SurfaceFileReadIFC,
-		SurfaceFileWriteIFC,
-		SurfaceShellClassification,
-		SurfaceMCPToolHooks,
-		SurfaceSubagentStart,
-		SurfaceConfigChange,
-		SurfaceInstructionsLoaded,
-		SurfaceElicitation,
-		SurfaceSessionSweep,
-	} {
-		surface := m.surface(key)
+	for _, surface := range m.Surfaces {
 		status := "❌ No"
 		if surface.Supported {
 			status = "✅ Yes"
@@ -178,6 +161,29 @@ func RenderSupportDocBlock(id AgentID) string {
 		b.WriteString(fmt.Sprintf("| %s | %s | %s |\n", surface.Title, status, surface.Notes))
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// RenderSupportDocBlock renders the generated support block for one agent doc.
+func RenderSupportDocBlock(id AgentID) string {
+	m, ok := SupportManifestForID(id)
+	if !ok {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(m.StatusHeading())
+	b.WriteString("\n\n")
+	b.WriteString(renderSupportMatrixTable(m, true))
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// RenderClaudeSupportMatrixBlock renders the generated Claude-specific support
+// matrix used by the hooks integration doc.
+func RenderClaudeSupportMatrixBlock() string {
+	m, ok := SupportManifestForID(Claude)
+	if !ok {
+		return ""
+	}
+	return renderSupportMatrixTable(m, false)
 }
 
 func renderSupportOverviewLine(m SupportManifest) string {

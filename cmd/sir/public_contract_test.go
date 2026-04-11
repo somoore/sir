@@ -90,6 +90,7 @@ func TestPublicContractParity(t *testing.T) {
 		requireGeneratedBlock(t, root, "README.md", "GENERATED SUPPORT SUMMARY", agent.RenderReadmeSupportBlock())
 		requireGeneratedBlock(t, root, "docs/user/faq.md", "GENERATED SUPPORT FAQ", agent.RenderFAQSupportBlock())
 		requireGeneratedBlock(t, root, "docs/research/sir-threat-model.md", "GENERATED SUPPORT SCOPE", agent.RenderThreatModelScopeBlock())
+		requireGeneratedBlock(t, root, "docs/user/claude-code-hooks-integration.md", "GENERATED CLAUDE SUPPORT MATRIX", agent.RenderClaudeSupportMatrixBlock())
 		requireGeneratedBlock(t, root, "docs/user/gemini-support.md", "GENERATED SUPPORT DOC", agent.RenderSupportDocBlock(agent.Gemini))
 		requireGeneratedBlock(t, root, "docs/user/codex-support.md", "GENERATED SUPPORT DOC", agent.RenderSupportDocBlock(agent.Codex))
 		requireContainsFile(t, root, "docs/user/claude-code-hooks-integration.md", "**Gemini CLI 0.36.0+ with near-parity support**", "Claude hooks integration Gemini tier")

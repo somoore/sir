@@ -11,16 +11,22 @@ Other agents are narrower:
 
 Claude Code exposes the richest hook surface sir supports today:
 
-- `SessionStart`
-- `UserPromptSubmit`
-- `InstructionsLoaded`
-- `PreToolUse`
-- `PostToolUse`
-- `SubagentStart`
-- `ConfigChange`
-- `Elicitation`
-- `Stop`
-- `SessionEnd`
+<!-- BEGIN GENERATED CLAUDE SUPPORT MATRIX -->
+| Surface | Status | Notes |
+|---|---|---|
+| Hook events wired | ✅ 10 events | PreToolUse, PostToolUse, SubagentStart, UserPromptSubmit, SessionStart, ConfigChange, InstructionsLoaded, Stop, SessionEnd, Elicitation |
+| Tool-path coverage | ✅ Full | File IFC labeling, shell classification, MCP scanning, and credential output scanning all run on the hooked tool path. |
+| Interactive approvals | ✅ Yes | Native ask/allow/deny responses are preserved. |
+| File-read IFC labeling | ✅ Yes | Sensitive reads are labeled before execution via Claude's native Read/Edit hook path. |
+| File-write pre-gating | ✅ Yes | Write/Edit posture changes are gated before the write executes. |
+| Shell classification | ✅ Yes | Bash commands are classified for egress, DNS, persistence, sudo, and install risk. |
+| MCP tool hooks | ✅ Yes | sir sees both MCP arguments and MCP responses on this agent. |
+| Delegation gating | ✅ Yes | Delegation policy is enforced at SubagentStart. |
+| Config change detection | ✅ Yes | Mid-session hook config edits are detected when they happen. |
+| InstructionsLoaded scanning | ✅ Yes | Context files are scanned when the agent loads them. |
+| Elicitation interception | ✅ Yes | Developer-facing permission prompts are scanned before display. |
+| Terminal posture sweep | ✅ Yes | SessionEnd closes single-turn blind spots with one last sentinel sweep. |
+<!-- END GENERATED CLAUDE SUPPORT MATRIX -->
 
 That gives sir native interactive approval, full tool-path mediation, lifecycle-aware posture checks, and the cleanest investigation trail.
 
