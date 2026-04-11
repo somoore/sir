@@ -7,13 +7,17 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Status: experimental](https://img.shields.io/badge/status-experimental-orange)](#hard-limits)
 
-sir is a security runtime for **Claude Code**, **Gemini CLI**, and **Codex**. Traditional sandboxes constrain a process from below: syscalls, filesystem jails, namespaces. sir constrains the *agent* from above. It intercepts tool calls at the hook layer, decides allow / ask / deny against a local policy oracle, and writes every decision to a hash-chained ledger.
+Your AI coding agent can read `.env`, run shell, call MCP servers, and push code — all in the same session. sir puts a local policy checkpoint at every tool call, uses information flow control to track secret taint across operations, and stops the dangerous transitions before they run. Install once, then use **Claude Code**, **Gemini CLI**, or **Codex** exactly as you do today.
 
 ## What it is
 
-- Local enforcement, not a hosted security service. No daemon. No phone-home. No external dependency on the normal path.
-- Go CLI (`sir`) plus a zero-dependency Rust policy oracle (`mister-core`).
-- Hook-mediated allow / ask / deny decisions, tamper detection with auto-restore, and a verifiable append-only ledger.
+sir is a local runtime with two moving parts and an audit trail.
+
+- **Go CLI (`sir`)** — collects facts on every tool call, manages session state, writes the ledger.
+- **Rust policy oracle (`mister-core`)** — zero-dependency, zero-unsafe. Decides allow / ask / deny.
+- **Hash-chained ledger** — append-only, verifiable with `sir log verify`.
+
+No daemon. No phone-home. No external dependency on the normal path.
 
 ```mermaid
 flowchart LR
@@ -26,10 +30,10 @@ flowchart LR
 
 ## Why use sir
 
-- Agents routinely touch secrets (`.env`, cloud credentials, SSH keys) in the same session where they run shell and push code. sir uses information flow control (IFC) to track that taint through everything the agent writes, commits, or tries to push.
-- MCP servers are a prompt-injection surface. sir scans both MCP arguments and responses, taints untrusted servers, and requires re-approval after a hit.
-- Provider logs stop at the governance layer. sir writes a local, tamper-evident audit trail of what the agent actually did on your machine.
-- Design rule: quiet on normal coding, loud on dangerous transitions. Reads, edits, tests, commits, and loopback traffic stay silent. Only external network, secret egress, posture tampering, and MCP injection trigger prompts or denials.
+- **Secrets and taint propagation.** Agents touch `.env`, cloud credentials, and SSH keys in the same session where they run shell and push code. Information flow control (IFC) tracks the taint: a secret read contaminates every downstream write, commit, or push attempt.
+- **MCP prompt injection.** MCP servers are an injection surface. sir scans MCP arguments for credentials and MCP responses for known injection patterns, taints untrusted servers, and forces re-approval after a hit.
+- **A local audit trail.** Provider logs stop at the governance layer. sir writes a tamper-evident record of what the agent actually did on your machine — the same chain a forensic review would trust.
+- **Quiet on normal coding, loud on dangerous transitions.** Reads, edits, tests, commits, and loopback traffic stay silent. Only external network, secret egress, posture tampering, and MCP injection trigger prompts or denials.
 
 ## Install in 3 minutes
 
@@ -72,7 +76,7 @@ sir install --agent claude
 
 ## Prove it works
 
-Run the baseline checks:
+Run the baseline checks — hooks installed, posture intact, ledger chain verifies:
 
 ```bash
 sir status       # hooks installed, session posture, last contained-run info
@@ -80,16 +84,21 @@ sir doctor       # hook subtree intact, ledger chain verifies, sentinels unchang
 sir log verify   # walk the hash chain and report first corruption, if any
 ```
 
-You want to see installed hooks, intact posture, and an intact ledger chain.
-
-Then trigger one real protection path:
+Then trigger one real protection path in your agent:
 
 1. Ask the agent to read `.env`.
-2. Approve it. sir labels the read as secret and marks the session tainted.
-3. In the same turn, ask it to `curl https://httpbin.org/get`.
-4. Run `sir explain --last`.
+2. Approve the prompt. sir labels the read as secret and marks the session tainted. You'll see:
 
-Expected result: sir asks before the read, blocks the external request, and records the full causal chain in the ledger. That is IFC taint propagation in action.
+   ```text
+   sir: credentials file read (.env). External network requests are now restricted.
+   sir: this is turn-scoped — clears when the agent finishes responding.
+   sir: to clear now: sir unlock
+   ```
+
+3. In the same turn, ask it to `curl https://httpbin.org/get`. sir denies the tool call before it runs.
+4. Run `sir explain --last` to see the full causal chain: which sensitive read tainted the session, which verb was attempted, and which rule blocked it.
+
+That is IFC taint propagation in action.
 
 ## Hard limits
 
@@ -97,7 +106,7 @@ sir is v1 and experimental. The following tradeoffs are shipped deliberately.
 
 - sir is strongest at the hook and tool boundary. It is not yet a complete host firewall.
 - `sir run <agent>` is a measured preview of below-hook containment (macOS `sandbox-exec`, Linux `unshare --net`). `sir status` reports launch mode, policy size, and blocked/allowed egress counts from the most recent contained run.
-- MCP injection detection is a set of roughly 50 regex patterns — an arms race by nature. Tainted servers require re-approval as the mitigation.
+- MCP injection detection is roughly 50 regex patterns — an arms race by nature. Tainted servers require re-approval as the mitigation.
 - Turn boundaries use a 30-second gap heuristic and are gameable in theory.
 - Shell classification is wrapper-aware and prefix-aware, not full POSIX semantics.
 - Default lease allows push to origin, commit, loopback, and sub-agent delegation. Tighten with `sir trust`, `sir allow-host`, or managed policy.
