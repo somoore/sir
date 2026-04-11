@@ -86,6 +86,509 @@ func TestDerivedLineageSurvivesTurnBoundaryAndGatesPushOrigin(t *testing.T) {
 	}
 }
 
+func TestDerivedLineageSurvivesArchiveRenameAndLinkLaundering(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	initGitRepo(t, projectRoot)
+
+	if err := os.MkdirAll(filepath.Join(projectRoot, "archive"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(projectRoot, "renamed"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(projectRoot, "linked"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	l := lease.DefaultLease()
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(projectRoot, ".env"), []byte("OPENAI_API_KEY=sk-secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, "report.txt"), []byte("copied secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := postEvaluatePayload(&PostHookPayload{
+		ToolName:  "Read",
+		ToolInput: map[string]interface{}{"file_path": ".env"},
+	}, l, state, projectRoot); err != nil {
+		t.Fatalf("postEvaluatePayload(read): %v", err)
+	}
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := postEvaluatePayload(&PostHookPayload{
+		ToolName:  "Write",
+		ToolInput: map[string]interface{}{"file_path": "report.txt"},
+	}, l, state, projectRoot); err != nil {
+		t.Fatalf("postEvaluatePayload(write): %v", err)
+	}
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	launderCmd := "cp report.txt archive/report.txt && mv archive/report.txt renamed/report.txt && ln -s ../renamed/report.txt linked/report.txt"
+	if _, err := postEvaluatePayload(&PostHookPayload{
+		ToolName:  "Bash",
+		ToolInput: map[string]interface{}{"command": launderCmd},
+	}, l, state, projectRoot); err != nil {
+		t.Fatalf("postEvaluatePayload(launder): %v", err)
+	}
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{"archive/report.txt", "renamed/report.txt", "linked/report.txt"} {
+		labels := state.DerivedLabelsForPath(ResolveTarget(projectRoot, path))
+		if len(labels) == 0 {
+			t.Fatalf("%s should preserve lineage after laundering, got none (tracked=%v)", path, state.DerivedPaths())
+		}
+	}
+
+	runGit(t, projectRoot, "add", "-A")
+	runGit(t, projectRoot, "commit", "-m", "add laundered report")
+
+	state.IncrementTurn()
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := session.Load(projectRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	intent := MapToolToIntent("Bash", map[string]interface{}{"command": "git push origin main"}, l)
+	labels := labelsForEvaluation(&HookPayload{ToolName: "Bash", ToolInput: map[string]interface{}{"command": "git push origin main"}}, intent, l, projectRoot)
+	req, err := buildCoreRequest(projectRoot, &HookPayload{ToolName: "Bash", ToolInput: map[string]interface{}{"command": "git push origin main"}}, intent, l, reloaded, labels)
+	if err != nil {
+		t.Fatalf("buildCoreRequest(push): %v", err)
+	}
+	if len(req.Intent.DerivedLabels) == 0 {
+		t.Fatalf("git push origin should surface derived labels after laundering, got none (labels=%v)", req.Intent.DerivedLabels)
+	}
+	if got := coreLabelsFromLineage(reloaded.DerivedLabelsForPaths(gitOutgoingPaths(projectRoot, "origin"))); len(got) == 0 {
+		t.Fatalf("gitOutgoingPaths should surface lineage after laundering, got none (paths=%v)", reloaded.DerivedPaths())
+	}
+}
+
+func TestBashLineageMutationUsesBasenameForDirectoryDestinations(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(projectRoot, "archive"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seedLineageRecord(t, state, projectRoot, "report.txt", session.LineageLabel{
+		Sensitivity: "secret",
+		Trust:       "trusted",
+		Provenance:  "user",
+	})
+	if got := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "report.txt")); len(got) != 1 {
+		t.Fatalf("seeded report.txt labels = %+v, want 1", got)
+	}
+
+	propagateBashLineageMutation(projectRoot, state, &PostHookPayload{
+		ToolName:  "Bash",
+		ToolInput: map[string]interface{}{"command": "cp report.txt archive/"},
+	})
+
+	labels := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "archive/report.txt"))
+	if len(labels) != 1 {
+		t.Fatalf("archive/report.txt labels = %+v, want 1 copied label", labels)
+	}
+	if labels[0].Sensitivity != "secret" || labels[0].Trust != "trusted" || labels[0].Provenance != "user" {
+		t.Fatalf("archive/report.txt labels = %+v, want copied source lineage", labels)
+	}
+	if got := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "archive")); len(got) != 0 {
+		t.Fatalf("directory path itself should not carry lineage, got %+v", got)
+	}
+}
+
+func TestBashLineageMutationParsesTargetDirectoryFlags(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, dir := range []string{"archive", "renamed", "linked"} {
+		if err := os.MkdirAll(filepath.Join(projectRoot, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	seedLineageRecord(t, state, projectRoot, "report.txt", session.LineageLabel{
+		Sensitivity: "secret",
+		Trust:       "trusted",
+		Provenance:  "user",
+	})
+
+	cases := []struct {
+		name     string
+		command  string
+		destPath string
+	}{
+		{
+			name:     "cp short target-directory",
+			command:  "cp -t archive report.txt",
+			destPath: "archive/report.txt",
+		},
+		{
+			name:     "cp long target-directory equals",
+			command:  "cp --target-directory=renamed report.txt",
+			destPath: "renamed/report.txt",
+		},
+		{
+			name:     "mv long target-directory space",
+			command:  "mv --target-directory linked report.txt",
+			destPath: "linked/report.txt",
+		},
+		{
+			name:     "ln combined target-directory",
+			command:  "ln -s -t linked ../report.txt",
+			destPath: "linked/report.txt",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			localState := session.NewState(projectRoot)
+			if err := localState.Save(); err != nil {
+				t.Fatal(err)
+			}
+			seedLineageRecord(t, localState, projectRoot, "report.txt", session.LineageLabel{
+				Sensitivity: "secret",
+				Trust:       "trusted",
+				Provenance:  "user",
+			})
+
+			propagateBashLineageMutation(projectRoot, localState, &PostHookPayload{
+				ToolName:  "Bash",
+				ToolInput: map[string]interface{}{"command": tc.command},
+			})
+
+			labels := localState.DerivedLabelsForPath(ResolveTarget(projectRoot, tc.destPath))
+			if len(labels) != 1 {
+				t.Fatalf("%s labels = %+v, want copied source lineage", tc.destPath, labels)
+			}
+			if labels[0].Sensitivity != "secret" || labels[0].Trust != "trusted" || labels[0].Provenance != "user" {
+				t.Fatalf("%s labels = %+v, want copied source lineage", tc.destPath, labels)
+			}
+		})
+	}
+}
+
+func TestBashLineageMutationRespectsDoubleDashForDashPrefixedOperands(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(projectRoot, "archive"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("mv dash-prefixed destination", func(t *testing.T) {
+		localState := session.NewState(projectRoot)
+		if err := localState.Save(); err != nil {
+			t.Fatal(err)
+		}
+		seedLineageRecord(t, localState, projectRoot, "report.txt", session.LineageLabel{
+			Sensitivity: "secret",
+			Trust:       "trusted",
+			Provenance:  "user",
+		})
+
+		propagateBashLineageMutation(projectRoot, localState, &PostHookPayload{
+			ToolName:  "Bash",
+			ToolInput: map[string]interface{}{"command": "mv report.txt -- -tainted.txt"},
+		})
+
+		labels := localState.DerivedLabelsForPath(ResolveTarget(projectRoot, "-tainted.txt"))
+		if len(labels) != 1 {
+			t.Fatalf("-tainted.txt labels = %+v, want copied source lineage", labels)
+		}
+		if labels[0].Sensitivity != "secret" || labels[0].Trust != "trusted" || labels[0].Provenance != "user" {
+			t.Fatalf("-tainted.txt labels = %+v, want copied source lineage", labels)
+		}
+	})
+
+	t.Run("cp dash-prefixed source", func(t *testing.T) {
+		localState := session.NewState(projectRoot)
+		if err := localState.Save(); err != nil {
+			t.Fatal(err)
+		}
+		seedLineageRecord(t, localState, projectRoot, "-tainted.txt", session.LineageLabel{
+			Sensitivity: "secret",
+			Trust:       "trusted",
+			Provenance:  "user",
+		})
+
+		propagateBashLineageMutation(projectRoot, localState, &PostHookPayload{
+			ToolName:  "Bash",
+			ToolInput: map[string]interface{}{"command": "cp -- -tainted.txt archive/"},
+		})
+
+		labels := localState.DerivedLabelsForPath(ResolveTarget(projectRoot, "archive/-tainted.txt"))
+		if len(labels) != 1 {
+			t.Fatalf("archive/-tainted.txt labels = %+v, want copied source lineage", labels)
+		}
+		if labels[0].Sensitivity != "secret" || labels[0].Trust != "trusted" || labels[0].Provenance != "user" {
+			t.Fatalf("archive/-tainted.txt labels = %+v, want copied source lineage", labels)
+		}
+	})
+}
+
+func TestBashLineageMutationMergesExistingDestinationLineage(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(projectRoot, "archive"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seedLineageRecord(t, state, projectRoot, "report.txt", session.LineageLabel{
+		Sensitivity: "secret",
+		Trust:       "trusted",
+		Provenance:  "user",
+	})
+	state.IncrementTurn()
+	seedLineageRecord(t, state, projectRoot, "archive/report.txt", session.LineageLabel{
+		Sensitivity: "internal",
+		Trust:       "verified_internal",
+		Provenance:  "agent",
+	})
+	if got := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "report.txt")); len(got) != 1 {
+		t.Fatalf("seeded report.txt labels = %+v, want 1", got)
+	}
+	if got := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "archive/report.txt")); len(got) != 1 {
+		t.Fatalf("seeded archive/report.txt labels = %+v, want 1", got)
+	}
+
+	propagateBashLineageMutation(projectRoot, state, &PostHookPayload{
+		ToolName:  "Bash",
+		ToolInput: map[string]interface{}{"command": "cp report.txt archive/"},
+	})
+
+	labels := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "archive/report.txt"))
+	if len(labels) != 2 {
+		t.Fatalf("archive/report.txt labels = %+v, want merged source and destination lineage", labels)
+	}
+	if !hasLineageLabel(labels, session.LineageLabel{Sensitivity: "secret", Trust: "trusted", Provenance: "user"}) {
+		t.Fatalf("archive/report.txt missing source lineage after merge: %+v", labels)
+	}
+	if !hasLineageLabel(labels, session.LineageLabel{Sensitivity: "internal", Trust: "verified_internal", Provenance: "agent"}) {
+		t.Fatalf("archive/report.txt missing destination lineage after merge: %+v", labels)
+	}
+	record := state.DerivedFileLineage[ResolveTarget(projectRoot, "archive/report.txt")]
+	if len(record.EvidenceIDs) != 2 {
+		t.Fatalf("archive/report.txt evidence IDs = %v, want merged evidence IDs", record.EvidenceIDs)
+	}
+}
+
+func TestBashLineageMutationSplitsMultilineScripts(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, dir := range []string{"archive", "renamed", "linked"} {
+		if err := os.MkdirAll(filepath.Join(projectRoot, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	seedLineageRecord(t, state, projectRoot, "report.txt", session.LineageLabel{
+		Sensitivity: "secret",
+		Trust:       "trusted",
+		Provenance:  "user",
+	})
+
+	script := "cp report.txt archive/report.txt\nmv archive/report.txt renamed/report.txt\nln -s ../renamed/report.txt linked/report.txt"
+	propagateBashLineageMutation(projectRoot, state, &PostHookPayload{
+		ToolName:  "Bash",
+		ToolInput: map[string]interface{}{"command": script},
+	})
+
+	for _, path := range []string{"archive/report.txt", "renamed/report.txt", "linked/report.txt"} {
+		labels := state.DerivedLabelsForPath(ResolveTarget(projectRoot, path))
+		if len(labels) != 1 {
+			t.Fatalf("%s labels = %+v, want copied lineage from multiline script", path, labels)
+		}
+		if labels[0].Sensitivity != "secret" || labels[0].Trust != "trusted" || labels[0].Provenance != "user" {
+			t.Fatalf("%s labels = %+v, want copied lineage from multiline script", path, labels)
+		}
+	}
+}
+
+func TestBashLineageMutationResolvesRelativeSymlinkSourcesAgainstLinkParent(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, dir := range []string{"renamed", "linked"} {
+		if err := os.MkdirAll(filepath.Join(projectRoot, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	seedLineageRecord(t, state, projectRoot, "renamed/report.txt", session.LineageLabel{
+		Sensitivity: "secret",
+		Trust:       "trusted",
+		Provenance:  "user",
+	})
+
+	propagateBashLineageMutation(projectRoot, state, &PostHookPayload{
+		ToolName:  "Bash",
+		ToolInput: map[string]interface{}{"command": "ln -s ../renamed/report.txt linked/report.txt"},
+	})
+
+	labels := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "linked/report.txt"))
+	if len(labels) != 1 {
+		t.Fatalf("linked/report.txt labels = %+v, want copied source lineage", labels)
+	}
+	if labels[0].Sensitivity != "secret" || labels[0].Trust != "trusted" || labels[0].Provenance != "user" {
+		t.Fatalf("linked/report.txt labels = %+v, want copied source lineage", labels)
+	}
+}
+
+func TestBashLineageMutationSplitsShellWrapperInnerScriptsBeforeParsing(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, dir := range []string{"archive", "renamed", "linked"} {
+		if err := os.MkdirAll(filepath.Join(projectRoot, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	seedLineageRecord(t, state, projectRoot, "report.txt", session.LineageLabel{
+		Sensitivity: "secret",
+		Trust:       "trusted",
+		Provenance:  "user",
+	})
+
+	wrapped := `bash -c 'cp report.txt archive/report.txt && mv archive/report.txt renamed/report.txt; ln -s ../renamed/report.txt linked/report.txt
+cp renamed/report.txt archive/final.txt'`
+	propagateBashLineageMutation(projectRoot, state, &PostHookPayload{
+		ToolName:  "Bash",
+		ToolInput: map[string]interface{}{"command": wrapped},
+	})
+
+	for _, path := range []string{"archive/report.txt", "renamed/report.txt", "linked/report.txt", "archive/final.txt"} {
+		labels := state.DerivedLabelsForPath(ResolveTarget(projectRoot, path))
+		if len(labels) != 1 {
+			t.Fatalf("%s labels = %+v, want copied lineage from wrapped inner script", path, labels)
+		}
+		if labels[0].Sensitivity != "secret" || labels[0].Trust != "trusted" || labels[0].Provenance != "user" {
+			t.Fatalf("%s labels = %+v, want copied lineage from wrapped inner script", path, labels)
+		}
+	}
+}
+
+func TestBashLineageMutationPropagatesAllMultiSourceCopies(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(projectRoot, "archive"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seedLineageRecord(t, state, projectRoot, "clean.txt", session.LineageLabel{
+		Sensitivity: "public",
+		Trust:       "trusted",
+		Provenance:  "user",
+	})
+	state.IncrementTurn()
+	seedLineageRecord(t, state, projectRoot, "tainted.txt", session.LineageLabel{
+		Sensitivity: "secret",
+		Trust:       "trusted",
+		Provenance:  "user",
+	})
+
+	propagateBashLineageMutation(projectRoot, state, &PostHookPayload{
+		ToolName:  "Bash",
+		ToolInput: map[string]interface{}{"command": "cp clean.txt tainted.txt archive/ >/dev/null 2>&1"},
+	})
+
+	if got := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "archive/clean.txt")); len(got) != 1 {
+		t.Fatalf("archive/clean.txt labels = %+v, want copied clean lineage", got)
+	}
+	if got := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "archive/tainted.txt")); len(got) != 1 {
+		t.Fatalf("archive/tainted.txt labels = %+v, want copied tainted lineage", got)
+	}
+	if got := state.DerivedLabelsForPath(ResolveTarget(projectRoot, ">/dev/null")); len(got) != 0 {
+		t.Fatalf("redirection token should be ignored, got lineage at %q: %+v", ">/dev/null", got)
+	}
+}
+
+func TestBashLineageMutationPropagatesAllMultiSourceLinks(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(projectRoot, "linked"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seedLineageRecord(t, state, projectRoot, "clean.txt", session.LineageLabel{
+		Sensitivity: "public",
+		Trust:       "trusted",
+		Provenance:  "user",
+	})
+	state.IncrementTurn()
+	seedLineageRecord(t, state, projectRoot, "tainted.txt", session.LineageLabel{
+		Sensitivity: "secret",
+		Trust:       "trusted",
+		Provenance:  "user",
+	})
+
+	propagateBashLineageMutation(projectRoot, state, &PostHookPayload{
+		ToolName:  "Bash",
+		ToolInput: map[string]interface{}{"command": "ln clean.txt tainted.txt linked/ >/dev/null"},
+	})
+
+	if got := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "linked/clean.txt")); len(got) != 1 {
+		t.Fatalf("linked/clean.txt labels = %+v, want copied clean lineage", got)
+	}
+	if got := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "linked/tainted.txt")); len(got) != 1 {
+		t.Fatalf("linked/tainted.txt labels = %+v, want copied tainted lineage", got)
+	}
+	if got := state.DerivedLabelsForPath(ResolveTarget(projectRoot, ">/dev/null")); len(got) != 0 {
+		t.Fatalf("redirection token should be ignored, got lineage at %q: %+v", ">/dev/null", got)
+	}
+}
+
 func TestGitOutgoingPathsWithoutUpstreamIncludesAllUnpushedCommits(t *testing.T) {
 	projectRoot := t.TempDir()
 	initGitRepo(t, projectRoot)
@@ -450,6 +953,21 @@ func forceLocalPolicyFallback(t *testing.T) {
 func containsPath(paths []string, want string) bool {
 	for _, path := range paths {
 		if path == want {
+			return true
+		}
+	}
+	return false
+}
+
+func seedLineageRecord(t *testing.T, state *session.State, projectRoot, path string, label session.LineageLabel) {
+	t.Helper()
+	state.RecordLineageEvidence("test", path, "high", []session.LineageLabel{label})
+	state.AttachActiveEvidenceToPath(ResolveTarget(projectRoot, path))
+}
+
+func hasLineageLabel(labels []session.LineageLabel, want session.LineageLabel) bool {
+	for _, label := range labels {
+		if label == want {
 			return true
 		}
 	}
