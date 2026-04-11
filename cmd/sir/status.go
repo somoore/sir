@@ -13,33 +13,83 @@ import (
 	"github.com/somoore/sir/pkg/session"
 )
 
+const statusSeparator = "----------------------------------------------"
+
+type statusSnapshot struct {
+	stateDir          string
+	activeStateDir    string
+	policy            *session.ManagedPolicy
+	statuses          []agentStatus
+	installed         bool
+	mcpReport         mcpInventoryReport
+	runtimeInspection *session.RuntimeContainmentInspection
+	runtimeErr        error
+	leasePath         string
+	leaseData         *lease.Lease
+	leaseErr          error
+	state             *session.State
+	sessionErr        error
+	ledgerCount       int
+	ledgerVerifyErr   error
+	operability       operabilitySnapshot
+}
+
 func cmdStatus(projectRoot string) {
-	stateDir := session.StateDir(projectRoot)
-	policy, err := loadManagedPolicyForCLI()
+	snapshot, err := buildStatusSnapshot(projectRoot)
 	if err != nil {
 		fatal("load managed policy: %v", err)
 	}
+	renderStatusSnapshot(snapshot)
+}
 
-	statuses := collectAgentStatus()
-	installed := anySirHooksRegistered(statuses)
-	mcpReport := discoverMCPInventory(projectRoot)
-	runtimeInspection, runtimeErr := inspectRuntimeContainment(projectRoot)
-	activeStateDir := stateDir
+func buildStatusSnapshot(projectRoot string) (statusSnapshot, error) {
+	snapshot := statusSnapshot{
+		stateDir:       session.StateDir(projectRoot),
+		activeStateDir: session.StateDir(projectRoot),
+	}
 
-	sep := "----------------------------------------------"
+	policy, err := loadManagedPolicyForCLI()
+	if err != nil {
+		return statusSnapshot{}, err
+	}
+	snapshot.policy = policy
+	snapshot.statuses = collectAgentStatus()
+	snapshot.installed = anySirHooksRegistered(snapshot.statuses)
+	snapshot.mcpReport = discoverMCPInventory(projectRoot)
+	snapshot.runtimeInspection, snapshot.runtimeErr = inspectRuntimeContainment(projectRoot)
 
-	if !installed {
-		fmt.Println(sep)
+	if !snapshot.installed {
+		return snapshot, nil
+	}
+
+	snapshot.leasePath = filepath.Join(snapshot.stateDir, "lease.json")
+	snapshot.leaseData, snapshot.leaseErr = lease.Load(snapshot.leasePath)
+	if snapshot.policy != nil {
+		snapshot.leaseData = snapshot.policy.ManagedLease
+		snapshot.leaseErr = nil
+	} else if snapshot.leaseErr != nil {
+		snapshot.leaseData = lease.DefaultLease()
+	}
+
+	snapshot.state, snapshot.activeStateDir, snapshot.sessionErr = session.LoadStateForRuntimeInspection(projectRoot, snapshot.runtimeInspection)
+	snapshot.ledgerCount, snapshot.ledgerVerifyErr = ledger.Verify(projectRoot)
+	snapshot.operability = inspectOperability(projectRoot, snapshot.state, snapshot.ledgerCount)
+	return snapshot, nil
+}
+
+func renderStatusSnapshot(snapshot statusSnapshot) {
+	if !snapshot.installed {
+		fmt.Println(statusSeparator)
 		fmt.Println("  install  NOT INSTALLED")
-		fmt.Println(sep)
-		printMCPStatus(mcpReport)
+		fmt.Println(statusSeparator)
+		printMCPStatus(snapshot.mcpReport)
 		fmt.Println("  Run 'sir install' to set up protection.")
 		return
 	}
 
-	fmt.Println(sep)
+	fmt.Println(statusSeparator)
 	fmt.Println("  Agents:")
-	for _, s := range statuses {
+	for _, s := range snapshot.statuses {
 		if !s.Installed {
 			fmt.Printf("    -  %-12s not detected\n", s.Agent.Name())
 			continue
@@ -58,43 +108,34 @@ func cmdStatus(projectRoot string) {
 			fmt.Printf("                    Missing: %s\n", strings.Join(s.Missing, ", "))
 		}
 	}
-	printStatusSupportWarnings(statuses)
+	printStatusSupportWarnings(snapshot.statuses)
 	fmt.Println()
 
-	printMCPStatus(mcpReport)
+	printMCPStatus(snapshot.mcpReport)
 
-	// Load lease
-	leasePath := filepath.Join(stateDir, "lease.json")
-	l, err := lease.Load(leasePath)
-	if policy != nil {
-		l = policy.ManagedLease
-		fmt.Printf("  %-9s active (%s via %s)\n", "managed", policy.PolicyVersion, policy.ManagedPolicySourcePath())
-	} else if err != nil {
-		l = lease.DefaultLease()
-		fmt.Printf("  %-9s %s (defaults — no lease file found)\n", "mode", l.Mode)
+	if snapshot.policy != nil {
+		fmt.Printf("  %-9s active (%s via %s)\n", "managed", snapshot.policy.PolicyVersion, snapshot.policy.ManagedPolicySourcePath())
+	} else if snapshot.leaseErr != nil {
+		fmt.Printf("  %-9s %s (defaults — no lease file found)\n", "mode", snapshot.leaseData.Mode)
 	} else {
-		fmt.Printf("  %-9s %s\n", "mode", l.Mode)
+		fmt.Printf("  %-9s %s\n", "mode", snapshot.leaseData.Mode)
 	}
-	if policy != nil && l != nil {
-		fmt.Printf("  %-9s %s (managed policy)\n", "mode", l.Mode)
+	if snapshot.policy != nil && snapshot.leaseData != nil {
+		fmt.Printf("  %-9s %s (managed policy)\n", "mode", snapshot.leaseData.Mode)
 	}
 
-	// Check session
-	var state *session.State
-	var sessionErr error
-	state, activeStateDir, sessionErr = loadRuntimeSessionState(projectRoot, runtimeInspection)
-	if sessionErr == nil {
-		shortID := state.SessionID
+	if snapshot.sessionErr == nil {
+		shortID := snapshot.state.SessionID
 		if len(shortID) > 8 {
 			shortID = shortID[:8]
 		}
-		fmt.Printf("  %-9s %s (started %s)\n", "session", shortID, state.StartedAt.Format("15:04:05"))
-		if state.DenyAll {
+		fmt.Printf("  %-9s %s (started %s)\n", "session", shortID, snapshot.state.StartedAt.Format("15:04:05"))
+		if snapshot.state.DenyAll {
 			fmt.Printf("  %-9s EMERGENCY — all tool calls blocked\n", "deny-all")
-			fmt.Printf("             Reason: %s\n", state.DenyAllReason)
+			fmt.Printf("             Reason: %s\n", snapshot.state.DenyAllReason)
 			fmt.Printf("             Fix:    sir doctor\n")
-		} else if state.SecretSession {
-			sinceFmt := state.SecretSessionSince.Format("15:04:05")
+		} else if snapshot.state.SecretSession {
+			sinceFmt := snapshot.state.SecretSessionSince.Format("15:04:05")
 			fmt.Printf("  %-9s ACTIVE — external egress blocked since %s\n", "secrets", sinceFmt)
 			fmt.Printf("             Run 'sir unlock' to restore network access.\n")
 		} else {
@@ -104,35 +145,32 @@ func cmdStatus(projectRoot string) {
 		fmt.Printf("  %-9s none\n", "session")
 		fmt.Printf("  %-9s none\n", "secrets")
 	}
-	if runtimeErr != nil {
-		fmt.Printf("  %-9s error: %v\n", "runtime", runtimeErr)
+	if snapshot.runtimeErr != nil {
+		fmt.Printf("  %-9s error: %v\n", "runtime", snapshot.runtimeErr)
 	} else {
-		printRuntimeContainmentStatus(runtimeInspection)
+		printRuntimeContainmentStatus(snapshot.runtimeInspection)
 	}
 
-	// Check ledger
-	count, verifyErr := ledger.Verify(projectRoot)
-	operability := inspectOperability(projectRoot, state, count)
-	if verifyErr != nil {
-		fmt.Printf("  %-9s %d entries  CHAIN BROKEN: %v (%s)\n", "ledger", count, verifyErr, formatBytes(operability.LedgerSize))
+	if snapshot.ledgerVerifyErr != nil {
+		fmt.Printf("  %-9s %d entries  CHAIN BROKEN: %v (%s)\n", "ledger", snapshot.ledgerCount, snapshot.ledgerVerifyErr, formatBytes(snapshot.operability.LedgerSize))
 	} else {
-		fmt.Printf("  %-9s %d entries  chain valid (%s)\n", "ledger", count, formatBytes(operability.LedgerSize))
+		fmt.Printf("  %-9s %d entries  chain valid (%s)\n", "ledger", snapshot.ledgerCount, formatBytes(snapshot.operability.LedgerSize))
 	}
-	if operability.LedgerWarn {
+	if snapshot.operability.LedgerWarn {
 		fmt.Printf("             Warning: ledger growth crossed the operability budget.\n")
 		fmt.Printf("             Fix: archive the project state if explain/status starts to feel slow.\n")
 	}
-	printStatusOperability(operability)
+	printStatusOperability(snapshot.operability)
 
-	fmt.Printf("  %-9s %s\n", "lease", leasePath)
-	fmt.Printf("  %-9s %s\n", "state", activeStateDir)
-	if runtimeErr == nil && runtimeInspection != nil && runtimeInspection.Info != nil {
-		fmt.Printf("  %-9s %s\n", "shadow", runtimeInspection.Info.ShadowStateHome)
+	fmt.Printf("  %-9s %s\n", "lease", snapshot.leasePath)
+	fmt.Printf("  %-9s %s\n", "state", snapshot.activeStateDir)
+	if snapshot.runtimeErr == nil && snapshot.runtimeInspection != nil && snapshot.runtimeInspection.Info != nil {
+		fmt.Printf("  %-9s %s\n", "shadow", snapshot.runtimeInspection.Info.ShadowStateHome)
 	}
 
-	fmt.Println(sep)
+	fmt.Println(statusSeparator)
 	fmt.Println("  Run 'sir why' to see the last decision.")
-	if sessionErr == nil && state.SecretSession {
+	if snapshot.sessionErr == nil && snapshot.state.SecretSession {
 		fmt.Println("  Run 'sir unlock' to lift the secret-session lock.")
 	}
 }

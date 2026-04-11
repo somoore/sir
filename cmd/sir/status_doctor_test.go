@@ -25,11 +25,28 @@ import (
 
 func TestCmdStatus_NotInstalled(t *testing.T) {
 	env := newTestEnv(t)
-	// Write settings without sir hooks
-	env.writeSettingsJSON(map[string]interface{}{})
+	env.writeSettingsJSON(map[string]interface{}{
+		"mcpServers": map[string]interface{}{
+			"raw-server": map[string]interface{}{
+				"command": "node",
+				"args":    []string{"raw.js"},
+			},
+		},
+	})
 
-	// Should not panic
-	cmdStatus(env.projectRoot)
+	out := captureStdout(t, func() {
+		cmdStatus(env.projectRoot)
+	})
+
+	installIdx := strings.Index(out, "  install  NOT INSTALLED")
+	mcpIdx := strings.Index(out, "  MCP:")
+	hintIdx := strings.Index(out, "  Run 'sir install' to set up protection.")
+	if installIdx < 0 || mcpIdx < 0 || hintIdx < 0 {
+		t.Fatalf("status output missing expected not-installed lines:\n%s", out)
+	}
+	if !(installIdx < mcpIdx && mcpIdx < hintIdx) {
+		t.Fatalf("not-installed output order changed:\n%s", out)
+	}
 }
 
 func TestCmdStatus_InstalledWithSession(t *testing.T) {
