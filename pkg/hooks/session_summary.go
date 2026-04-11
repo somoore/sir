@@ -69,11 +69,11 @@ func EvaluateSessionSummary(projectRoot string, ag agent.Agent) error {
 		return nil
 	}
 
-	// Compute stats scoped to the current session. If session state is
-	// unreadable (fresh project, first ever call) fall back to whole-ledger
-	// stats — same behaviour as before, only matters for projects that
-	// never had a session.json.
-	stats := computeSessionStats(entries, sessionStartFloor(projectRoot))
+	startedAt, err := sessionStartFloor(projectRoot, "session-summary")
+	if err != nil {
+		return err
+	}
+	stats := computeSessionStats(entries, startedAt)
 
 	// Write summary entry to ledger
 	summaryReason := fmt.Sprintf(
@@ -143,10 +143,13 @@ func computeSessionStats(entries []ledger.Entry, since time.Time) SessionStats {
 // session, or the zero time if session state cannot be loaded. The zero
 // time is a safe fallback: computeSessionStats treats it as "no filter"
 // and reverts to whole-ledger counting, which is the legacy behaviour.
-func sessionStartFloor(projectRoot string) time.Time {
-	state, err := session.Load(projectRoot)
-	if err != nil || state == nil {
-		return time.Time{}
+func sessionStartFloor(projectRoot, hookName string) (time.Time, error) {
+	state, err := loadOptionalLifecycleSession(projectRoot, hookName)
+	if err != nil {
+		return time.Time{}, err
 	}
-	return state.StartedAt
+	if state == nil {
+		return time.Time{}, nil
+	}
+	return state.StartedAt, nil
 }

@@ -77,15 +77,22 @@ func EvaluateElicitation(projectRoot string, ag agent.Agent) error {
 
 	// Raise posture under the session lock. Elicitation hooks can
 	// fire concurrently with a PreToolUse/PostToolUse handler on the
-	// same project, so a raw Load→mutate→Save would race. Errors
-	// loading a fresh session are tolerated here — if there's no
-	// session yet, there's nothing to raise posture on, and the
-	// ledger entry below still records the finding.
-	if updateErr := session.Update(projectRoot, func(state *session.State) error {
+	// same project, so a raw Load→mutate→Save would race. Missing
+	// sessions are bootstrapped; unreadable state is a hard failure.
+	lockErr := session.WithSessionLock(projectRoot, func() error {
+		l, err := loadLease(projectRoot)
+		if err != nil {
+			return fmt.Errorf("load lease: %w", err)
+		}
+		state, err := loadOrCreateSession(projectRoot, l)
+		if err != nil {
+			return fmt.Errorf("load session: %w", err)
+		}
 		state.RaisePosture(policy.PostureStateElevated)
-		return nil
-	}); updateErr != nil {
-		fmt.Fprintf(os.Stderr, "sir: elicitation posture update error: %v\n", updateErr)
+		return state.Save()
+	})
+	if lockErr != nil {
+		return fmt.Errorf("elicitation posture update: %w", lockErr)
 	}
 
 	// Log to ledger

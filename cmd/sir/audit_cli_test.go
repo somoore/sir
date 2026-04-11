@@ -8,6 +8,8 @@ import (
 
 	"github.com/somoore/sir/pkg/lease"
 	"github.com/somoore/sir/pkg/ledger"
+	"github.com/somoore/sir/pkg/posture"
+	"github.com/somoore/sir/pkg/session"
 )
 
 // -------------------------------------------------------------------
@@ -252,6 +254,120 @@ func TestCmdAllowRemote_DuplicateDetection(t *testing.T) {
 		}
 	}
 	t.Skip("origin not in default approved_remotes")
+}
+
+func TestUpdateProjectLeaseAndSessionBaseline_RefreshesActiveSessionHash(t *testing.T) {
+	env := newTestEnv(t)
+	env.writeDefaultLease()
+
+	state := session.NewState(env.projectRoot)
+	state.LeaseHash = "stale"
+	env.writeSession(state)
+
+	if err := updateProjectLeaseAndSessionBaseline(env.projectRoot, func(l *lease.Lease) error {
+		l.ApprovedHosts = append(l.ApprovedHosts, "example.internal")
+		return nil
+	}); err != nil {
+		t.Fatalf("updateProjectLeaseAndSessionBaseline: %v", err)
+	}
+
+	reloadedLease, err := lease.Load(env.leasePath)
+	if err != nil {
+		t.Fatalf("reload lease: %v", err)
+	}
+	found := false
+	for _, host := range reloadedLease.ApprovedHosts {
+		if host == "example.internal" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected updated lease to persist new approved host")
+	}
+
+	reloadedState, err := session.Load(env.projectRoot)
+	if err != nil {
+		t.Fatalf("reload session: %v", err)
+	}
+	wantHash, err := posture.HashLease(env.projectRoot)
+	if err != nil {
+		t.Fatalf("hash lease: %v", err)
+	}
+	if reloadedState.LeaseHash != wantHash {
+		t.Fatalf("LeaseHash = %q, want %q", reloadedState.LeaseHash, wantHash)
+	}
+}
+
+func TestUpdateProjectLeaseAndSessionBaseline_FailsClosedOnCorruptSession(t *testing.T) {
+	env := newTestEnv(t)
+	env.writeDefaultLease()
+
+	before, err := os.ReadFile(env.leasePath)
+	if err != nil {
+		t.Fatalf("read lease before update: %v", err)
+	}
+	if err := os.WriteFile(session.StatePath(env.projectRoot), []byte("{not valid json"), 0o600); err != nil {
+		t.Fatalf("write corrupt session: %v", err)
+	}
+
+	err = updateProjectLeaseAndSessionBaseline(env.projectRoot, func(l *lease.Lease) error {
+		l.ApprovedHosts = append(l.ApprovedHosts, "example.internal")
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected corrupt session to block lease/session baseline update")
+	}
+	if !strings.Contains(err.Error(), "load session for lease update") {
+		t.Fatalf("expected load session failure, got %v", err)
+	}
+
+	after, err := os.ReadFile(env.leasePath)
+	if err != nil {
+		t.Fatalf("read lease after failed update: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("lease.json should not change when the active session is corrupt")
+	}
+}
+
+func TestUpdateProjectLeaseAndSessionBaseline_RollsBackLeaseWhenSessionSaveFails(t *testing.T) {
+	env := newTestEnv(t)
+	env.writeDefaultLease()
+
+	state := session.NewState(env.projectRoot)
+	env.writeSession(state)
+
+	afterLeaseSaveForTest = func() {
+		if err := os.Remove(session.StatePath(env.projectRoot)); err != nil {
+			t.Fatalf("remove session file: %v", err)
+		}
+		if err := os.Mkdir(session.StatePath(env.projectRoot), 0o700); err != nil {
+			t.Fatalf("mkdir session path: %v", err)
+		}
+	}
+	t.Cleanup(func() { afterLeaseSaveForTest = nil })
+
+	err := updateProjectLeaseAndSessionBaseline(env.projectRoot, func(l *lease.Lease) error {
+		l.ApprovedHosts = append(l.ApprovedHosts, "example.internal")
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected session save failure to abort lease update")
+	}
+	if !strings.Contains(err.Error(), "save session after lease update") {
+		t.Fatalf("expected session save failure, got %v", err)
+	}
+
+	reloadedLease, err := lease.Load(env.leasePath)
+	if err != nil {
+		t.Fatalf("reload lease after rollback: %v", err)
+	}
+	for _, host := range reloadedLease.ApprovedHosts {
+		if host == "example.internal" {
+			t.Fatal("lease update should be rolled back when session save fails")
+		}
+	}
 }
 
 // -------------------------------------------------------------------

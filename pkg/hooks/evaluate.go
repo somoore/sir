@@ -38,17 +38,16 @@ func Evaluate(projectRoot string, ag agent.Agent) error {
 		return fmt.Errorf("read payload: %w", err)
 	}
 
-	// Load lease
-	l, err := loadLease(projectRoot)
-	if err != nil {
-		return fmt.Errorf("load lease: %w", err)
-	}
-
 	// Load or create session under file lock.
 	// The lock covers the entire Load→Evaluate(mutate)→Save pipeline so
 	// concurrent PreToolUse/PostToolUse hooks cannot corrupt session state.
+	var l *lease.Lease
 	var resp *HookResponse
 	lockErr := session.WithSessionLock(projectRoot, func() error {
+		l, err = loadLease(projectRoot)
+		if err != nil {
+			return fmt.Errorf("load lease: %w", err)
+		}
 		state, sErr := loadOrCreateSession(projectRoot, l)
 		if sErr != nil {
 			return fmt.Errorf("load session: %w", sErr)

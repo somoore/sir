@@ -13,15 +13,12 @@
 package hooks
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/somoore/sir/pkg/agent"
 	"github.com/somoore/sir/pkg/lease"
 	"github.com/somoore/sir/pkg/policy"
 	"github.com/somoore/sir/pkg/session"
@@ -92,57 +89,18 @@ func TestDelegationParity_SubagentStart_SecretSession(t *testing.T) {
 		t.Fatalf("save secret session: %v", err)
 	}
 
-	// Build a SubagentStart payload and pipe it through os.Stdin, capturing
-	// the hook response from os.Stdout. This is the same contract the real
-	// hook uses, so the test exercises the full EvaluateSubagentStart path.
-	payloadJSON, err := json.Marshal(SubagentPayload{
+	// Run the full SubagentStart path with the same stdin/stdout contract
+	// used by the real hook, but drain stdout concurrently so the test
+	// never deadlocks on a full pipe.
+	buf, err := runSubagentStartForTest(t, projectRoot, SubagentPayload{
 		HookEventName: "SubagentStart",
 		AgentName:     "general-purpose",
 		Tools:         []string{"Read", "Bash"},
 	})
 	if err != nil {
-		t.Fatalf("marshal payload: %v", err)
-	}
-
-	origStdin, origStdout := os.Stdin, os.Stdout
-	defer func() {
-		os.Stdin = origStdin
-		os.Stdout = origStdout
-	}()
-
-	inR, inW, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("pipe in: %v", err)
-	}
-	outR, outW, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("pipe out: %v", err)
-	}
-	os.Stdin = inR
-	os.Stdout = outW
-
-	if _, err := inW.Write(payloadJSON); err != nil {
-		t.Fatalf("write payload: %v", err)
-	}
-	inW.Close()
-
-	done := make(chan error, 1)
-	go func() {
-		done <- EvaluateSubagentStart(projectRoot, &agent.ClaudeAgent{})
-	}()
-
-	if err := <-done; err != nil {
-		outW.Close()
 		t.Fatalf("EvaluateSubagentStart: %v", err)
 	}
-	outW.Close()
-
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, outR); err != nil {
-		t.Fatalf("read stdout: %v", err)
-	}
-
-	if buf.Len() == 0 {
+	if len(buf) == 0 {
 		t.Fatal("SubagentStart + secret session: expected a deny response, got no response (fail-open)")
 	}
 
@@ -152,8 +110,8 @@ func TestDelegationParity_SubagentStart_SecretSession(t *testing.T) {
 			PermissionDecisionReason string `json:"permissionDecisionReason"`
 		} `json:"hookSpecificOutput"`
 	}
-	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal response: %v\nraw: %s", err, buf.String())
+	if err := json.Unmarshal(buf, &resp); err != nil {
+		t.Fatalf("unmarshal response: %v\nraw: %s", err, string(buf))
 	}
 
 	if resp.HookSpecificOutput.PermissionDecision != "deny" {
@@ -446,53 +404,15 @@ func TestDelegationParity_SubagentStart_RiskySessionStates(t *testing.T) {
 				t.Fatalf("save mutated session: %v", err)
 			}
 
-			payloadJSON, err := json.Marshal(SubagentPayload{
+			buf, err := runSubagentStartForTest(t, projectRoot, SubagentPayload{
 				HookEventName: "SubagentStart",
 				AgentName:     "general-purpose",
 				Tools:         []string{"Read"},
 			})
 			if err != nil {
-				t.Fatalf("marshal payload: %v", err)
-			}
-
-			origStdin, origStdout := os.Stdin, os.Stdout
-			defer func() {
-				os.Stdin = origStdin
-				os.Stdout = origStdout
-			}()
-
-			inR, inW, err := os.Pipe()
-			if err != nil {
-				t.Fatalf("pipe in: %v", err)
-			}
-			outR, outW, err := os.Pipe()
-			if err != nil {
-				t.Fatalf("pipe out: %v", err)
-			}
-			os.Stdin = inR
-			os.Stdout = outW
-
-			if _, err := inW.Write(payloadJSON); err != nil {
-				t.Fatalf("write payload: %v", err)
-			}
-			inW.Close()
-
-			done := make(chan error, 1)
-			go func() {
-				done <- EvaluateSubagentStart(projectRoot, &agent.ClaudeAgent{})
-			}()
-
-			if err := <-done; err != nil {
-				outW.Close()
 				t.Fatalf("EvaluateSubagentStart: %v", err)
 			}
-			outW.Close()
-
-			var buf bytes.Buffer
-			if _, err := io.Copy(&buf, outR); err != nil {
-				t.Fatalf("read stdout: %v", err)
-			}
-			if buf.Len() == 0 {
+			if len(buf) == 0 {
 				t.Fatalf("SubagentStart after %s: expected blocked or gated response, got no output", tc.name)
 			}
 
@@ -501,8 +421,8 @@ func TestDelegationParity_SubagentStart_RiskySessionStates(t *testing.T) {
 					PermissionDecision string `json:"permissionDecision"`
 				} `json:"hookSpecificOutput"`
 			}
-			if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
-				t.Fatalf("unmarshal response: %v\nraw: %s", err, buf.String())
+			if err := json.Unmarshal(buf, &resp); err != nil {
+				t.Fatalf("unmarshal response: %v\nraw: %s", err, string(buf))
 			}
 			if resp.HookSpecificOutput.PermissionDecision == "allow" {
 				t.Fatalf("SubagentStart after %s: expected blocked or gated decision, got allow", tc.name)
@@ -552,61 +472,23 @@ func TestDelegationParity_SubagentStart_RecentlyReadUntrustedPreservesReadOnlyDe
 				t.Fatalf("save untrusted session: %v", err)
 			}
 
-			payloadJSON, err := json.Marshal(SubagentPayload{
+			buf, err := runSubagentStartForTest(t, projectRoot, SubagentPayload{
 				HookEventName: "SubagentStart",
 				AgentName:     "general-purpose",
 				Tools:         tc.tools,
 			})
 			if err != nil {
-				t.Fatalf("marshal payload: %v", err)
-			}
-
-			origStdin, origStdout := os.Stdin, os.Stdout
-			defer func() {
-				os.Stdin = origStdin
-				os.Stdout = origStdout
-			}()
-
-			inR, inW, err := os.Pipe()
-			if err != nil {
-				t.Fatalf("pipe in: %v", err)
-			}
-			outR, outW, err := os.Pipe()
-			if err != nil {
-				t.Fatalf("pipe out: %v", err)
-			}
-			os.Stdin = inR
-			os.Stdout = outW
-
-			if _, err := inW.Write(payloadJSON); err != nil {
-				t.Fatalf("write payload: %v", err)
-			}
-			inW.Close()
-
-			done := make(chan error, 1)
-			go func() {
-				done <- EvaluateSubagentStart(projectRoot, &agent.ClaudeAgent{})
-			}()
-
-			if err := <-done; err != nil {
-				outW.Close()
 				t.Fatalf("EvaluateSubagentStart: %v", err)
-			}
-			outW.Close()
-
-			var buf bytes.Buffer
-			if _, err := io.Copy(&buf, outR); err != nil {
-				t.Fatalf("read stdout: %v", err)
 			}
 
 			if tc.want == "" {
-				if buf.Len() != 0 {
-					t.Fatalf("SubagentStart after untrusted read with %v: expected allow/no output, got %s", tc.tools, buf.String())
+				if len(buf) != 0 {
+					t.Fatalf("SubagentStart after untrusted read with %v: expected allow/no output, got %s", tc.tools, string(buf))
 				}
 				return
 			}
 
-			if buf.Len() == 0 {
+			if len(buf) == 0 {
 				t.Fatalf("SubagentStart after untrusted read with %v: expected %s response, got no output", tc.tools, tc.want)
 			}
 
@@ -615,8 +497,8 @@ func TestDelegationParity_SubagentStart_RecentlyReadUntrustedPreservesReadOnlyDe
 					PermissionDecision string `json:"permissionDecision"`
 				} `json:"hookSpecificOutput"`
 			}
-			if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
-				t.Fatalf("unmarshal response: %v\nraw: %s", err, buf.String())
+			if err := json.Unmarshal(buf, &resp); err != nil {
+				t.Fatalf("unmarshal response: %v\nraw: %s", err, string(buf))
 			}
 			if resp.HookSpecificOutput.PermissionDecision != tc.want {
 				t.Fatalf("SubagentStart after untrusted read with %v: decision = %q, want %q", tc.tools, resp.HookSpecificOutput.PermissionDecision, tc.want)
