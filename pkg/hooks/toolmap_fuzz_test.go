@@ -3,6 +3,7 @@ package hooks
 import (
 	"testing"
 
+	hookclassify "github.com/somoore/sir/pkg/hooks/classify"
 	"github.com/somoore/sir/pkg/lease"
 )
 
@@ -165,7 +166,7 @@ func FuzzSplitCompoundCommand(f *testing.F) {
 	f.Add("&&&&")
 
 	f.Fuzz(func(t *testing.T, cmd string) {
-		segments := splitCompoundCommand(cmd)
+		segments := hookclassify.SplitCompoundCommand(cmd)
 		// Must never panic — that's the main property we're checking.
 		// Non-empty input should produce at least one segment.
 		if cmd != "" && len(segments) == 0 {
@@ -185,7 +186,7 @@ func FuzzNormalizeCommand(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, cmd string) {
 		// Must never panic
-		_ = normalizeCommand(cmd)
+		_ = hookclassify.NormalizeCommand(cmd)
 	})
 }
 
@@ -201,6 +202,6 @@ func FuzzExtractShellWrapperInner(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, cmd string) {
 		// Must never panic
-		_, _ = extractShellWrapperInner(cmd)
+		_, _ = hookclassify.ExtractShellWrapperInner(cmd)
 	})
 }

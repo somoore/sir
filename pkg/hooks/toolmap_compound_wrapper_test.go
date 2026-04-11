@@ -3,6 +3,7 @@ package hooks
 import (
 	"testing"
 
+	hookclassify "github.com/somoore/sir/pkg/hooks/classify"
 	"github.com/somoore/sir/pkg/lease"
 )
 
@@ -118,7 +119,7 @@ func TestExtractShellWrapperInner(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.cmd, func(t *testing.T) {
-			inner, ok := extractShellWrapperInner(tc.cmd)
+			inner, ok := hookclassify.ExtractShellWrapperInner(tc.cmd)
 			if ok != tc.isShell {
 				t.Errorf("extractShellWrapperInner(%q) ok=%v, want %v", tc.cmd, ok, tc.isShell)
 			}
@@ -223,7 +224,7 @@ func TestSplitCompoundCommand(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.cmd, func(t *testing.T) {
-			segments := splitCompoundCommand(tc.cmd)
+			segments := hookclassify.SplitCompoundCommand(tc.cmd)
 			if len(segments) != tc.expected {
 				t.Errorf("splitCompoundCommand(%q) = %d segments, want %d", tc.cmd, len(segments), tc.expected)
 			}
