@@ -60,11 +60,13 @@ func cmdInstall(projectRoot, mode string) {
 
 	homeDir := mustHomeDir()
 
-	// Resolve the set of agents to install for. If nothing is detected we
-	// fall back to Claude Code for backward compatibility — this matches
-	// the pre-Phase-3 behavior where `sir install` on a fresh machine
-	// always created ~/.claude/settings.json.
-	agents := selectAgentsForInstall(opts.explicitAgent)
+	// Resolve the set of agents to install for. The default path auto-detects
+	// the supported agents already present on the machine; explicit selection
+	// stays fail-closed.
+	agents, err := selectAgentsForInstall(opts.explicitAgent)
+	if err != nil {
+		fatal("%v", err)
+	}
 
 	// Per-project state still lives under ~/.sir/projects/<hash>/
 	stateDir := session.StateDir(projectRoot)

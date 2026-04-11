@@ -522,7 +522,7 @@ func renderFAQLine(m SupportManifest) string {
 func RenderFAQSupportBlock() string {
 	manifests := orderedPublicSupportManifests()
 	lines := []string{
-		"Claude Code has **reference support**, Gemini CLI has **near-parity support**, and Codex has **limited support** today. `sir install` auto-detects whichever are present and wires up what each agent's hook surface actually supports:",
+		"Claude Code has **reference support**, Gemini CLI has **near-parity support**, and Codex has **limited support** today. `sir install` auto-detects the supported agents already present on this machine, or you can pin one with `sir install --agent <id>`:",
 		"",
 	}
 	for _, manifest := range manifests {

@@ -41,13 +41,14 @@ inputs.
 
 ```bash
 cd /path/to/project
-sir install
+sir install            # auto-detect supported agents already on this machine
+# or: sir install --agent codex
 ```
 
 Expected result:
 
 - sir previews the files it will create or modify
-- the detected agent configs gain sir hook entries
+- the auto-detected or explicitly selected agent configs gain sir hook entries
 - state is created under `~/.sir/projects/<hash>/`
 
 ### Verify operational surfaces

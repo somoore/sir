@@ -71,7 +71,7 @@ checksums, validates provenance, and checks the signed `aibom.json`.
 ## Which agents are supported?
 
 <!-- BEGIN GENERATED SUPPORT FAQ -->
-Claude Code has **reference support**, Gemini CLI has **near-parity support**, and Codex has **limited support** today. `sir install` auto-detects whichever are present and wires up what each agent's hook surface actually supports:
+Claude Code has **reference support**, Gemini CLI has **near-parity support**, and Codex has **limited support** today. `sir install` auto-detects the supported agents already present on this machine, or you can pin one with `sir install --agent <id>`:
 
 - **Claude Code:** 10 hook events — reference support with native interactive approval, MCP scanning, delegation gating, config change detection, and elicitation coverage.
 - **Gemini CLI 0.36.0+:** 6 hook events — near-parity support for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: SubagentStart, ConfigChange, InstructionsLoaded, and Elicitation. See [gemini-support.md](gemini-support.md).
