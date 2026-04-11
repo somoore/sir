@@ -16,6 +16,10 @@ func ResolvePath(root, relPath string) string {
 		if home, err := os.UserHomeDir(); err == nil {
 			return filepath.Join(home, ".claude", "settings.json")
 		}
+	case ".gemini/settings.json":
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, ".gemini", "settings.json")
+		}
 	case ".codex/config.toml":
 		if home, err := os.UserHomeDir(); err == nil {
 			return filepath.Join(home, ".codex", "config.toml")
