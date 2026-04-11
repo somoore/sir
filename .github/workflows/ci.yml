@@ -267,3 +267,36 @@ jobs:
       - name: Go supply chain check
         if: needs.changes.outputs.go == 'true'
         run: bash go-supply-chain.sh
+
+  sast:
+    # OpenSSF Scorecard SAST walks recent merged PRs and looks for a SAST
+    # check-run on each one. The gosec step in the go job above is gated on
+    # needs.changes.outputs.go, so docs-only or workflow-only PRs skip gosec
+    # and count against Scorecard coverage. This job runs gosec on EVERY PR
+    # regardless of files changed, so every merged PR has an attached gosec
+    # check-run and Scorecard can reach 30/30.
+    #
+    # Keep the -exclude list here in sync with the gosec step in the go job
+    # above and the gosec-main job in post-merge.yml.
+    name: gosec (SAST, all PRs)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.25.9"
+          cache: false
+
+      - name: Install gosec
+        run: go install "github.com/securego/gosec/v2/cmd/gosec@${GOSEC_VERSION}"
+
+      - name: Run gosec
+        run: |
+          gosec -quiet \
+            -exclude=G104,G115,G204,G301,G302,G304,G306,G703 \
+            ./...
