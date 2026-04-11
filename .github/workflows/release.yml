@@ -225,7 +225,7 @@ jobs:
     # compromised developer machines, and unreviewed tag creation.
     environment:
       name: release
-      url: ${{ steps.publish.outputs.release_url }}
+      url: ${{ steps.publish.outputs.url }}
     permissions:
       contents: write    # create releases and upload assets
       id-token: write    # Sigstore OIDC token for cosign keyless signing
@@ -321,40 +321,40 @@ jobs:
             --output-attestation artifacts/aibom.json.intoto.jsonl \
             artifacts/aibom.json
 
+      # Publish the GitHub release via softprops/action-gh-release instead of
+      # a bash `gh release create` call. Two reasons:
+      #   1. OpenSSF Scorecard's Packaging check recognizes
+      #      softprops/action-gh-release as a publishing workflow, which
+      #      flips Packaging from not-applicable to credited.
+      #   2. The action keeps release creation declarative — same tag,
+      #      same generated notes, same prerelease behavior on v0.x tags,
+      #      and the same asset list (signed binaries, checksums, both
+      #      CycloneDX and SPDX SBOMs, AIBOM, cosign signatures and
+      #      certificates, in-toto attestations, SLSA provenance).
       - name: Create release
         id: publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # Mark any 0.x.y tag as a GitHub prerelease. The semver 0.x range
-          # signals "API may change" — surface that explicitly to consumers.
-          PRERELEASE_FLAG=""
-          if [[ "${GITHUB_REF_NAME}" == v0.* ]]; then
-            PRERELEASE_FLAG="--prerelease"
-          fi
-          gh release create "${GITHUB_REF_NAME}" \
-            --repo "${{ github.repository }}" \
-            --title "sir ${GITHUB_REF_NAME}" \
-            --generate-notes \
-            ${PRERELEASE_FLAG} \
-            artifacts/sir_*.tar.gz \
-            artifacts/sir_*.sig \
-            artifacts/sir_*.pem \
-            artifacts/checksums.txt \
-            artifacts/checksums.txt.sig \
-            artifacts/checksums.txt.pem \
-            artifacts/sbom.cyclonedx.json \
-            artifacts/sbom.spdx.json \
-            artifacts/sbom.cyclonedx.json.intoto.jsonl \
-            artifacts/sbom.spdx.json.intoto.jsonl \
-            artifacts/aibom.json \
-            artifacts/aibom.json.sig \
-            artifacts/aibom.json.pem \
-            artifacts/aibom.json.intoto.jsonl \
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: sir ${{ github.ref_name }}
+          generate_release_notes: true
+          prerelease: ${{ startsWith(github.ref_name, 'v0.') }}
+          files: |
+            artifacts/sir_*.tar.gz
+            artifacts/sir_*.sig
+            artifacts/sir_*.pem
+            artifacts/checksums.txt
+            artifacts/checksums.txt.sig
+            artifacts/checksums.txt.pem
+            artifacts/sbom.cyclonedx.json
+            artifacts/sbom.spdx.json
+            artifacts/sbom.cyclonedx.json.intoto.jsonl
+            artifacts/sbom.spdx.json.intoto.jsonl
+            artifacts/aibom.json
+            artifacts/aibom.json.sig
+            artifacts/aibom.json.pem
+            artifacts/aibom.json.intoto.jsonl
             artifacts/sir.intoto.jsonl
-
-          RELEASE_URL="$(gh release view "${GITHUB_REF_NAME}" --repo "${{ github.repository }}" --json url --jq .url)"
-          echo "release_url=${RELEASE_URL}" >> "$GITHUB_OUTPUT"
 
       # Binary size sanity check (post-publish).
       # Cheap canary against injected code: compare each platform tarball
