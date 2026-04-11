@@ -219,6 +219,18 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     needs: [build, sbom, provenance]
+    # The provenance job uses slsa-framework/slsa-github-generator v2.1.0,
+    # which currently fails in this repo because the reusable workflow
+    # expects a go.sum for cache restoration (sir has zero external Go
+    # dependencies and no go.sum by design). Until slsa-github-generator
+    # v2.2.0 ships the fix, we let the provenance job report failure but
+    # still proceed with the release — build + sbom + cosign signatures +
+    # both SBOMs + AIBOM all land as usual. SLSA provenance will be
+    # restored in a follow-up PR when upstream is compatible with
+    # zero-dependency Go trees. The softprops step below uses
+    # fail_on_unmatched_files: false so sir.intoto.jsonl being missing
+    # does not block the release.
+    if: always() && needs.build.result == 'success' && needs.sbom.result == 'success'
     # Environment gating: the `release` environment is configured in GitHub
     # repo settings with required reviewers. No release publishes without a
     # human clicking approve — protects against accidental tag pushes,
@@ -242,12 +254,16 @@ jobs:
           path: artifacts
 
       # SLSA provenance is generated and signed by the `provenance` job using
-      # slsa-github-generator v2.1.0, but its built-in upload-assets step has
-      # compatibility issues with actions/download-artifact v4+ (fails in
-      # secure-download-artifact with an empty UNTRUSTED_PATH). We bypass
-      # that by downloading the provenance artifact here and attaching it
-      # to the release in our own gh release create call.
+      # slsa-github-generator v2.1.0. Upstream has a compatibility issue
+      # with zero-dependency Go trees (expects go.sum for cache restoration)
+      # so the provenance job currently fails — see the release job's
+      # top-of-job comment for the full story. continue-on-error on this
+      # download step means a missing provenance artifact does not kill
+      # the release; softprops below also has fail_on_unmatched_files: false
+      # so sir.intoto.jsonl silently drops out of the asset list when
+      # provenance did not produce one.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
+        continue-on-error: true
         with:
           name: ${{ needs.provenance.outputs.provenance-name }}
           path: artifacts
@@ -339,6 +355,11 @@ jobs:
           name: sir ${{ github.ref_name }}
           generate_release_notes: true
           prerelease: ${{ startsWith(github.ref_name, 'v0.') }}
+          # Tolerate missing sir.intoto.jsonl when the provenance job is
+          # skipped due to the slsa-github-generator compatibility issue
+          # documented on the release job above. Every other asset in the
+          # list below is always present when build + sbom succeed.
+          fail_on_unmatched_files: false
           files: |
             artifacts/sir_*.tar.gz
             artifacts/sir_*.sig
