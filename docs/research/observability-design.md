@@ -1,0 +1,63 @@
+# Observability Design — sir and the Three-Tier Model
+
+> [!WARNING]
+> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+
+Security researcher Zack Korman published a public critique of AI coding agent observability that separates three tiers of value: **governance** (checkbox compliance — "we have logs"), **investigation** (backward-looking — "we can reconstruct what happened"), and **detection** (real-time — "we catch bad things as they happen"). His core finding is that every major AI coding agent provider stops at tier 1. Provider audit logs capture the user prompt and which tools ran, but not tool response content, not MCP arguments, and not the reasoning chain — so an investigator cannot reconstruct why an agent introduced a vulnerability, and a detector cannot catch a malicious MCP response because the response text was never logged.
+
+sir is architected for all three tiers at the tool-call boundary. This document lays out how each tier is wired, which code paths are load-bearing, and where sir intentionally does *not* try to help.
+
+## Tier 3 — detection
+
+sir blocks or asks on every dangerous transition in the tool-call critical path. The decision is made before the tool runs, not after.
+
+- **IFC taint propagation.** A credential read in one tool call contaminates every downstream write, commit, or push attempt in the same session. The lattice that carries this is [`mister-core/src/ifc.rs`](../../mister-core/src/ifc.rs); the Go side labels targets at the tool boundary via `pkg/hooks/classify` and related helpers. A read of `.env` is not a single event — it is a session label that persists until the turn boundary or `sir unlock`.
+- **MCP argument scanning.** Before an MCP tool call ships, sir walks the arguments for credential patterns and denies the call when a match fires. The active helper is [`pkg/hooks/evaluate_preflight.go`](../../pkg/hooks/evaluate_preflight.go) and the scanner lives in [`pkg/secretscan`](../../pkg/secretscan).
+- **MCP response scanning.** Injection markers in MCP responses trigger a posture raise, a tainted-server flag, and a pending injection alert — all before the agent processes the response. See [`pkg/hooks/post_evaluate_analysis.go`](../../pkg/hooks/post_evaluate_analysis.go) for the ordering.
+- **Posture tamper.** Changes to the hook config, `CLAUDE.md`, or `.mcp.json` are detected on PostToolUse and on lifecycle events. The detection path writes a `hook_tamper` alert with an explicit `AlertType` so downstream SIEM filters do not have to parse reason strings. See [`pkg/hooks/config_change.go`](../../pkg/hooks/config_change.go) and [`pkg/hooks/post_evaluate_checks.go`](../../pkg/hooks/post_evaluate_checks.go).
+
+All four paths fire before the action completes. A traditional sandbox cannot express any of them because the interesting condition is the agent's *intent*, not a syscall.
+
+## Tier 2 — investigation
+
+sir records enough evidence for an investigator to reconstruct what happened, without ever persisting raw secrets.
+
+- **Redacted evidence on alerts.** When a credential or injection alert fires, the ledger entry carries a redacted copy of the triggering payload. Tool output is routed through [`ledger.RedactContent`](../../pkg/ledger/redact.go); MCP JSON arguments are routed through `RedactMapValues` + `TruncateToWordBoundary` (see [`pkg/hooks/evidence/evidence.go`](../../pkg/hooks/evidence/evidence.go)). Known credential patterns are replaced with `[REDACTED:<class>]` markers. The same redaction fires twice — once when the ledger store writes the line and again in the telemetry exporter ([`pkg/telemetry/otlp_redact.go`](../../pkg/telemetry/otlp_redact.go)) — so a refactor that skips one path still cannot leak content.
+- **Redacted evidence on clean allow paths.** Korman's sharpest critique was that "nothing happened" logs cannot answer the investigator's question. sir closes that gap with the `tool_trace` ledger entry, written for every allow-path PostToolUse call when `SIR_LOG_TOOL_CONTENT=1` is set. The helper is [`applyPostEvaluateAllowTrace`](../../pkg/hooks/post_evaluate_trace.go) and the constructor lives at [`pkg/hooks/internal/postflight/alerts.go`](../../pkg/hooks/internal/postflight/alerts.go). Dedup is explicit: when an alert entry already carries the redacted evidence, the trace write is suppressed — the alert is authoritative, the trace is additive.
+- **Sensitive target hashing.** When a clean allow-path read touches a sensitive file (`~/.aws/credentials`, a `.env`, a PEM), the trace entry is marked `Sensitivity="secret"` so [`telemetry.RedactTarget`](../../pkg/telemetry/otlp_redact.go) sha256-hashes the path before OTLP emission. Raw sensitive paths never leave the host even on clean reads. The regression test lives at [`pkg/hooks/evidence_test.go`](../../pkg/hooks/evidence_test.go) (`TestPostEvaluate_AllowTraceMarksSensitiveTarget`).
+- **Hash-chained ledger.** Every entry is appended with `prev_hash`, `entry_hash`, and a monotonic index. `sir log verify` walks the chain and reports the first corruption. The ledger is the authoritative local record an investigator trusts when provider logs run out.
+- **`sir explain --last`.** The explain formatter surfaces the redacted evidence block for any ledger entry that carries it, alert or trace. See [`cmd/sir/explain.go`](../../cmd/sir/explain.go).
+
+Evidence logging is opt-in by design. Setting `SIR_LOG_TOOL_CONTENT=1` is a deliberate operator choice that trades a larger ledger for full tier-2 reconstruction. Without the flag, sir is silent on clean tool calls — the pre-existing privacy default.
+
+## Tier 1 — governance
+
+sir emits every ledger entry to an operator-controlled SIEM collector via OTLP/HTTP JSON when `SIR_OTLP_ENDPOINT` is set. The exporter uses only the Go standard library, never calls home, and redacts every attribute before serialization. The full attribute taxonomy and the query examples live in [`docs/user/siem-integration.md`](../user/siem-integration.md). The short version:
+
+- `sir.ledger.index` and `sir.ledger.hash` give the SIEM a chain-of-custody signal without shipping the raw ledger file.
+- `sir.alert.type` carries the alert taxonomy (`credential_in_output`, `mcp_credential`, `mcp_injection`, `hook_tamper`, `sentinel_mutation`, `config_change_posture`, `posture_change`, `posture_change_session_end`, `elicitation_harvesting`) so a governance query can count alerts by class without parsing reason strings.
+- `sir.evidence` is populated only when `SIR_LOG_TOOL_CONTENT=1` is set, and carries the double-redacted content.
+- `sir.session.secret`, `sir.posture.state`, `sir.posture.mcp_taint`, and `sir.posture.injection_alert` give the SIEM enough context to distinguish "routine allow" from "allow under tainted posture" without re-deriving state.
+
+Governance is the easy tier. sir is loud enough for any compliance dashboard without operator configuration beyond the endpoint variable.
+
+## Why evidence is opt-in
+
+Three reasons:
+
+1. **Default privacy.** Most sir users are individual developers. A silent ledger is the right default for "I just want sir to block dangerous things." Evidence logging materializes investigation state on disk and ships it to a collector — that needs an explicit operator decision, not a default.
+2. **Ledger size.** A long Claude Code session can make hundreds of tool calls. `SIR_LOG_TOOL_CONTENT=1` turns every one of those into a ledger entry. For small projects that is fine; for teams with retention policies that needs to be an opt-in they sized.
+3. **Defense in depth.** Making it a deliberate opt-in means a compromise of the env variable alone does not cause tier-2 evidence to appear where it should not. The ledger redaction path is still mandatory in either mode — there is no configuration that persists raw secrets. The env var controls only whether the `Evidence` field is populated at all.
+
+## Out of scope: model-internal reasoning
+
+sir is a **boundary runtime** by design. It does not capture the agent's chain-of-thought, internal scratchpad, or reasoning tokens. The [AIBOM](../../aibom.json) is explicit about this: sir contains zero AI/ML components and never forwards tool arguments, tool results, session state, or ledger contents to any LLM or remote service.
+
+Korman's critique covers model-internal observability separately, and the answer there is not a local runtime — it is provider telemetry, model-card transparency, and constitutional auditing. sir is orthogonal to that layer and stays that way intentionally.
+
+## Where to read next
+
+- Operator-facing attribute reference and SIEM queries: [docs/user/siem-integration.md](../user/siem-integration.md)
+- Threat model and trust assumptions behind the tiers: [docs/research/sir-threat-model.md](sir-threat-model.md)
+- Runtime behavior at the boundary: [docs/user/runtime-security-overview.md](../user/runtime-security-overview.md)
+- Verification paths: [docs/research/security-verification-guide.md](security-verification-guide.md)

@@ -14,3 +14,4 @@ sir — Sandbox in Reverse — is an experimental security runtime for AI coding
 - Fast contributor orientation: [docs/contributor/first-30-minutes.md](contributor/first-30-minutes.md)
 - Architecture and invariants: [ARCHITECTURE.md](../ARCHITECTURE.md), [docs/contributor/security-engineering-core.md](contributor/security-engineering-core.md)
 - Release verification and threat model: [docs/research/security-verification-guide.md](research/security-verification-guide.md), [docs/research/validation-summary.md](research/validation-summary.md), [docs/research/sir-threat-model.md](research/sir-threat-model.md)
+- Observability framing and Korman's three-tier model: [docs/research/observability-design.md](research/observability-design.md)

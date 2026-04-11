@@ -111,6 +111,7 @@ The following are enforced by code, not convention:
 
 ## Where to go next
 
+- [docs/research/observability-design.md](../research/observability-design.md) explains where sir sits on Zack Korman's three-tier model and why evidence logging is opt-in.
 - [docs/user/runtime-security-overview.md](runtime-security-overview.md) is the operator-facing explanation of what sir catches at the boundary.
 - [docs/user/faq.md](faq.md) has the short operator answer for "how do I query evidence in my SIEM".
 - [docs/research/sir-threat-model.md](../research/sir-threat-model.md) covers the attacker model and the tradeoffs behind the attribute set.

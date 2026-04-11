@@ -241,7 +241,6 @@ on:
 			"docs/contributor/runtime-containment-design.md",
 			"docs/contributor/secret-lineage-design.md",
 			"docs/research/README.md",
-			"docs/research/observability-design.md",
 			"docs/research/security-architecture-review.md",
 		} {
 			requireNotExists(t, root, rel)
@@ -283,6 +282,7 @@ func activeDocAllowlist() []string {
 		"docs/contributor/first-30-minutes.md",
 		"docs/contributor/security-engineering-core.md",
 		"docs/contributor/supply-chain-policy.md",
+		"docs/research/observability-design.md",
 		"docs/research/security-verification-guide.md",
 		"docs/research/sir-threat-model.md",
 		"docs/research/validation-summary.md",
