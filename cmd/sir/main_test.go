@@ -1,12 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 
+	"github.com/somoore/sir/pkg/agent"
 	"github.com/somoore/sir/pkg/lease"
 	"github.com/somoore/sir/pkg/ledger"
 	"github.com/somoore/sir/pkg/session"
@@ -121,6 +126,48 @@ func captureStdout(t *testing.T, fn func()) string {
 		t.Fatal(err)
 	}
 	return string(out)
+}
+
+func runCmdGuardHelper(t *testing.T, env *testEnv, stdin string, args ...string) (string, string) {
+	t.Helper()
+	encodedArgs, err := json.Marshal(args)
+	if err != nil {
+		t.Fatalf("marshal guard args: %v", err)
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestCmdGuardHelperProcess$")
+	cmd.Env = append(os.Environ(),
+		"SIR_TEST_CMD_GUARD=1",
+		"SIR_TEST_PROJECT_ROOT="+env.projectRoot,
+		"SIR_TEST_CMD_GUARD_ARGS="+string(encodedArgs),
+		"HOME="+env.home,
+	)
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("run cmdGuard helper: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	return stdout.String(), stderr.String()
+}
+
+func TestCmdGuardHelperProcess(t *testing.T) {
+	if os.Getenv("SIR_TEST_CMD_GUARD") != "1" {
+		return
+	}
+
+	var args []string
+	if err := json.Unmarshal([]byte(os.Getenv("SIR_TEST_CMD_GUARD_ARGS")), &args); err != nil {
+		t.Fatalf("unmarshal helper args: %v", err)
+	}
+
+	cmdGuard(os.Getenv("SIR_TEST_PROJECT_ROOT"), args)
 }
 
 // -------------------------------------------------------------------
@@ -495,6 +542,206 @@ func TestLoadLeaseForDoctor_ValidLease(t *testing.T) {
 	}
 	if l.LeaseID != saved.LeaseID {
 		t.Error("expected loaded lease to match saved lease")
+	}
+}
+
+func TestParseAgentFlag(t *testing.T) {
+	t.Run("default", func(t *testing.T) {
+		if got := parseAgentFlag(nil); got != string(agent.Claude) {
+			t.Fatalf("parseAgentFlag(nil) = %q, want %q", got, agent.Claude)
+		}
+	})
+
+	t.Run("separate argument after other args", func(t *testing.T) {
+		if got := parseAgentFlag([]string{"payload.json", "--agent", "codex"}); got != "codex" {
+			t.Fatalf("parseAgentFlag(separate) = %q, want codex", got)
+		}
+	})
+
+	t.Run("inline argument after other args", func(t *testing.T) {
+		if got := parseAgentFlag([]string{"payload.json", "--agent=gemini"}); got != "gemini" {
+			t.Fatalf("parseAgentFlag(inline) = %q, want gemini", got)
+		}
+	})
+}
+
+func TestResolveAgent(t *testing.T) {
+	t.Run("known", func(t *testing.T) {
+		ag, ok := resolveAgent("codex")
+		if !ok {
+			t.Fatal("expected codex to resolve")
+		}
+		if ag.ID() != agent.Codex {
+			t.Fatalf("resolveAgent(codex) id = %q, want %q", ag.ID(), agent.Codex)
+		}
+	})
+
+	t.Run("unknown falls back to claude", func(t *testing.T) {
+		ag, ok := resolveAgent("unknown-agent")
+		if ok {
+			t.Fatal("expected unknown agent to be reported as unknown")
+		}
+		if ag.ID() != agent.Claude {
+			t.Fatalf("resolveAgent(unknown) id = %q, want %q", ag.ID(), agent.Claude)
+		}
+	})
+}
+
+func TestGuardCommandNames(t *testing.T) {
+	got := guardCommandNames()
+	sort.Strings(got)
+	want := []string{
+		"compact-reinject",
+		"config-change",
+		"elicitation",
+		"evaluate",
+		"instructions-loaded",
+		"post-evaluate",
+		"session-end",
+		"session-summary",
+		"subagent-start",
+		"user-prompt",
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("guard command names = %v, want %v", got, want)
+	}
+}
+
+func TestCmdGuard_PostEvaluateUsesPostToolUseDeny(t *testing.T) {
+	env := newTestEnv(t)
+
+	stdout, stderr := runCmdGuardHelper(t, env, "", "post-evaluate", "--agent", "codex")
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout), &resp); err != nil {
+		t.Fatalf("unmarshal stdout: %v\nstdout=%q", err, stdout)
+	}
+	if resp["decision"] != "block" {
+		t.Fatalf("decision = %v, want block", resp["decision"])
+	}
+	hso, ok := resp["hookSpecificOutput"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("hookSpecificOutput missing or wrong type: %T", resp["hookSpecificOutput"])
+	}
+	if hso["hookEventName"] != "PostToolUse" {
+		t.Fatalf("hookEventName = %v, want PostToolUse", hso["hookEventName"])
+	}
+	if ac, _ := hso["additionalContext"].(string); !strings.Contains(ac, "sir guard post-evaluate") {
+		t.Fatalf("additionalContext = %q, want post-evaluate deny text", ac)
+	}
+	if !strings.Contains(stderr, "sir guard post-evaluate") {
+		t.Fatalf("stderr = %q, want post-evaluate deny text", stderr)
+	}
+}
+
+func TestCmdGuard_SessionSummaryUsesLifecycleDeny(t *testing.T) {
+	env := newTestEnv(t)
+
+	stdout, stderr := runCmdGuardHelper(t, env, "", "session-summary", "--agent", "codex")
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout), &resp); err != nil {
+		t.Fatalf("unmarshal stdout: %v\nstdout=%q", err, stdout)
+	}
+	if resp["decision"] != "block" {
+		t.Fatalf("decision = %v, want block", resp["decision"])
+	}
+	if reason, _ := resp["reason"].(string); !strings.Contains(reason, "sir guard session-summary") {
+		t.Fatalf("reason = %q, want session-summary deny text", reason)
+	}
+	if _, ok := resp["hookSpecificOutput"]; ok {
+		t.Fatalf("hookSpecificOutput = %v, want lifecycle Stop response without hook envelope", resp["hookSpecificOutput"])
+	}
+	if !strings.Contains(stderr, "sir guard session-summary") {
+		t.Fatalf("stderr = %q, want session-summary deny text", stderr)
+	}
+}
+
+func TestCmdGuard_MissingSubcommandFallsBackToClaudeEnvelope(t *testing.T) {
+	env := newTestEnv(t)
+
+	stdout, stderr := runCmdGuardHelper(t, env, "")
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout), &resp); err != nil {
+		t.Fatalf("unmarshal stdout: %v\nstdout=%q", err, stdout)
+	}
+	hso, ok := resp["hookSpecificOutput"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("hookSpecificOutput missing or wrong type: %T", resp["hookSpecificOutput"])
+	}
+	if hso["hookEventName"] != "PreToolUse" {
+		t.Fatalf("hookEventName = %v, want PreToolUse", hso["hookEventName"])
+	}
+	if hso["permissionDecision"] != "deny" {
+		t.Fatalf("permissionDecision = %v, want deny", hso["permissionDecision"])
+	}
+	if !strings.Contains(stderr, "missing subcommand") {
+		t.Fatalf("stderr = %q, want missing subcommand text", stderr)
+	}
+}
+
+func TestCmdGuard_UnknownSubcommandUsesResolvedAgentFormat(t *testing.T) {
+	env := newTestEnv(t)
+
+	stdout, stderr := runCmdGuardHelper(t, env, "", "not-a-hook", "payload.json", "--agent", "codex")
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout), &resp); err != nil {
+		t.Fatalf("unmarshal stdout: %v\nstdout=%q", err, stdout)
+	}
+	if resp["decision"] != "block" {
+		t.Fatalf("decision = %v, want block", resp["decision"])
+	}
+	if reason, _ := resp["reason"].(string); !strings.Contains(reason, "unknown subcommand: not-a-hook") {
+		t.Fatalf("reason = %q, want unknown-subcommand text", reason)
+	}
+	if !strings.Contains(stderr, "unknown subcommand: not-a-hook") {
+		t.Fatalf("stderr = %q, want unknown-subcommand text", stderr)
+	}
+}
+
+func TestCmdGuard_InlineAgentFlagUsesResolvedAgentFormat(t *testing.T) {
+	env := newTestEnv(t)
+
+	stdout, stderr := runCmdGuardHelper(t, env, "", "not-a-hook", "payload.json", "--agent=gemini")
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout), &resp); err != nil {
+		t.Fatalf("unmarshal stdout: %v\nstdout=%q", err, stdout)
+	}
+	if resp["decision"] != "deny" {
+		t.Fatalf("decision = %v, want deny", resp["decision"])
+	}
+	if reason, _ := resp["reason"].(string); !strings.Contains(reason, "unknown subcommand: not-a-hook") {
+		t.Fatalf("reason = %q, want unknown-subcommand text", reason)
+	}
+	if !strings.Contains(stderr, "unknown subcommand: not-a-hook") {
+		t.Fatalf("stderr = %q, want unknown-subcommand text", stderr)
+	}
+}
+
+func TestCmdGuard_UnknownAgentFallsBackToClaudeEnvelope(t *testing.T) {
+	env := newTestEnv(t)
+
+	stdout, stderr := runCmdGuardHelper(t, env, "", "evaluate", "--agent", "not-real")
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout), &resp); err != nil {
+		t.Fatalf("unmarshal stdout: %v\nstdout=%q", err, stdout)
+	}
+	hso, ok := resp["hookSpecificOutput"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("hookSpecificOutput missing or wrong type: %T", resp["hookSpecificOutput"])
+	}
+	if hso["hookEventName"] != "PreToolUse" {
+		t.Fatalf("hookEventName = %v, want PreToolUse", hso["hookEventName"])
+	}
+	if hso["permissionDecision"] != "deny" {
+		t.Fatalf("permissionDecision = %v, want deny", hso["permissionDecision"])
+	}
+	if !strings.Contains(stderr, `unknown --agent value: "not-real"`) {
+		t.Fatalf("stderr = %q, want unknown-agent text", stderr)
 	}
 }
 
