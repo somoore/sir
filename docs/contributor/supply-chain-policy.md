@@ -80,6 +80,17 @@ The target end state is Astral-style separation of duties: required reviewers on
 
 > **Warning:** That last control depends on having at least two trusted maintainers. On a single-maintainer repository, `required_reviewers + prevent_self_review=true` deadlocks releases. Until a second trusted reviewer exists, keep the environment locked down with no admin bypass and restricted deployment refs, and flip self-review prevention on as soon as a second reviewer is available.
 
+## OpenSSF Scorecard: accepted exceptions
+
+sir runs an [OpenSSF Scorecard](https://securityscorecards.dev/) scan (see `.github/workflows/scorecard.yml`). A handful of Scorecard checks will score 0/10 for structural, non-security reasons. Each one is tracked in a GitHub issue so the tradeoff stays visible.
+
+- **Code-Review 0/10** — Scorecard wants `required_approving_review_count >= 1` on the default branch. sir is a single-maintainer project and GitHub does not allow self-approval of PRs, so requiring an approver would deadlock every merge (the same deadlock that forces `prevent_self_review=false` on the `release` environment above). We accept 0/10 on this check until a second trusted maintainer exists. See [#98](https://github.com/somoore/sir/issues/98) for the full option analysis.
+- **CII-Best-Practices 0/10** — Scorecard looks for an OpenSSF Best Practices badge in the README. Registering for the badge is a manual web form at [bestpractices.dev](https://www.bestpractices.dev/) that no agent can complete. Tracked in [#99](https://github.com/somoore/sir/issues/99); the score flips to 10/10 automatically once the Passing tier badge is earned and linked in the README.
+- **Maintained 0/10** — time-bounded: Scorecard auto-fails any repo younger than 90 days. Auto-improves on 2026-07-10. See [#96](https://github.com/somoore/sir/issues/96).
+- **Contributors 0/10** — organic-growth metric: Scorecard credits projects with commits from multiple GitHub organizations. Auto-improves as external contributors from other orgs land PRs. See [#100](https://github.com/somoore/sir/issues/100).
+
+These four exceptions are the only Scorecard findings we currently accept at 0/10. Every other check is either already at 10/10 or has an open PR to get it there.
+
 ## Local verification
 
 Run this before a release PR:
