@@ -1,14 +1,33 @@
 # sir — Sandbox in Reverse
 
-> A local security runtime for AI coding agents. Quiet on normal coding. Loud on dangerous transitions.
+> A local, hook-mediated security runtime for AI coding agents. Quiet on normal coding. Loud on dangerous transitions.
 
-sir mediates tool calls at the hook layer, routes normalized facts into a zero-dependency Rust policy oracle, and records each verdict in a local hash-chained ledger. `sir run <agent>` adds optional OS containment on macOS and Linux, but that layer is still a measured preview.
+[![CI](https://github.com/somoore/sir/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/somoore/sir/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/somoore/sir/badge)](https://securityscorecards.dev/viewer/?uri=github.com/somoore/sir)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Status: experimental](https://img.shields.io/badge/status-experimental-orange)](#hard-limits)
+
+Your AI coding agent can read `.env`, run shell, call MCP servers, and push code — all in the same session. sir puts a local policy checkpoint at every tool call, uses information flow control to track secret taint across operations, and stops the dangerous transitions before they run. Install once, then use **Claude Code**, **Gemini CLI**, or **Codex** exactly as you do today.
 
 ## What it is
 
-sir protects the transitions that matter: secret read to egress, posture tamper to deny-all plus restore, and untrusted MCP traffic to credential or injection scanning.
+sir is a local runtime with two moving parts and an audit trail.
 
-Supported agents:
+- **Go CLI (`sir`)** — collects facts on every tool call, manages session state, writes the ledger.
+- **Rust policy oracle (`mister-core`)** — zero-dependency, zero-unsafe. Decides allow / ask / deny.
+- **Hash-chained ledger** — append-only, verifiable with `sir log verify`.
+
+No daemon. No phone-home. No external dependency on the normal path.
+
+```mermaid
+flowchart LR
+    A[AI Coding Agent] -->|tool call| H[sir hook handler<br/>Go]
+    H -->|facts + session state| R[mister-core<br/>Rust policy oracle]
+    R -->|allow / ask / deny| H
+    H -->|decision + evidence| L[(hash-chained<br/>ledger)]
+    H -->|verdict| A
+```
+
 <!-- BEGIN GENERATED SUPPORT SUMMARY -->
 - **Claude Code** — **Reference support.** Full 10-hook lifecycle with native interactive approval and complete tool-path coverage.
 - **Gemini CLI** — **Near-parity support.** 6 hook events fire on Gemini CLI 0.36.0+, with full tool-path coverage for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: SubagentStart, ConfigChange, InstructionsLoaded, and Elicitation. See [gemini-support.md](docs/user/gemini-support.md).
@@ -17,11 +36,14 @@ Supported agents:
 
 ## Why use sir
 
-- Local and auditable: no daemon, no default phone-home path, and a ledger you can verify yourself with `sir log verify`.
-- Quiet by default: reads, edits, tests, loopback traffic, and normal commits stay silent until the agent crosses a risky boundary.
-- Security logic that composes: IFC carries secret reads into later writes, pushes, delegation, and external egress in the same session.
+- **Secrets and taint propagation.** Agents touch `.env`, cloud credentials, and SSH keys in the same session where they run shell and push code. Information flow control (IFC) tracks the taint: a secret read contaminates every downstream write, commit, or push attempt.
+- **MCP prompt injection.** MCP servers are an injection surface. sir scans MCP arguments for credentials and MCP responses for known injection patterns, taints untrusted servers, and forces re-approval after a hit.
+- **A local audit trail.** Provider logs stop at the governance layer. sir writes a tamper-evident record of what the agent actually did on your machine — the same chain a forensic review would trust.
+- **Quiet on normal coding, loud on dangerous transitions.** Reads, edits, tests, commits, and loopback traffic stay silent. Only external network, secret egress, posture tampering, and MCP injection trigger prompts or denials.
 
 ## Install in 3 minutes
+
+Fastest path — `install.sh` drops `sir` into `~/.local/bin`, preserves any existing `~/.sir/` state, and is the only supported update path. There is no self-updater.
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/somoore/sir/main/install.sh | bash
@@ -31,47 +53,77 @@ sir install            # auto-detect supported agents already on this machine
 # or: sir install --agent codex
 ```
 
-Build from source:
+Build from source if you prefer:
 
 ```bash
 # Requires [Rust 1.94.0+](https://rustup.rs/)
 # Requires [Go 1.22+](https://go.dev/dl/) with toolchain auto-fetch to go1.25.9
 make build
 make install
+cd /path/to/project
+sir install            # auto-detect supported agents already on this machine
+# or: sir install --agent gemini
 ```
 
-Managed rollout uses `SIR_MANAGED_POLICY_PATH`. Runtime containment is available through `sir run <agent>` and is currently a measured preview, not the primary shipped boundary.
+Managed rollout:
+
+```bash
+export SIR_MANAGED_POLICY_PATH=/etc/sir/managed-policy.json
+sir install --agent claude
+```
 
 ## Prove it works
 
+Run the baseline checks — hooks installed, posture intact, ledger chain verifies:
+
 ```bash
-sir status
-sir doctor
-sir log verify
+sir status       # hooks installed, session posture, last contained-run info
+sir doctor       # hook subtree intact, ledger chain verifies, sentinels unchanged
+sir log verify   # walk the hash chain and report first corruption, if any
 ```
 
+Then trigger one real protection path in your agent:
+
 1. Ask the agent to read `.env`.
-2. Approve the prompt.
-3. In the same turn, ask it to run `curl https://httpbin.org/get`.
-4. Run `sir explain --last`.
+2. Approve the prompt. sir labels the read as secret and marks the session tainted. You'll see the following in the agent's terminal:
 
-Expected result: the read is asked, the external request is blocked, and the ledger shows the causal chain that linked them.
+   ```text
+   sir: credentials file read (.env). External network requests are now restricted.
+   sir: this is turn-scoped — clears when the agent finishes responding.
+   sir: to clear now: sir unlock
+   ```
 
-Useful day-to-day commands:
+3. In the same turn, ask it to `curl https://httpbin.org/get`. sir denies the tool call before it runs.
+4. Run `sir explain --last` to see the full causal chain: which sensitive read tainted the session, which verb was attempted, and which rule blocked it.
 
-- `sir why`, `sir explain --last`, `sir log`
-- `sir mcp`, `sir mcp wrap`
-- `sir unlock`, `sir allow-host`, `sir allow-remote`, `sir trust`
+That is IFC taint propagation in action. `sir run <agent>` adds an optional below-hook containment layer (macOS `sandbox-exec`, Linux `unshare --net`) for defense in depth, though it is still a measured preview.
 
 ## Hard limits
 
-- Hook-layer mediation is the primary shipped boundary. If a host ignores hook responses, sir cannot stop the tool call.
-- MCP injection detection is heuristic. Encoded, paraphrased, or non-English framing can evade literal matches.
-- Shell classification is lexical, not a full POSIX parser.
-- Turn boundaries use a 30-second gap heuristic.
-- Codex remains limited by the current Bash-only upstream hook surface.
-- If `mister-core` is missing, Go falls back to a stricter-but-smaller local policy path.
+sir is v1 and experimental. The following tradeoffs are shipped deliberately.
 
-Docs: [runtime overview](docs/user/runtime-security-overview.md), [verification guide](docs/research/security-verification-guide.md), [threat model](docs/research/sir-threat-model.md), [FAQ](docs/user/faq.md), [contributor path](CONTRIBUTING.md), [architecture](ARCHITECTURE.md).
+- sir is strongest at the hook and tool boundary. It is not yet a complete host firewall. If a tool executor ignores the hook response, sir cannot stop the operation.
+- MCP injection detection is roughly 50 regex patterns — an arms race by nature. Encoded, paraphrased, or non-English framing can evade literal matches. Tainted servers require re-approval as the mitigation.
+- Turn boundaries use a 30-second gap heuristic and are gameable in theory.
+- Shell classification is wrapper-aware and prefix-aware, not full POSIX semantics.
+- Default lease allows push to origin, commit, loopback, and sub-agent delegation. Tighten with `sir trust`, `sir allow-host`, or managed policy.
+- Model-internal reasoning and paraphrase are out of scope.
+- Codex remains limited by the upstream Bash-only hook surface.
+- If `mister-core` is missing from `PATH`, Go falls back to a deliberately restrictive subset of the policy. Parity tests enforce that the fallback is never more permissive than Rust.
 
-Security: report vulnerabilities privately via [SECURITY.md](SECURITY.md). Contributing: start with [CONTRIBUTING.md](CONTRIBUTING.md). License: [Apache-2.0](LICENSE).
+## Day-to-day use
+
+- Install once per machine with `sir install`. Use your agent normally.
+- `sir log`, `sir explain --last`, `sir why`, and `sir doctor` are your investigation tools.
+- `sir mcp` and `sir mcp wrap` inspect or harden command-based MCP servers.
+- `sir unlock`, `sir allow-host`, `sir allow-remote`, and `sir trust` widen the lease — use them only when you intend to.
+
+## Documentation
+
+- Runtime behavior — [docs/user/runtime-security-overview.md](docs/user/runtime-security-overview.md)
+- Agent integration — [Claude](docs/user/claude-code-hooks-integration.md) · [Gemini](docs/user/gemini-support.md) · [Codex](docs/user/codex-support.md)
+- Contributor path — [CONTRIBUTING.md](CONTRIBUTING.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [docs/README.md](docs/README.md)
+- Verification and evidence — [security-verification-guide.md](docs/research/security-verification-guide.md) · [validation-summary.md](docs/research/validation-summary.md) · [sir-threat-model.md](docs/research/sir-threat-model.md)
+- FAQ — [docs/user/faq.md](docs/user/faq.md)
+
+Report suspected vulnerabilities privately via [SECURITY.md](SECURITY.md). Licensed under the [Apache License, Version 2.0](LICENSE).
