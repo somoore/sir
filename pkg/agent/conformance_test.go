@@ -21,6 +21,69 @@ import (
 
 type supportFixture = SupportManifest
 
+type strictSupportSurface struct {
+	Key       SupportSurfaceKey `json:"key"`
+	Title     string            `json:"title"`
+	Supported bool              `json:"supported"`
+	Notes     string            `json:"notes"`
+}
+
+type strictSupportFixture struct {
+	ID                       AgentID                `json:"id"`
+	Name                     string                 `json:"name"`
+	MinimumVersion           string                 `json:"minimum_version"`
+	SupportTier              SupportTier            `json:"support_tier"`
+	ToolCoverage             ToolCoverage           `json:"tool_coverage"`
+	HookEventCount           int                    `json:"hook_event_count"`
+	SupportedSIREvents       []string               `json:"supported_sir_events"`
+	UnsupportedSIREvents     []string               `json:"unsupported_sir_events"`
+	SupportedWireEvents      []string               `json:"supported_wire_events"`
+	RequiredFeatureFlag      string                 `json:"required_feature_flag"`
+	FeatureFlagEnableCommand string                 `json:"feature_flag_enable_command"`
+	Surfaces                 []strictSupportSurface `json:"surfaces"`
+}
+
+func strictSupportFixtureFrom(manifest SupportManifest) strictSupportFixture {
+	surfaces := make([]strictSupportSurface, len(manifest.Surfaces))
+	for i, surface := range manifest.Surfaces {
+		surfaces[i] = strictSupportSurface{
+			Key:       surface.Key,
+			Title:     surface.Title,
+			Supported: surface.Supported,
+			Notes:     surface.Notes,
+		}
+	}
+	return strictSupportFixture{
+		ID:                       manifest.ID,
+		Name:                     manifest.Name,
+		MinimumVersion:           manifest.MinimumVersion,
+		SupportTier:              manifest.SupportTier,
+		ToolCoverage:             manifest.ToolCoverage,
+		HookEventCount:           manifest.HookEventCount,
+		SupportedSIREvents:       manifest.SupportedSIREvents,
+		UnsupportedSIREvents:     manifest.UnsupportedSIREvents,
+		SupportedWireEvents:      manifest.SupportedWireEvents,
+		RequiredFeatureFlag:      manifest.RequiredFeatureFlag,
+		FeatureFlagEnableCommand: manifest.FeatureFlagEnableCommand,
+		Surfaces:                 surfaces,
+	}
+}
+
+func assertStrictJSONEqual(t *testing.T, got, want []byte, context string) {
+	t.Helper()
+	var gotValue interface{}
+	if err := json.Unmarshal(got, &gotValue); err != nil {
+		t.Fatalf("unmarshal generated %s: %v", context, err)
+	}
+	var wantValue interface{}
+	if err := json.Unmarshal(want, &wantValue); err != nil {
+		t.Fatalf("unmarshal golden %s: %v", context, err)
+	}
+	if !reflect.DeepEqual(gotValue, wantValue) {
+		t.Fatalf("%s drift\n got: %s\n want: %s", context, string(got), string(want))
+	}
+}
+
 type capabilityWitness struct {
 	name         string
 	path         string
@@ -217,6 +280,15 @@ func TestConformance(t *testing.T) {
 					}
 					t.Fatalf("support manifest drift for %s\n got: %s\n want: %s", ag.ID(), string(got), string(want))
 				}
+				got, err := json.MarshalIndent(strictSupportFixtureFrom(manifest), "", "  ")
+				if err != nil {
+					t.Fatalf("marshal strict support manifest: %v", err)
+				}
+				raw, err := os.ReadFile(filepath.Clean(supportFixturePath(ag.ID())))
+				if err != nil {
+					t.Fatalf("read support fixture raw bytes: %v", err)
+				}
+				assertStrictJSONEqual(t, got, raw, "support manifest raw keys for "+string(ag.ID()))
 			})
 
 			t.Run("SupportedEvents_are_valid", func(t *testing.T) {
