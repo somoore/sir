@@ -598,6 +598,48 @@ func TestStartLocalProxyTracksHTTPEgressDecisions(t *testing.T) {
 	}
 }
 
+func TestStartLocalProxyBlocksRedirectBounceToUnapprovedHost(t *testing.T) {
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://127.0.0.2/escape", http.StatusFound)
+	}))
+	defer origin.Close()
+
+	proxy, err := StartLocalProxy([]string{NormalizeProxyHost(origin.URL)})
+	if err != nil {
+		t.Fatalf("StartLocalProxy: %v", err)
+	}
+	defer proxy.Close()
+
+	proxyURL, _ := url.Parse(proxy.URL())
+	client := &http.Client{
+		Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)},
+	}
+
+	resp, err := client.Get(origin.URL)
+	if err != nil {
+		t.Fatalf("GET redirect bounce via proxy: %v", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read redirect bounce response: %v", err)
+	}
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("redirect bounce status = %d, want %d", resp.StatusCode, http.StatusForbidden)
+	}
+	if !strings.Contains(string(body), "sir run proxy blocked destination \"127.0.0.2:80\"") {
+		t.Fatalf("redirect bounce response body = %q, want blocked second-hop destination", string(body))
+	}
+
+	stats := proxy.snapshotStats()
+	if stats.allowedEgressCount != 1 || stats.blockedEgressCount != 1 {
+		t.Fatalf("unexpected proxy stats: %+v", stats)
+	}
+	if stats.lastBlockedDest != "127.0.0.2:80" {
+		t.Fatalf("lastBlockedDest = %q, want %q", stats.lastBlockedDest, "127.0.0.2:80")
+	}
+}
+
 func TestSignalLinuxContainmentReady_CleansUpOnWriteError(t *testing.T) {
 	cmd := exec.Command("sleep", "30")
 	if err := cmd.Start(); err != nil {
