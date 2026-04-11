@@ -42,18 +42,14 @@ type doctorRuntimeRepairResult struct {
 	inspection *session.RuntimeContainmentInspection
 }
 
+// printDoctorLines emits each line to stdout on its own line. It's a helper
+// used by the doctor recovery pipeline when a step has assembled lines
+// incrementally (see doctorStepResult.lines) and needs to flush them in
+// order. Single-line messages can use fmt.Println directly.
 func printDoctorLines(lines []string) {
 	for _, line := range lines {
 		fmt.Println(line)
 	}
-}
-
-func flushDoctorLines(lines *[]string) {
-	if len(*lines) == 0 {
-		return
-	}
-	printDoctorLines(*lines)
-	*lines = nil
 }
 
 func doctorConfirm(prompt string) bool {
@@ -175,21 +171,19 @@ func repairDoctorLeaseBaseline(projectRoot string, policy *session.ManagedPolicy
 			return result
 		}
 
-		printDoctorLines([]string{
-			"",
-			"  WARNING: The lease has changed while deny-all was active.",
-			fmt.Sprintf("  Current approved_hosts:   %v", currentLease.ApprovedHosts),
-			fmt.Sprintf("  Current approved_remotes: %v", currentLease.ApprovedRemotes),
-			"",
-		})
+		fmt.Println()
+		fmt.Println("  WARNING: The lease has changed while deny-all was active.")
+		fmt.Printf("  Current approved_hosts:   %v\n", currentLease.ApprovedHosts)
+		fmt.Printf("  Current approved_remotes: %v\n", currentLease.ApprovedRemotes)
+		fmt.Println()
 		if doctorConfirm("  Accept this as the new baseline? [y/N] ") {
-			printDoctorLines([]string{"  [x] Refreshed: lease.json hash (confirmed by developer)"})
+			fmt.Println("  [x] Refreshed: lease.json hash (confirmed by developer)")
 			result.step.fixed = true
 			state.LeaseHash = newLeaseHash
 			return result
 		}
 
-		printDoctorLines([]string{"  [ ] Skipped: lease.json hash NOT refreshed. Investigate the change before proceeding."})
+		fmt.Println("  [ ] Skipped: lease.json hash NOT refreshed. Investigate the change before proceeding.")
 		return result
 	}
 
@@ -230,10 +224,13 @@ func repairDoctorGlobalHooks(projectRoot string, policy *session.ManagedPolicy, 
 			if _, statErr := os.Stat(canonicalPath); statErr != nil {
 				continue
 			}
-			flushDoctorLines(&result.lines)
-			printDoctorLines([]string{fmt.Sprintf("  Canonical copy for %s available at %s", ag.Name(), canonicalPath)})
+			if len(result.lines) > 0 {
+				printDoctorLines(result.lines)
+				result.lines = nil
+			}
+			fmt.Printf("  Canonical copy for %s available at %s\n", ag.Name(), canonicalPath)
 			if !doctorConfirm(fmt.Sprintf("  Restore %s from canonical copy? [y/N] ", ag.ConfigPath())) {
-				printDoctorLines([]string{fmt.Sprintf("  [ ] Skipped: %s NOT restored.", ag.ConfigPath())})
+				fmt.Printf("  [ ] Skipped: %s NOT restored.\n", ag.ConfigPath())
 				continue
 			}
 		}
@@ -247,7 +244,7 @@ func repairDoctorGlobalHooks(projectRoot string, policy *session.ManagedPolicy, 
 			if policy != nil {
 				result.lines = append(result.lines, fmt.Sprintf("  [x] Restored: %s hooks subtree from managed policy", ag.ConfigPath()))
 			} else {
-				printDoctorLines([]string{fmt.Sprintf("  [x] Restored: %s hooks subtree from canonical copy", ag.ConfigPath())})
+				fmt.Printf("  [x] Restored: %s hooks subtree from canonical copy\n", ag.ConfigPath())
 			}
 			restored = true
 			continue
@@ -256,7 +253,7 @@ func repairDoctorGlobalHooks(projectRoot string, policy *session.ManagedPolicy, 
 			result.lines = append(result.lines, fmt.Sprintf("  Failed to restore: %s", ag.ConfigPath()))
 			continue
 		}
-		printDoctorLines([]string{fmt.Sprintf("  Failed to restore: %s", ag.ConfigPath())})
+		fmt.Printf("  Failed to restore: %s\n", ag.ConfigPath())
 	}
 
 	if restored {

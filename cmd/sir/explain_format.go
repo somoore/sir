@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -21,61 +22,145 @@ func decisionTitle(e ledger.Entry) string {
 	}
 }
 
-// verbHumanDescription returns a plain-English description of what the verb+target represents.
+// verbMetadata holds the per-verb prose used by the explain renderer. Adding
+// a new verb is a single map entry rather than three parallel switch edits
+// across verbHumanDescription, sinkClassification, and verbPolicyDescription.
+//
+// humanTemplate is either a static phrase or a fmt template that receives
+// extractHost(target) or filepath.Base(target) — whichever is documented
+// next to the entry. An empty sinkClass means the verb does not participate
+// in sink classification.
+type verbMetadata struct {
+	humanStatic   string
+	humanHostTmpl string // fmt template, %s = extractHost(target)
+	humanBaseTmpl string // fmt template, %s = filepath.Base(target)
+	sinkClass     string
+	policy        string
+}
+
+var verbMetadataTable = map[string]verbMetadata{
+	"net_external": {
+		humanHostTmpl: "network request to %s",
+		sinkClass:     "untrusted (external host not in approved_hosts)",
+		policy:        "Secret-labeled session data cannot flow to untrusted external hosts",
+	},
+	"net_allowlisted": {
+		humanHostTmpl: "network request to approved host %s",
+		sinkClass:     "approved (host in lease approved_hosts)",
+		policy:        "Network requests to approved hosts require developer confirmation",
+	},
+	"net_local": {
+		humanStatic: "network request to localhost",
+		sinkClass:   "trusted (loopback address)",
+		policy:      "Loopback network requests are always allowed",
+	},
+	"push_origin": {
+		humanStatic: "git push to origin",
+		sinkClass:   "approved (remote in approved_remotes)",
+		policy:      "Git push to approved remotes requires confirmation when session has secrets",
+	},
+	"push_remote": {
+		humanStatic: "git push to unapproved remote",
+		sinkClass:   "untrusted (remote not in approved_remotes)",
+		policy:      "Git push to unapproved remotes is always blocked when session has secrets",
+	},
+	"run_ephemeral": {
+		humanStatic: "ephemeral code execution (npx)",
+		policy:      "Ephemeral remote code execution (npx) always requires approval",
+	},
+	"read_ref": {
+		humanBaseTmpl: "file read: %s",
+		policy:        "Reading sensitive files requires developer approval; labels session as secret",
+	},
+	"stage_write": {
+		humanBaseTmpl: "file write: %s",
+		policy:        "Writing posture files always requires approval",
+	},
+	"execute_dry_run": {
+		humanStatic: "shell command",
+		policy:      "Standard shell commands are silently allowed",
+	},
+	"run_tests": {
+		humanStatic: "test execution",
+		policy:      "Test execution is silently allowed",
+	},
+	"commit": {
+		humanStatic: "git commit",
+		policy:      "Git commits are silently allowed",
+	},
+	"list_files": {
+		humanStatic: "file listing",
+		policy:      "File listing is silently allowed",
+	},
+	"search_code": {
+		humanStatic: "code search",
+		policy:      "Code search is silently allowed",
+	},
+	"env_read": {
+		humanStatic: "environment variable access",
+		policy:      "Environment variable access may expose secrets; always requires approval",
+	},
+	"dns_lookup": {
+		humanStatic: "DNS lookup (potential data exfiltration channel)",
+		sinkClass:   "untrusted (DNS can exfiltrate data)",
+		policy:      "DNS lookups are blocked (potential data exfiltration via DNS)",
+	},
+	"persistence": {
+		humanStatic: "persistence mechanism (crontab/launchctl)",
+		policy:      "Persistence mechanisms (cron, launchctl) always require approval",
+	},
+	"sudo": {
+		humanStatic: "elevated privilege command",
+		policy:      "Elevated privilege commands always require approval",
+	},
+	"delete_posture": {
+		humanStatic: "delete/link targeting posture file",
+		policy:      "Deleting or linking posture files always requires approval",
+	},
+	"sir_self": {
+		humanStatic: "sir configuration command",
+		policy:      "Modifying sir configuration always requires developer approval",
+	},
+	"mcp_unapproved": {
+		humanStatic: "unapproved MCP server tool call",
+		policy:      "Unapproved MCP server tools always require approval",
+	},
+	"mcp_credential_leak": {
+		humanStatic: "MCP tool call with credential pattern in arguments",
+		policy:      "Credential patterns in MCP tool arguments are unconditionally blocked. The escape hatch is `sir trust <server>` for MCP servers designed to receive opaque tokens (rare).",
+	},
+	"mcp_injection_detected": {
+		humanStatic: "MCP response containing injection patterns",
+		policy:      "Suspicious instructions in an MCP response raise session posture; the next tool call is gated",
+	},
+	"credential_detected": {
+		humanStatic: "structured credentials in tool output",
+		policy:      "Structured credentials in tool output escalate the IFC label to secret (no block)",
+	},
+	"delegate": {
+		humanStatic: "sub-agent delegation (Agent tool / SubagentStart)",
+		policy:      "Sub-agent delegation is denied in a secret session and follows the lease policy otherwise",
+	},
+	"elicitation_harvest": {
+		humanStatic: "elicitation prompt with credential-harvest pattern",
+		policy:      "Elicitation prompts matching credential-harvest patterns are warned but not blocked",
+	},
+}
+
+// verbHumanDescription returns a plain-English description of what the
+// verb+target represents.
 func verbHumanDescription(verb, target string) string {
-	switch verb {
-	case "net_external":
-		return "network request to " + extractHost(target)
-	case "net_allowlisted":
-		return "network request to approved host " + extractHost(target)
-	case "net_local":
-		return "network request to localhost"
-	case "push_origin":
-		return "git push to origin"
-	case "push_remote":
-		return "git push to unapproved remote"
-	case "run_ephemeral":
-		return "ephemeral code execution (npx)"
-	case "read_ref":
-		return "file read: " + filepath.Base(target)
-	case "stage_write":
-		return "file write: " + filepath.Base(target)
-	case "execute_dry_run":
-		return "shell command"
-	case "run_tests":
-		return "test execution"
-	case "commit":
-		return "git commit"
-	case "list_files":
-		return "file listing"
-	case "search_code":
-		return "code search"
-	case "env_read":
-		return "environment variable access"
-	case "dns_lookup":
-		return "DNS lookup (potential data exfiltration channel)"
-	case "persistence":
-		return "persistence mechanism (crontab/launchctl)"
-	case "sudo":
-		return "elevated privilege command"
-	case "delete_posture":
-		return "delete/link targeting posture file"
-	case "sir_self":
-		return "sir configuration command"
-	case "mcp_unapproved":
-		return "unapproved MCP server tool call"
-	case "mcp_credential_leak":
-		return "MCP tool call with credential pattern in arguments"
-	case "mcp_injection_detected":
-		return "MCP response containing injection patterns"
-	case "credential_detected":
-		return "structured credentials in tool output"
-	case "delegate":
-		return "sub-agent delegation (Agent tool / SubagentStart)"
-	case "elicitation_harvest":
-		return "elicitation prompt with credential-harvest pattern"
-	default:
+	meta, ok := verbMetadataTable[verb]
+	if !ok {
 		return verb
+	}
+	switch {
+	case meta.humanHostTmpl != "":
+		return fmt.Sprintf(meta.humanHostTmpl, extractHost(target))
+	case meta.humanBaseTmpl != "":
+		return fmt.Sprintf(meta.humanBaseTmpl, filepath.Base(target))
+	default:
+		return meta.humanStatic
 	}
 }
 
@@ -101,23 +186,9 @@ func extractHost(target string) string {
 }
 
 // sinkClassification returns the sink trust level for network/push verbs.
+// Sourced from verbMetadataTable; verbs without a sinkClass return "".
 func sinkClassification(verb string) string {
-	switch verb {
-	case "net_external":
-		return "untrusted (external host not in approved_hosts)"
-	case "net_allowlisted":
-		return "approved (host in lease approved_hosts)"
-	case "net_local":
-		return "trusted (loopback address)"
-	case "push_remote":
-		return "untrusted (remote not in approved_remotes)"
-	case "push_origin":
-		return "approved (remote in approved_remotes)"
-	case "dns_lookup":
-		return "untrusted (DNS can exfiltrate data)"
-	default:
-		return ""
-	}
+	return verbMetadataTable[verb].sinkClass
 }
 
 func explainEvidencePreview(evidence string) string {
@@ -138,60 +209,11 @@ func indentExplainBlock(s, prefix string) string {
 	return strings.Join(lines, "\n")
 }
 
-// verbPolicyDescription returns the enforcement rule for a verb.
+// verbPolicyDescription returns the enforcement rule for a verb. Sourced from
+// verbMetadataTable; unknown verbs return a clear fallback string.
 func verbPolicyDescription(verb string) string {
-	switch verb {
-	case "net_external":
-		return "Secret-labeled session data cannot flow to untrusted external hosts"
-	case "net_allowlisted":
-		return "Network requests to approved hosts require developer confirmation"
-	case "net_local":
-		return "Loopback network requests are always allowed"
-	case "push_origin":
-		return "Git push to approved remotes requires confirmation when session has secrets"
-	case "push_remote":
-		return "Git push to unapproved remotes is always blocked when session has secrets"
-	case "run_ephemeral":
-		return "Ephemeral remote code execution (npx) always requires approval"
-	case "read_ref":
-		return "Reading sensitive files requires developer approval; labels session as secret"
-	case "stage_write":
-		return "Writing posture files always requires approval"
-	case "execute_dry_run":
-		return "Standard shell commands are silently allowed"
-	case "run_tests":
-		return "Test execution is silently allowed"
-	case "commit":
-		return "Git commits are silently allowed"
-	case "list_files":
-		return "File listing is silently allowed"
-	case "search_code":
-		return "Code search is silently allowed"
-	case "env_read":
-		return "Environment variable access may expose secrets; always requires approval"
-	case "dns_lookup":
-		return "DNS lookups are blocked (potential data exfiltration via DNS)"
-	case "persistence":
-		return "Persistence mechanisms (cron, launchctl) always require approval"
-	case "sudo":
-		return "Elevated privilege commands always require approval"
-	case "delete_posture":
-		return "Deleting or linking posture files always requires approval"
-	case "sir_self":
-		return "Modifying sir configuration always requires developer approval"
-	case "mcp_unapproved":
-		return "Unapproved MCP server tools always require approval"
-	case "mcp_credential_leak":
-		return "Credential patterns in MCP tool arguments are unconditionally blocked. The escape hatch is `sir trust <server>` for MCP servers designed to receive opaque tokens (rare)."
-	case "mcp_injection_detected":
-		return "Suspicious instructions in an MCP response raise session posture; the next tool call is gated"
-	case "credential_detected":
-		return "Structured credentials in tool output escalate the IFC label to secret (no block)"
-	case "delegate":
-		return "Sub-agent delegation is denied in a secret session and follows the lease policy otherwise"
-	case "elicitation_harvest":
-		return "Elicitation prompts matching credential-harvest patterns are warned but not blocked"
-	default:
-		return "Unknown policy rule for verb: " + verb
+	if meta, ok := verbMetadataTable[verb]; ok && meta.policy != "" {
+		return meta.policy
 	}
+	return "Unknown policy rule for verb: " + verb
 }
