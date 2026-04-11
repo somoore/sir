@@ -105,6 +105,30 @@ func (m SupportManifest) StatusSuffix() string {
 	return "  (" + strings.Join(parts, ", ") + ")"
 }
 
+// StatusWarningLine renders the support caveat used by `sir status`.
+func (m SupportManifest) StatusWarningLine(agentName string) string {
+	switch m.SupportTier {
+	case SupportTierNearParity:
+		return fmt.Sprintf("             Note: %s is near-parity support; lifecycle coverage remains narrower than Claude Code.\n", agentName)
+	case SupportTierLimited:
+		return fmt.Sprintf("             Warning: %s remains limited support; enforcement is bounded by the upstream Bash-only hook surface.\n", agentName)
+	default:
+		return ""
+	}
+}
+
+// DoctorWarningLine renders the support caveat used by `sir doctor`.
+func (m SupportManifest) DoctorWarningLine(agentName string) string {
+	switch m.SupportTier {
+	case SupportTierNearParity:
+		return fmt.Sprintf("  NOTE: %s is near-parity support — file IFC, shell classification, MCP scanning, and credential output scanning are covered, but some lifecycle hooks remain unavailable.\n", agentName)
+	case SupportTierLimited:
+		return fmt.Sprintf("  WARNING: %s is limited support — Bash-mediated actions are guarded, but native writes and MCP tools still depend on sentinel hashing plus end-of-session sweeps.\n", agentName)
+	default:
+		return ""
+	}
+}
+
 // StatusHeading is the generated heading used by per-agent support docs.
 func (m SupportManifest) StatusHeading() string {
 	switch m.ID {
