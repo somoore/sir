@@ -314,8 +314,10 @@ func TestRedactTarget_NetworkExtractsHost(t *testing.T) {
 		wantHost string
 	}{
 		{"https://api.example.com/v1/users?token=abc", "net_external", "api.example.com"},
+		{"https://user:pass@example.com/v1", "net_external", "example.com"},
 		{"http://localhost:8080/health", "net_local", "localhost"},
 		{"evil.com:443", "net_external", "evil.com"},
+		{"ssh://git@github.com:22/org/repo", "push_remote", "github.com"},
 	}
 	for _, tt := range tests {
 		got := RedactTarget(tt.in, "", tt.verb)
@@ -394,4 +396,32 @@ func TestBuildOTLPPayload_IncludesEvidenceAndTamperAttrs(t *testing.T) {
 			t.Fatalf("expected OTLP payload to contain %s: %s", needle, s)
 		}
 	}
+}
+
+func TestBuildOTLPPayload_IncludesGenesisLedgerIndex(t *testing.T) {
+	body, err := buildOTLPPayload(LogEvent{
+		ToolName:    "Read",
+		Verb:        "read_ref",
+		Verdict:     "allow",
+		LedgerIndex: 0,
+		LedgerHash:  "hash0",
+	}, "session-abc", "claude", "Claude Code", Version)
+	if err != nil {
+		t.Fatalf("buildOTLPPayload error: %v", err)
+	}
+
+	var req otlpLogsRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		t.Fatalf("unmarshal OTLP payload: %v", err)
+	}
+
+	for _, attr := range req.ResourceLogs[0].ScopeLogs[0].LogRecords[0].Attributes {
+		if attr.Key == "sir.ledger.index" {
+			if attr.Value.IntValue == nil || *attr.Value.IntValue != "0" {
+				t.Fatalf("sir.ledger.index = %v, want 0", attr.Value.IntValue)
+			}
+			return
+		}
+	}
+	t.Fatal("missing sir.ledger.index for genesis ledger event")
 }
