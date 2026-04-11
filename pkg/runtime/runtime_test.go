@@ -28,8 +28,9 @@ import (
 type runtimeTestAgent struct{}
 
 const (
-	runtimeTestProxyShapedReason = "proxy-shaped enforcement: direct non-proxy sockets remain outside the exact-destination boundary on macOS"
-	runtimeTestScrubbedEnvReason = "launch inherited host-control env that had to be scrubbed before containment"
+	runtimeTestProxyShapedReason  = "proxy-shaped enforcement: direct non-proxy sockets remain outside the exact-destination boundary on macOS"
+	runtimeTestScrubbedEnvReason  = "launch inherited host-control env that had to be scrubbed before containment"
+	runtimeTestMaskedSocketReason = "launch inherited host-control sockets that had to be masked inside containment"
 )
 
 func (runtimeTestAgent) ID() agent.AgentID { return agent.AgentID("runtime-test") }
@@ -262,6 +263,116 @@ func TestLinuxContainmentBootstrapScriptIncludesReadonlyGuards(t *testing.T) {
 	}
 	if !strings.Contains(script, shellQuote(projectRoot+"/.mcp.json")) {
 		t.Fatalf("bootstrap script missing project posture guard for %s:\n%s", projectRoot+"/.mcp.json", script)
+	}
+}
+
+func TestLinuxContainmentBootstrapMasksGuessedHostControlSocketsAfterEnvScrub(t *testing.T) {
+	home := t.TempDir()
+	xdgRuntime := t.TempDir()
+	gnupgHome := filepath.Join(t.TempDir(), "gnupg")
+	projectRoot := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_RUNTIME_DIR", xdgRuntime)
+	t.Setenv("GNUPGHOME", gnupgHome)
+
+	socketPaths := []string{
+		filepath.Join(xdgRuntime, "bus"),
+		filepath.Join(xdgRuntime, "docker.sock"),
+		filepath.Join(xdgRuntime, "podman", "podman.sock"),
+		filepath.Join(xdgRuntime, "buildkitd.sock"),
+		filepath.Join(xdgRuntime, "buildkit", "buildkitd.sock"),
+		filepath.Join(xdgRuntime, "gnupg", "S.gpg-agent"),
+		filepath.Join(xdgRuntime, "gnupg", "S.gpg-agent.ssh"),
+		filepath.Join(home, ".gnupg", "S.gpg-agent"),
+		filepath.Join(home, ".gnupg", "S.gpg-agent.browser"),
+		filepath.Join(gnupgHome, "S.gpg-agent"),
+		filepath.Join(gnupgHome, "S.gpg-agent.extra"),
+		filepath.Join(gnupgHome, "S.gpg-agent.ssh"),
+	}
+	for _, path := range socketPaths {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("mkdir socket dir %s: %v", path, err)
+		}
+		if err := os.WriteFile(path, []byte("socket"), 0o600); err != nil {
+			t.Fatalf("write socket placeholder %s: %v", path, err)
+		}
+	}
+
+	sshSock := filepath.Join(t.TempDir(), "ssh-agent.sock")
+	dockerSock := filepath.Join(t.TempDir(), "docker.sock")
+	dbusSock := filepath.Join(t.TempDir(), "bus")
+	for _, path := range []string{sshSock, dockerSock, dbusSock} {
+		if err := os.WriteFile(path, []byte("socket"), 0o600); err != nil {
+			t.Fatalf("write env socket placeholder %s: %v", path, err)
+		}
+	}
+	t.Setenv("SSH_AUTH_SOCK", sshSock)
+	t.Setenv("DOCKER_HOST", "unix://"+dockerSock)
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path="+dbusSock)
+
+	_, scrubbed := sanitizeContainmentEnv(os.Environ())
+	if !slices.Contains(scrubbed, "SSH_AUTH_SOCK") || !slices.Contains(scrubbed, "DOCKER_HOST") || !slices.Contains(scrubbed, "DBUS_SESSION_BUS_ADDRESS") {
+		t.Fatalf("sanitizeContainmentEnv scrubbed = %v, want host-control env keys removed", scrubbed)
+	}
+
+	discovered := linuxHostControlSockets()
+	for _, want := range []string{
+		sshSock,
+		dockerSock,
+		dbusSock,
+		filepath.Join(xdgRuntime, "bus"),
+		filepath.Join(xdgRuntime, "docker.sock"),
+		filepath.Join(xdgRuntime, "podman", "podman.sock"),
+		filepath.Join(xdgRuntime, "buildkitd.sock"),
+		filepath.Join(xdgRuntime, "buildkit", "buildkitd.sock"),
+		filepath.Join(xdgRuntime, "gnupg", "S.gpg-agent"),
+		filepath.Join(xdgRuntime, "gnupg", "S.gpg-agent.ssh"),
+		filepath.Join(home, ".gnupg", "S.gpg-agent"),
+		filepath.Join(home, ".gnupg", "S.gpg-agent.browser"),
+		filepath.Join(gnupgHome, "S.gpg-agent"),
+		filepath.Join(gnupgHome, "S.gpg-agent.extra"),
+		filepath.Join(gnupgHome, "S.gpg-agent.ssh"),
+	} {
+		if !slices.Contains(discovered, want) {
+			t.Fatalf("linuxHostControlSockets() = %v, want to contain %q", discovered, want)
+		}
+	}
+
+	if err := os.MkdirAll(filepath.Join(home, ".sir", "projects"), 0o755); err != nil {
+		t.Fatalf("mkdir .sir/projects: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, ".mcp.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatalf("write .mcp.json: %v", err)
+	}
+
+	script, err := linuxContainmentBootstrapScript(projectRoot, runtimeTestAgent{})
+	if err != nil {
+		t.Fatalf("linuxContainmentBootstrapScript: %v", err)
+	}
+	for _, want := range []string{
+		"mask_runtime_socket " + shellQuote(filepath.Join(xdgRuntime, "bus")),
+		"mask_runtime_socket " + shellQuote(filepath.Join(xdgRuntime, "podman", "podman.sock")),
+		"mask_runtime_socket " + shellQuote(filepath.Join(xdgRuntime, "gnupg", "S.gpg-agent")),
+		"mask_runtime_socket " + shellQuote(filepath.Join(home, ".gnupg", "S.gpg-agent")),
+		"mask_runtime_socket " + shellQuote(filepath.Join(gnupgHome, "S.gpg-agent.ssh")),
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("bootstrap script missing %q:\n%s", want, script)
+		}
+	}
+
+	receipt := &session.RuntimeContainment{
+		AgentID:           string(agent.Claude),
+		Mode:              ContainmentModeLinuxNamespace,
+		MaskedHostSockets: append([]string(nil), discovered...),
+		ScrubbedEnvVars:   append([]string(nil), scrubbed...),
+	}
+	reasons := receipt.EffectiveDegradedReasons()
+	if !slices.Contains(reasons, runtimeTestMaskedSocketReason) {
+		t.Fatalf("runtime receipt missing masked-socket degradation reason: %v", reasons)
+	}
+	if !slices.Contains(reasons, runtimeTestScrubbedEnvReason) {
+		t.Fatalf("runtime receipt missing scrubbed-env degradation reason: %v", reasons)
 	}
 }
 
