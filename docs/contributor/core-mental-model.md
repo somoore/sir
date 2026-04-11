@@ -18,8 +18,8 @@ That is the core thesis behind "sandbox in reverse":
 
 ### Lease and policy
 
-`mister-core` is the policy oracle. It takes normalized facts and returns
-`allow`, `deny`, or `ask`. It has no filesystem or network access.
+`mister-core` is the normalized policy oracle. It takes normalized facts and
+returns `allow`, `deny`, or `ask`. It has no filesystem or network access.
 
 Start here when you are changing:
 
@@ -33,6 +33,17 @@ Primary files:
 - [mister-core/src/policy.rs](../../mister-core/src/policy.rs)
 - [pkg/policy/surface_gen.go](../../pkg/policy/surface_gen.go)
 - [pkg/core/](../../pkg/core/)
+
+Go also enforces preflight and session-level gates when it can see facts Rust
+cannot yet:
+
+- deny-all after posture tamper
+- credential detection in MCP arguments and responses
+- pending-injection posture
+- managed-mode command refusal
+
+Those Go checks may narrow a Rust verdict. They must never widen a Rust deny
+into `ask` or `allow`.
 
 ### Hook mediation
 
@@ -97,14 +108,8 @@ Primary files:
 
 ## 3. The Go layer may be stricter than Rust, never looser
 
-Go can add additional restrictions from facts Rust cannot see yet:
-
-- deny-all after posture tamper
-- credential detection in MCP arguments/responses
-- pending injection posture
-- managed-mode command refusal
-
-Go must never widen a Rust deny into ask or allow.
+Go can add additional restrictions from facts Rust cannot see yet, but it
+exists to narrow authority, not to replace Rust as the policy oracle.
 
 ## 4. The main state objects are small and important
 

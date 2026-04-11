@@ -126,8 +126,10 @@ pattern.
 
 Expected result:
 
-- PreToolUse fires `mcp_credential_leak`
-- the request is blocked or prompted according to the lease
+- PreToolUse fires `mcp_credential_leak` for untrusted MCP servers
+- the request is denied before it reaches the server
+- trusted MCP servers bypass the credential scan, so the hook does not emit
+  `mcp_credential_leak` for a trusted server
 - if `SIR_LOG_TOOL_CONTENT=1`, `sir explain --last` shows redacted evidence
 
 ### Injection marker in MCP response

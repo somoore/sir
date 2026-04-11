@@ -55,7 +55,7 @@ make bench
 | Sensitive-path or IFC-label update | [pkg/hooks/labels.go](../../pkg/hooks/labels.go) | Path-based labeling starts here |
 | User-facing approval/block copy | [pkg/hooks/messages.go](../../pkg/hooks/messages.go) and siblings | Messaging is centralized here |
 | Agent adapter change | [pkg/agent/](../../pkg/agent/) and [CONTRIBUTING-AGENTS.md](../../CONTRIBUTING-AGENTS.md) | Agent-specific hook behavior lives here |
-| Policy-rule change | [mister-core/src/policy.rs](../../mister-core/src/policy.rs) and [pkg/policy/surface_gen.go](../../pkg/policy/surface_gen.go) | Rust decides policy; Go mirrors the typed surface |
+| Policy-rule change | [mister-core/src/policy.rs](../../mister-core/src/policy.rs) and [pkg/policy/surface_gen.go](../../pkg/policy/surface_gen.go) | Rust owns normalized policy; Go adds preflight/session gates and mirrors the typed surface |
 | Session / lineage / posture state | [pkg/session/](../../pkg/session/) | Secret-session, managed-mode, and runtime state are here |
 | Runtime containment | [cmd/sir/doc.go](../../cmd/sir/doc.go), [pkg/runtime/](../../pkg/runtime/), and [ARCHITECTURE.md](../../ARCHITECTURE.md) | Host-agent containment lives below the CLI in a reusable runtime package |
 
