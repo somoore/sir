@@ -229,16 +229,21 @@ func TestSanitizeContainmentEnvRemovesHostControlKeys(t *testing.T) {
 }
 
 func TestStartLocalProxyPinsResolvedIPs(t *testing.T) {
+	resolvedIPs := []string{"203.0.113.10", "203.0.113.11"}
 	proxy, err := startLocalProxyWithResolver([]string{"api.anthropic.com"}, func(_ context.Context, host string) ([]string, error) {
 		if host != "api.anthropic.com" {
 			t.Fatalf("resolver host = %q, want api.anthropic.com", host)
 		}
-		return []string{"203.0.113.10", "203.0.113.11"}, nil
+		return append([]string(nil), resolvedIPs...), nil
 	})
 	if err != nil {
 		t.Fatalf("startLocalProxyWithResolver: %v", err)
 	}
 	defer proxy.Close()
+
+	// Simulate resolver drift after launch; the proxy must stay pinned to the
+	// launch-time answers it already captured.
+	resolvedIPs = []string{"198.51.100.22"}
 
 	if !proxy.isAllowed("api.anthropic.com", "443") {
 		t.Fatal("expected hostname to stay allowlisted")
@@ -251,6 +256,9 @@ func TestStartLocalProxyPinsResolvedIPs(t *testing.T) {
 	}
 	if proxy.isAllowed("198.51.100.22", "443") {
 		t.Fatal("unexpected unrelated IP allowlist match")
+	}
+	if got := proxy.pinnedHosts["api.anthropic.com"]; !slices.Equal(got, []string{"203.0.113.10", "203.0.113.11"}) {
+		t.Fatalf("pinned hosts = %v, want launch-time resolver answers", got)
 	}
 	got := proxy.allowedDialTargets("api.anthropic.com", "443")
 	want := []string{"203.0.113.10:443", "203.0.113.11:443"}
