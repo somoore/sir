@@ -3,6 +3,12 @@
 - What changed?
 - Why was it needed?
 
+Linked issue / backlog track:
+
+Did this create a follow-up `good-first-security-change`?
+
+If contributor-facing behavior changed, which docs/issues were updated?
+
 ## Validation
 
 - [ ] I ran the relevant tests or checks locally

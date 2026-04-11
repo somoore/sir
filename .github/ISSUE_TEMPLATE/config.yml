@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Contributor Workflow
+    url: https://github.com/somoore/sir/blob/main/CONTRIBUTING.md
+    about: Start here for backlog tracks, label names, and required validation.
+  - name: First 30 Minutes
+    url: https://github.com/somoore/sir/blob/main/docs/contributor/first-30-minutes.md
+    about: Use the shortest safe path into a bounded contribution.
+  - name: Private Vulnerability Report
+    url: https://github.com/somoore/sir/security/advisories/new
+    about: Use GitHub Security Advisories for vulnerabilities instead of public issues.
+  - name: Security Policy
+    url: https://github.com/somoore/sir/blob/main/SECURITY.md
+    about: Read the reporting policy before opening a public security issue.

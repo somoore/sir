@@ -10,6 +10,13 @@ assignees: ''
 
 A clear description of what happened.
 
+## Optional intake context
+
+If you already know any of these, include them. Maintainers can fill the rest during triage.
+
+- **Affected agent (if known):** (Claude / Gemini / Codex / multiple / none)
+- **Anything security-sensitive about this report?:** (brief note, optional)
+
 ## Steps to reproduce
 
 1. Run `sir install` in a project directory

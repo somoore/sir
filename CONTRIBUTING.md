@@ -61,6 +61,34 @@ Good first security changes:
 - Improve denial/ask copy only when the underlying policy already exists
 - Split helpers by concern when a file is mixing detection, persistence, and operator output
 
+## Visible backlog
+
+Keep public work legible on the `sir roadmap` board. Backlog issues should land in exactly one track:
+
+- `public-contract`: docs, workflows, or contract tests drifted and need to line back up. Validation: `make public-contract`. Likely files: `README.md`, `docs/`, `cmd/sir/public_contract_test.go`.
+- `install-onboarding-parity`: install, auto-detect, or first-run behavior diverged across agents. Validation: `go test ./cmd/sir ./pkg/agent`. Likely files: `install.sh`, `cmd/sir/install*.go`, `pkg/agent/`.
+- `runtime-hardening`: `sir run`, proxy policy, or runtime status/doctor visibility needs tightening. Validation: `go test ./pkg/runtime ./pkg/session ./cmd/sir` and `make bench-check`. Likely files: `pkg/runtime/`, `pkg/session/runtime*.go`, `cmd/sir/status_runtime.go`.
+- `adapter-parity`: Claude / Gemini / Codex support claims or behavior need to move closer together without widening guarantees. Validation: `go test ./pkg/agent ./pkg/hooks`. Likely files: `pkg/agent/`, `docs/user/*support*.md`.
+- `hotspot-refactor`: a mixed-concern file needs a behavior-preserving split plus tests. Validation: the touched package tests plus `go test ./...`. Likely files: whichever subsystem hotspot the issue names.
+
+`good-first-security-change` is a contributor-fit label, not a track. Use it for bounded security improvements that a new contributor can land safely in one branch. Keep GitHub's `good first issue` label in sync when the issue is suitable for broader newcomer discovery.
+
+Issue shape for these tracks:
+
+- Problem: what drift, risk, or contributor pain exists now.
+- Smallest acceptable scope: the narrowest change that still counts as done.
+- Validation: the exact commands expected before merge.
+- Starter files: the first 2-5 files a contributor should read.
+
+Backlog labels are synced automatically from the backlog issue form. Maintainers should keep these labels visible and current:
+
+- `public-contract`
+- `install-onboarding-parity`
+- `runtime-hardening`
+- `adapter-parity`
+- `hotspot-refactor`
+- `good-first-security-change`
+
 Open an issue first or pull in a maintainer when changing:
 
 - lease format, runtime descriptor shape, or session compatibility behavior
