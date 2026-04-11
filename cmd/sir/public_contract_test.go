@@ -86,6 +86,11 @@ func TestPublicContractParity(t *testing.T) {
 		requireContainsFile(t, root, "README.md", "curl https://httpbin.org/get", "README blocked egress check")
 	})
 
+	t.Run("cli_support_surface", func(t *testing.T) {
+		requireContainsFile(t, root, "cmd/sir/main.go", "case \"support\":", "main support dispatch")
+		requireContainsFile(t, root, "cmd/sir/main.go", "sir support --json", "main support usage")
+	})
+
 	t.Run("agent_support_policy", func(t *testing.T) {
 		requireGeneratedBlock(t, root, "README.md", "GENERATED SUPPORT SUMMARY", agent.RenderReadmeSupportBlock())
 		requireGeneratedBlock(t, root, "docs/user/faq.md", "GENERATED SUPPORT FAQ", agent.RenderFAQSupportBlock())
