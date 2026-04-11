@@ -92,7 +92,9 @@ func runDoctorRepairs(projectRoot string, policy *session.ManagedPolicy, l *leas
 	report := &doctorRepairReport{}
 	wasDenyAll := state.DenyAll
 
-	report.addEarly(clearDoctorDenyAll(state))
+	denyAllStep := clearDoctorDenyAll(state)
+	printDoctorLines(denyAllStep.lines)
+	report.fixed = report.fixed || denyAllStep.fixed
 
 	leaseRepair := repairDoctorLeaseBaseline(projectRoot, policy, l, state, wasDenyAll)
 	report.addEarly(leaseRepair.step)

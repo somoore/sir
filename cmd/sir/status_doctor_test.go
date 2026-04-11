@@ -554,21 +554,22 @@ func TestRunDoctorRepairs_PreservesPartialOutputOnHookRepairError(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	report, _, err := runDoctorRepairs(env.projectRoot, policy, managedLease, state)
-	if err == nil {
-		t.Fatal("expected hook repair to fail after corrupting managed policy")
-	}
+	var report *doctorRepairReport
+	out := captureStdout(t, func() {
+		var err error
+		report, _, err = runDoctorRepairs(env.projectRoot, policy, managedLease, state)
+		if err == nil {
+			t.Fatal("expected hook repair to fail after corrupting managed policy")
+		}
+	})
 	if report == nil {
 		t.Fatal("expected repair report on error")
 	}
-	got := strings.Join(report.preAuditLines, "\n")
-	for _, want := range []string{
-		"Cleared: session deny-all (test reason)",
-		"Restored: lease.json from managed policy",
-	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("repair report missing %q:\n%s", want, got)
-		}
+	if !strings.Contains(out, "Cleared: session deny-all (test reason)") {
+		t.Fatalf("repair output missing deny-all clear line:\n%s", out)
+	}
+	if got := strings.Join(report.preAuditLines, "\n"); !strings.Contains(got, "Restored: lease.json from managed policy") {
+		t.Fatalf("repair report missing lease restore line:\n%s", got)
 	}
 }
 
@@ -604,6 +605,7 @@ func TestRunDoctorRepairs_LeasePromptPrintsContextBeforeConfirmation(t *testing.
 	})
 
 	requireOrderedSubstrings(t, out,
+		"Cleared: session deny-all (test reason)",
 		"WARNING: The lease has changed while deny-all was active.",
 		"Current approved_hosts:",
 		"Current approved_remotes:",
