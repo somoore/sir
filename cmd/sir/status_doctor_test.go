@@ -159,6 +159,21 @@ func TestCmdStatus_SupportManifestSuffixes(t *testing.T) {
 			t.Fatalf("status output missing %q:\n%s", want, out)
 		}
 	}
+
+	for _, tc := range []struct {
+		want string
+	}{
+		{
+			want: agent.SupportManifestForAgent(agent.NewGeminiAgent()).StatusWarningLine(agent.NewGeminiAgent().Name()),
+		},
+		{
+			want: agent.SupportManifestForAgent(agent.NewCodexAgent()).StatusWarningLine(agent.NewCodexAgent().Name()),
+		},
+	} {
+		if !strings.Contains(out, tc.want) {
+			t.Fatalf("status output missing manifest warning %q:\n%s", tc.want, out)
+		}
+	}
 }
 
 func TestCmdStatus_ReportsMCPRuntimeModes(t *testing.T) {
@@ -358,6 +373,56 @@ func TestCmdDoctor_CodexFeatureFlagWarningUsesManifest(t *testing.T) {
 	}
 	if !strings.Contains(out, "Fix: codex features enable codex_hooks") {
 		t.Fatalf("doctor output missing codex feature-flag remediation:\n%s", out)
+	}
+	want := agent.SupportManifestForAgent(agent.NewCodexAgent()).DoctorWarningLine(agent.NewCodexAgent().Name())
+	if !strings.Contains(out, want) {
+		t.Fatalf("doctor output missing manifest-driven support warning %q:\n%s", want, out)
+	}
+}
+
+func TestSupportManifestSupportWarningLines(t *testing.T) {
+	cases := []struct {
+		name          string
+		agent         agent.Agent
+		wantStatusFmt string
+		wantDoctorFmt string
+	}{
+		{
+			name:  "claude",
+			agent: agent.NewClaudeAgent(),
+		},
+		{
+			name:          "gemini",
+			agent:         agent.NewGeminiAgent(),
+			wantStatusFmt: "             Note: %s is near-parity support; lifecycle coverage remains narrower than Claude Code.\n",
+			wantDoctorFmt: "  NOTE: %s is near-parity support — file IFC, shell classification, MCP scanning, and credential output scanning are covered, but some lifecycle hooks remain unavailable.\n",
+		},
+		{
+			name:          "codex",
+			agent:         agent.NewCodexAgent(),
+			wantStatusFmt: "             Warning: %s remains limited support; enforcement is bounded by the upstream Bash-only hook surface.\n",
+			wantDoctorFmt: "  WARNING: %s is limited support — Bash-mediated actions are guarded, but native writes and MCP tools still depend on sentinel hashing plus end-of-session sweeps.\n",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			manifest := agent.SupportManifestForAgent(tc.agent)
+			wantStatus := ""
+			if tc.wantStatusFmt != "" {
+				wantStatus = fmt.Sprintf(tc.wantStatusFmt, tc.agent.Name())
+			}
+			wantDoctor := ""
+			if tc.wantDoctorFmt != "" {
+				wantDoctor = fmt.Sprintf(tc.wantDoctorFmt, tc.agent.Name())
+			}
+			if got := manifest.StatusWarningLine(tc.agent.Name()); got != wantStatus {
+				t.Fatalf("StatusWarningLine() = %q, want %q", got, wantStatus)
+			}
+			if got := manifest.DoctorWarningLine(tc.agent.Name()); got != wantDoctor {
+				t.Fatalf("DoctorWarningLine() = %q, want %q", got, wantDoctor)
+			}
+		})
 	}
 }
 
