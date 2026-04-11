@@ -154,7 +154,7 @@ func TestClaudeAgent_FormatLifecycleResponse_Silent(t *testing.T) {
 // install merge loop expects.
 func TestClaudeAgent_GenerateHooksConfigMap(t *testing.T) {
 	c := &ClaudeAgent{}
-	cfg := c.GenerateHooksConfigMap("/usr/local/bin/sir", "guard")
+	cfg := mustHooksConfigMap(t, c, "/usr/local/bin/sir", "guard")
 	hooks, ok := cfg["hooks"].(map[string]interface{})
 	if !ok {
 		t.Fatal("missing hooks key")

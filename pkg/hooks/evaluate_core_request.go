@@ -13,11 +13,18 @@ import (
 	"github.com/somoore/sir/pkg/session"
 )
 
-func buildCoreRequest(projectRoot string, payload *HookPayload, intent Intent, l *lease.Lease, state *session.State, labels core.Label) *core.Request {
+var jsonMarshal = json.Marshal
+
+func buildCoreRequest(projectRoot string, payload *HookPayload, intent Intent, l *lease.Lease, state *session.State, labels core.Label) (*core.Request, error) {
+	leaseJSON, err := marshalCoreLease(l)
+	if err != nil {
+		return nil, err
+	}
+
 	derivedLabels := derivedLabelsForIntent(projectRoot, payload, intent, state)
 	return &core.Request{
 		ToolName:  payload.ToolName,
-		LeaseJSON: mustMarshal(l),
+		LeaseJSON: leaseJSON,
 		Intent: core.Intent{
 			Verb:          intent.Verb,
 			Target:        intent.Target,
@@ -35,15 +42,15 @@ func buildCoreRequest(projectRoot string, payload *HookPayload, intent Intent, l
 			ApprovalScope:         string(state.ApprovalScope),
 			TurnCounter:           state.TurnCounter,
 		},
-	}
+	}, nil
 }
 
-func mustMarshal(v interface{}) []byte {
-	data, err := json.Marshal(v)
+func marshalCoreLease(v interface{}) ([]byte, error) {
+	data, err := jsonMarshal(v)
 	if err != nil {
-		panic("marshal: " + err.Error())
+		return nil, fmt.Errorf("marshal lease: %w", err)
 	}
-	return data
+	return data, nil
 }
 
 func appendEvaluationLedgerEntry(projectRoot string, payload *HookPayload, intent Intent, labels core.Label, decision policy.Verdict, reason string, state *session.State, ag agent.Agent) {

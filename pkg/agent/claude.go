@@ -179,6 +179,6 @@ func (c *ClaudeAgent) DetectInstallation() bool  { return baseDetectInstallation
 func (c *ClaudeAgent) GenerateHooksConfig(sirBinaryPath, mode string) ([]byte, error) {
 	return baseGenerateHooksConfig(&claudeSpec, sirBinaryPath, mode)
 }
-func (c *ClaudeAgent) GenerateHooksConfigMap(sirBinaryPath, mode string) map[string]interface{} {
+func (c *ClaudeAgent) GenerateHooksConfigMap(sirBinaryPath, mode string) (map[string]interface{}, error) {
 	return baseGenerateHooksConfigMap(&claudeSpec, sirBinaryPath, mode)
 }

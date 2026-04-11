@@ -17,7 +17,7 @@ func runInvariantRuntimeDegradationGuidance(t *testing.T, fixture securityInvari
 
 	env := newTestEnv(t)
 	env.writeDefaultLease()
-	env.writeSettingsJSON(agent.NewClaudeAgent().GenerateHooksConfigMap("sir", "guard"))
+	env.writeSettingsJSON(mustHooksConfigMap(t, agent.NewClaudeAgent(), "sir", "guard"))
 	env.writeSession(session.NewState(env.projectRoot))
 
 	shadowHome := t.TempDir()

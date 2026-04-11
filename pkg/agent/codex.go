@@ -119,6 +119,6 @@ func (c *CodexAgent) DetectInstallation() bool  { return baseDetectInstallation(
 func (c *CodexAgent) GenerateHooksConfig(sirBinaryPath, mode string) ([]byte, error) {
 	return baseGenerateHooksConfig(&codexSpec, sirBinaryPath, mode)
 }
-func (c *CodexAgent) GenerateHooksConfigMap(sirBinaryPath, mode string) map[string]interface{} {
+func (c *CodexAgent) GenerateHooksConfigMap(sirBinaryPath, mode string) (map[string]interface{}, error) {
 	return baseGenerateHooksConfigMap(&codexSpec, sirBinaryPath, mode)
 }

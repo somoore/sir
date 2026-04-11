@@ -325,7 +325,7 @@ func TestCodexAgent_GenerateHooksConfig_Shape(t *testing.T) {
 
 func TestCodexAgent_GenerateHooksConfigMap_RoundTrip(t *testing.T) {
 	c := &CodexAgent{}
-	m := c.GenerateHooksConfigMap("/usr/local/bin/sir", "guard")
+	m := mustHooksConfigMap(t, c, "/usr/local/bin/sir", "guard")
 	fromMap, err := json.Marshal(m)
 	if err != nil {
 		t.Fatalf("marshal map: %v", err)

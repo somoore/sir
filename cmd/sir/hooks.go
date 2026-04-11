@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 
 	"github.com/somoore/sir/pkg/agent"
@@ -38,6 +39,11 @@ func detectRegisteredHookEventsFor(ag agent.Agent) (map[string]bool, error) {
 // returns the set of hook event names with at least one sir guard command
 // registered inside the managed subtree.
 func detectRegisteredHookEventsAt(configPath string, strategy agent.ConfigStrategy) (map[string]bool, error) {
+	layout := strategy.EffectiveLayout()
+	if layout != agent.ConfigLayoutMatcherGroups {
+		return nil, fmt.Errorf("unsupported config layout: %s", layout)
+	}
+
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, err
@@ -55,29 +61,24 @@ func detectRegisteredHookEventsAt(configPath string, strategy agent.ConfigStrate
 	for eventName, val := range hooksSection {
 		arr, _ := val.([]interface{})
 		for _, entry := range arr {
-			switch strategy.EffectiveLayout() {
-			case agent.ConfigLayoutMatcherGroups:
-				em, ok := entry.(map[string]interface{})
+			em, ok := entry.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			// Claude Code requires: { "hooks": [{ "type": "command", "command": "..." }] }
+			// Optionally with "matcher" for tool-scoped events.
+			innerHooks, ok := em["hooks"].([]interface{})
+			if !ok {
+				continue // Flat format is invalid — Claude Code won't load it
+			}
+			for _, ih := range innerHooks {
+				ihm, ok := ih.(map[string]interface{})
 				if !ok {
 					continue
 				}
-				// Claude Code requires: { "hooks": [{ "type": "command", "command": "..." }] }
-				// Optionally with "matcher" for tool-scoped events.
-				innerHooks, ok := em["hooks"].([]interface{})
-				if !ok {
-					continue // Flat format is invalid — Claude Code won't load it
+				if cmd, ok := ihm["command"].(string); ok && isSirHookCommand(cmd) {
+					registered[eventName] = true
 				}
-				for _, ih := range innerHooks {
-					ihm, ok := ih.(map[string]interface{})
-					if !ok {
-						continue
-					}
-					if cmd, ok := ihm["command"].(string); ok && isSirHookCommand(cmd) {
-						registered[eventName] = true
-					}
-				}
-			default:
-				panic("unsupported config layout: " + string(strategy.EffectiveLayout()))
 			}
 		}
 	}
@@ -101,6 +102,11 @@ func validateHookSchemaFor(ag agent.Agent) (invalidEvents []string, err error) {
 // format: [{ hooks: [{ type, command, timeout }] }]. The flat format is
 // silently rejected by both runtimes.
 func validateHookSchemaAt(configPath string, strategy agent.ConfigStrategy) (invalidEvents []string, err error) {
+	layout := strategy.EffectiveLayout()
+	if layout != agent.ConfigLayoutMatcherGroups {
+		return nil, fmt.Errorf("unsupported config layout: %s", layout)
+	}
+
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, err
@@ -117,22 +123,17 @@ func validateHookSchemaAt(configPath string, strategy agent.ConfigStrategy) (inv
 	for eventName, val := range hooksSection {
 		arr, _ := val.([]interface{})
 		for _, entry := range arr {
-			switch strategy.EffectiveLayout() {
-			case agent.ConfigLayoutMatcherGroups:
-				em, ok := entry.(map[string]interface{})
-				if !ok {
-					continue
+			em, ok := entry.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			// Check if this is a sir hook with the WRONG (flat) format.
+			// Flat format: { "type": "command", "command": "sir guard ..." }
+			// Correct format: { "hooks": [{ "type": "command", "command": "sir guard ..." }] }
+			if cmd, ok := em["command"].(string); ok && isSirHookCommand(cmd) {
+				if _, hasHooksWrapper := em["hooks"]; !hasHooksWrapper {
+					invalidEvents = append(invalidEvents, eventName)
 				}
-				// Check if this is a sir hook with the WRONG (flat) format.
-				// Flat format: { "type": "command", "command": "sir guard ..." }
-				// Correct format: { "hooks": [{ "type": "command", "command": "sir guard ..." }] }
-				if cmd, ok := em["command"].(string); ok && isSirHookCommand(cmd) {
-					if _, hasHooksWrapper := em["hooks"]; !hasHooksWrapper {
-						invalidEvents = append(invalidEvents, eventName)
-					}
-				}
-			default:
-				panic("unsupported config layout: " + string(strategy.EffectiveLayout()))
 			}
 		}
 	}
@@ -144,7 +145,7 @@ func validateHookSchemaAt(configPath string, strategy agent.ConfigStrategy) (inv
 // merge loop that still expects Claude's []interface{} inner shape. New
 // install paths should call the agent adapter directly (see
 // installForAgent in install.go) so multi-agent dispatch stays centralized.
-func generateHooksConfig(mode string) map[string]interface{} {
+func generateHooksConfig(mode string) (map[string]interface{}, error) {
 	ag := &agent.ClaudeAgent{}
 	return ag.GenerateHooksConfigMap(sirBinaryPath, mode)
 }

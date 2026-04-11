@@ -60,7 +60,12 @@ func cmdUninstall(projectRoot string) {
 
 	anyRemoved := false
 	for _, ag := range agents {
-		if uninstallForAgent(ag) {
+		removed, err := uninstallForAgent(ag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: uninstall %s hooks: %v\n", ag.Name(), err)
+			continue
+		}
+		if removed {
 			anyRemoved = true
 		}
 	}
