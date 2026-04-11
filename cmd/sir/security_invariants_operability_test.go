@@ -56,6 +56,12 @@ func runInvariantRuntimeDegradationGuidance(t *testing.T, fixture securityInvari
 			t.Fatalf("status output missing %q:\n%s", want, statusOut)
 		}
 	}
+	for _, key := range []string{"status_reason", "status_impact"} {
+		want := fixture.Expected[key]
+		if want != "" && !strings.Contains(statusOut, want) {
+			t.Fatalf("status output missing %q:\n%s", want, statusOut)
+		}
+	}
 
 	doctorOut := captureStdout(t, func() {
 		cmdDoctor(env.projectRoot)

@@ -5,6 +5,8 @@
   "description": "Degraded runtime containment must stay visible in status and doctor output with concrete operator guidance.",
   "expected": {
     "status_contains": "runtime   degraded (claude via darwin_local_proxy)",
+    "status_reason": "Reason: proxy-shaped enforcement: direct non-proxy sockets remain outside the exact-destination boundary on macOS",
+    "status_impact": "Impact: direct non-proxy sockets remain outside the exact-destination boundary on this platform",
     "status_fix": "Fix: prefer Linux exact-destination containment for the strongest below-hook boundary",
     "doctor_contains": "WARNING: runtime containment is degraded",
     "doctor_fix": "Fix: relaunch from a minimal env, for example: env -u SSH_AUTH_SOCK sir run claude"

@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -20,7 +21,48 @@ import (
 	"time"
 
 	"github.com/somoore/sir/pkg/agent"
+	"github.com/somoore/sir/pkg/lease"
+	"github.com/somoore/sir/pkg/session"
 )
+
+type runtimeTestAgent struct{}
+
+const (
+	runtimeTestProxyShapedReason = "proxy-shaped enforcement: direct non-proxy sockets remain outside the exact-destination boundary on macOS"
+	runtimeTestScrubbedEnvReason = "launch inherited host-control env that had to be scrubbed before containment"
+)
+
+func (runtimeTestAgent) ID() agent.AgentID { return agent.AgentID("runtime-test") }
+func (runtimeTestAgent) Name() string      { return "Runtime Test Agent" }
+func (runtimeTestAgent) ParsePreToolUse([]byte) (*agent.HookPayload, error) {
+	return nil, nil
+}
+func (runtimeTestAgent) ParsePostToolUse([]byte) (*agent.HookPayload, error) {
+	return nil, nil
+}
+func (runtimeTestAgent) FormatPreToolUseResponse(string, string) ([]byte, error) {
+	return nil, nil
+}
+func (runtimeTestAgent) FormatPostToolUseResponse(string, string) ([]byte, error) {
+	return nil, nil
+}
+func (runtimeTestAgent) FormatLifecycleResponse(string, string, string, string) ([]byte, error) {
+	return nil, nil
+}
+func (runtimeTestAgent) SupportedEvents() []string { return nil }
+func (runtimeTestAgent) ConfigPath() string        { return "" }
+func (runtimeTestAgent) GenerateHooksConfig(string, string) ([]byte, error) {
+	return nil, nil
+}
+func (runtimeTestAgent) DetectInstallation() bool { return true }
+func (runtimeTestAgent) MinVersion() string       { return "" }
+func (runtimeTestAgent) GetSpec() *agent.AgentSpec {
+	return &agent.AgentSpec{
+		ID:                agent.AgentID("runtime-test"),
+		Name:              "Runtime Test Agent",
+		RuntimeProxyHosts: []string{"localhost"},
+	}
+}
 
 func TestSelectLauncherMatchesPlatform(t *testing.T) {
 	launcher := SelectLauncher()
@@ -40,6 +82,140 @@ func TestSelectLauncherMatchesPlatform(t *testing.T) {
 	default:
 		if launcher.Mode != "unsupported" {
 			t.Fatalf("unsupported launcher mode = %q, want %q", launcher.Mode, "unsupported")
+		}
+	}
+}
+
+func TestContainmentLaunchScrubsProxyBypassEnvAndRecordsDegradation(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("Darwin launcher proof is macOS-only")
+	}
+	if _, err := exec.LookPath("sandbox-exec"); err != nil {
+		t.Skip("sandbox-exec not available")
+	}
+	pythonBin, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 not available")
+	}
+
+	homeDir := t.TempDir()
+	projectRoot := t.TempDir()
+	proofDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	binDir := t.TempDir()
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("HTTP_PROXY", "http://caller.proxy.invalid:8080")
+	t.Setenv("HTTPS_PROXY", "https://caller.proxy.invalid:4443")
+	t.Setenv("ALL_PROXY", "socks5://caller.proxy.invalid:1080")
+	t.Setenv("NO_PROXY", "example.com")
+	t.Setenv("http_proxy", "http://caller.proxy.invalid:8080")
+	t.Setenv("https_proxy", "https://caller.proxy.invalid:4443")
+	t.Setenv("all_proxy", "socks5://caller.proxy.invalid:1080")
+	t.Setenv("no_proxy", "example.com")
+	t.Setenv("SSH_AUTH_SOCK", "/tmp/ssh-agent.sock")
+	t.Setenv("DOCKER_HOST", "tcp://docker.invalid:2375")
+
+	if err := os.MkdirAll(filepath.Join(homeDir, ".sir", "projects"), 0o755); err != nil {
+		t.Fatalf("mkdir .sir/projects: %v", err)
+	}
+	l := lease.DefaultLease()
+	l.ApprovedHosts = []string{"localhost"}
+	if err := l.Save(filepath.Join(session.DurableStateDir(projectRoot), "lease.json")); err != nil {
+		t.Fatalf("write loopback-only runtime lease: %v", err)
+	}
+
+	agentScript := filepath.Join(binDir, "runtime-test")
+	agentProgram := filepath.Join(binDir, "runtime-test.py")
+	if err := os.WriteFile(agentProgram, []byte(`import json, os, socket, sys
+output_path = sys.argv[1]
+result = {
+    key: os.environ.get(key, "")
+    for key in [
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "no_proxy",
+        "SSH_AUTH_SOCK",
+        "DOCKER_HOST",
+    ]
+}
+
+with open(output_path, "w", encoding="utf-8") as fh:
+    json.dump(result, fh)
+sys.exit(0)
+`), 0o755); err != nil {
+		t.Fatalf("write runtime-test.py: %v", err)
+	}
+	if err := os.WriteFile(agentScript, []byte(fmt.Sprintf("#!/bin/sh\nexec %q %q \"$@\"\n", pythonBin, agentProgram)), 0o755); err != nil {
+		t.Fatalf("write runtime-test launcher: %v", err)
+	}
+
+	outputPath := filepath.Join(proofDir, "launch-env.json")
+	exitCode, err := Launch(projectRoot, Options{
+		Agent:       runtimeTestAgent{},
+		Passthrough: []string{outputPath},
+	})
+	if err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+	if exitCode != 0 {
+		data, _ := os.ReadFile(outputPath)
+		t.Fatalf("expected Darwin launcher to succeed, exit=%d output=%s", exitCode, string(data))
+	}
+
+	var proof map[string]string
+	rawProof, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read launch env proof: %v", err)
+	}
+	if err := json.Unmarshal(rawProof, &proof); err != nil {
+		t.Fatalf("unmarshal launch env proof: %v\n%s", err, string(rawProof))
+	}
+	receipt, err := session.LoadLastRuntimeContainment(projectRoot)
+	if err != nil {
+		t.Fatalf("load runtime receipt: %v", err)
+	}
+	if receipt.Mode != ContainmentModeDarwinProxy {
+		t.Fatalf("runtime mode = %q, want %q", receipt.Mode, ContainmentModeDarwinProxy)
+	}
+	reasons := receipt.EffectiveDegradedReasons()
+	if !slices.Contains(reasons, runtimeTestProxyShapedReason) {
+		t.Fatalf("runtime receipt missing proxy-shaped degradation reason: %v", reasons)
+	}
+	if !slices.Contains(reasons, runtimeTestScrubbedEnvReason) {
+		t.Fatalf("runtime receipt missing scrubbed-env degradation reason: %v", reasons)
+	}
+	if got, want := proof["HTTP_PROXY"], receipt.ProxyURL; got == "" || want == "" || got != want {
+		t.Fatalf("proxy env was not overridden consistently: HTTP_PROXY=%q receipt=%q", got, want)
+	}
+	if got, want := proof["http_proxy"], receipt.ProxyURL; got == "" || want == "" || got != want {
+		t.Fatalf("proxy env was not overridden consistently: http_proxy=%q receipt=%q", got, want)
+	}
+	if got, want := proof["HTTPS_PROXY"], receipt.ProxyURL; got == "" || want == "" || got != want {
+		t.Fatalf("HTTPS_PROXY = %q, want %q", got, want)
+	}
+	if got, want := proof["https_proxy"], receipt.ProxyURL; got == "" || want == "" || got != want {
+		t.Fatalf("https_proxy = %q, want %q", got, want)
+	}
+	if got, want := proof["ALL_PROXY"], receipt.SOCKSProxyURL; got == "" || want == "" || got != want {
+		t.Fatalf("ALL_PROXY = %q, want %q", got, want)
+	}
+	if got, want := proof["all_proxy"], receipt.SOCKSProxyURL; got == "" || want == "" || got != want {
+		t.Fatalf("all_proxy = %q, want %q", got, want)
+	}
+	if got, want := proof["NO_PROXY"], "localhost,127.0.0.1,::1"; got != want {
+		t.Fatalf("NO_PROXY = %q, want %q", got, want)
+	}
+	if got, want := proof["no_proxy"], "localhost,127.0.0.1,::1"; got != want {
+		t.Fatalf("no_proxy = %q, want %q", got, want)
+	}
+	for _, key := range []string{"SSH_AUTH_SOCK", "DOCKER_HOST"} {
+		if got := proof[key]; got != "" {
+			t.Fatalf("expected %s to be scrubbed from child env, got %q", key, got)
 		}
 	}
 }
