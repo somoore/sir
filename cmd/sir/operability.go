@@ -96,6 +96,20 @@ func printDoctorOperability(projectRoot string, state *session.State, ledgerCoun
 
 	if runtimeInspection != nil {
 		switch runtimeInspection.Health {
+		case session.RuntimeContainmentInactive:
+			info := runtimeInspection.Info
+			if info != nil {
+				fmt.Printf("  [ok] runtime last launch: %s via %s exited %d (%d allowed / %d blocked)\n",
+					info.AgentID,
+					info.Mode,
+					info.ExitCode,
+					info.AllowedEgressCount,
+					info.BlockedEgressCount,
+				)
+				if reasons := info.EffectiveDegradedReasons(); len(reasons) > 0 {
+					fmt.Printf("           Last launch degraded: %s.\n", strings.TrimSuffix(strings.Join(reasons, "; "), "."))
+				}
+			}
 		case session.RuntimeContainmentStale:
 			fmt.Printf("  WARNING: runtime containment is stale (%s)\n", runtimeInspection.Reason)
 			if warning := runtimeContainmentWarning(runtimeInspection); warning != "" {
