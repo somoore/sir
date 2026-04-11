@@ -1,0 +1,91 @@
+name: Backlog Entry
+description: Propose a bounded backlog item for sir's public roadmap
+title: "[backlog] "
+labels:
+  - enhancement
+body:
+  - type: dropdown
+    id: track
+    attributes:
+      label: Track
+      description: Choose the single roadmap track this belongs to. Matching labels are applied automatically.
+      options:
+        - public-contract
+        - install-onboarding-parity
+        - runtime-hardening
+        - adapter-parity
+        - hotspot-refactor
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What drift, risk, or contributor pain does this backlog item address?
+    validations:
+      required: true
+  - type: textarea
+    id: smallest_scope
+    attributes:
+      label: Smallest acceptable scope
+      description: What is the narrowest change that still counts as done?
+    validations:
+      required: true
+  - type: textarea
+    id: security_impact
+    attributes:
+      label: Security impact
+      description: What security boundary, public guarantee, or contributor risk does this touch?
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation
+      description: Which commands must pass before this is ready to merge?
+      value: |
+        go test ./...
+    validations:
+      required: true
+  - type: textarea
+    id: starter_files
+    attributes:
+      label: Starter files
+      description: List the first 2-5 files a contributor should open.
+      placeholder: |
+        CONTRIBUTING.md
+        docs/contributor/first-30-minutes.md
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        Scope guardrails for v1:
+
+        - NOT strict mode, projected workspaces, or mister-apply
+        - NOT MCP server or gateway functionality
+        - NOT Bash AST parsing beyond prefix matching
+        - NOT update/signing infrastructure beyond SHA-256
+        - NOT new adapters beyond Claude Code, Gemini CLI, and Codex
+        - NOT a control plane, dashboard, or fleet management surface
+  - type: checkboxes
+    id: scope_check
+    attributes:
+      label: Scope check
+      description: Before submitting, confirm this work stays within the scope guardrails above.
+      options:
+        - label: I checked the scope guardrails above and this backlog item stays within sir v1 scope
+          required: true
+  - type: checkboxes
+    id: contributor_fit
+    attributes:
+      label: Contributor fit
+      options:
+        - label: Existing maintainer context required
+        - label: Safe for a contributor who can follow the starter files
+        - label: Mark as a good-first-security-change candidate
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context
+      description: Add links, examples, prior discussion, or screenshots if they help.

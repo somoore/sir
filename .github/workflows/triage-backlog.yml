@@ -1,0 +1,123 @@
+name: Triage Backlog Labels
+
+on:
+  issues:
+    types:
+      - opened
+      - edited
+      - reopened
+
+permissions:
+  issues: write
+
+jobs:
+  sync-backlog-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync backlog labels
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = (issue.body || "").replace(/\r/g, "");
+            if (!issue.title.startsWith("[backlog]") && !body.includes("### Track")) {
+              core.info("Issue does not look like a backlog entry; skipping.");
+              return;
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = issue.number;
+            const trackLabels = {
+              "public-contract": {
+                color: "1d76db",
+                description: "Docs, workflows, or contract tests that drifted and need to line back up",
+              },
+              "install-onboarding-parity": {
+                color: "0e8a16",
+                description: "Install and first-run behavior parity across supported agents",
+              },
+              "runtime-hardening": {
+                color: "b60205",
+                description: "Runtime containment, proxy policy, and runtime-status hardening",
+              },
+              "adapter-parity": {
+                color: "5319e7",
+                description: "Claude, Gemini, and Codex behavior or support parity work",
+              },
+              "hotspot-refactor": {
+                color: "fbca04",
+                description: "Behavior-preserving readability and maintainability refactors",
+              },
+            };
+            const auxiliaryLabels = {
+              "good-first-security-change": {
+                color: "7057ff",
+                description: "Bounded security improvements that are safe for a new contributor",
+              },
+              "good first issue": {
+                color: "7057ff",
+                description: "Good for newcomers",
+              },
+            };
+            const managedLabels = { ...trackLabels, ...auxiliaryLabels };
+
+            async function ensureLabel(name, meta) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (error) {
+                if (error.status !== 404) {
+                  throw error;
+                }
+                await github.rest.issues.createLabel({
+                  owner,
+                  repo,
+                  name,
+                  color: meta.color,
+                  description: meta.description,
+                });
+              }
+            }
+
+            for (const [name, meta] of Object.entries(managedLabels)) {
+              await ensureLabel(name, meta);
+            }
+
+            const trackMatch = body.match(/^### Track\s+([^\n]+)/m);
+            const selectedTrack = trackMatch ? trackMatch[1].trim() : "";
+            const desired = new Set();
+            if (Object.prototype.hasOwnProperty.call(trackLabels, selectedTrack)) {
+              desired.add(selectedTrack);
+            } else {
+              core.warning(`No managed track selected for issue #${issue_number}.`);
+            }
+            if (/- \[[xX]\] Mark as a good-first-security-change candidate/m.test(body)) {
+              desired.add("good-first-security-change");
+              desired.add("good first issue");
+            }
+
+            const currentLabels = issue.labels.map((label) =>
+              typeof label === "string" ? label : label.name,
+            );
+
+            for (const name of currentLabels) {
+              if (Object.prototype.hasOwnProperty.call(managedLabels, name) && !desired.has(name)) {
+                try {
+                  await github.rest.issues.removeLabel({ owner, repo, issue_number, name });
+                } catch (error) {
+                  if (error.status !== 404) {
+                    throw error;
+                  }
+                }
+              }
+            }
+
+            const toAdd = Array.from(desired).filter((name) => !currentLabels.includes(name));
+            if (toAdd.length > 0) {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number,
+                labels: toAdd,
+              });
+            }
