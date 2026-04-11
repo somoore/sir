@@ -39,39 +39,56 @@ func propagateBashLineageMutation(projectRoot string, state *session.State, payl
 		if segment == "" {
 			continue
 		}
-		source, dest, ok := parseBashLineageMutation(segment)
+		sources, dest, ok := parseBashLineageMutation(segment)
 		if !ok {
 			continue
 		}
-		sourcePath := ResolveTarget(projectRoot, source)
-		destPath := resolveLineageMutationDestination(projectRoot, sourcePath, dest)
-		mirrorDerivedLineage(state, sourcePath, destPath)
+		for _, source := range sources {
+			sourcePath := ResolveTarget(projectRoot, source)
+			destPath := resolveLineageMutationDestination(projectRoot, sourcePath, dest)
+			mirrorDerivedLineage(state, sourcePath, destPath)
+		}
 	}
 }
 
-func parseBashLineageMutation(cmd string) (source, dest string, ok bool) {
+func parseBashLineageMutation(cmd string) (sources []string, dest string, ok bool) {
 	parts := strings.Fields(strings.TrimSpace(cmd))
 	if len(parts) < 3 {
-		return "", "", false
+		return nil, "", false
 	}
 
 	switch filepath.Base(parts[0]) {
 	case "cp", "mv", "ln":
 	default:
-		return "", "", false
+		return nil, "", false
 	}
 
 	operands := make([]string, 0, len(parts)-1)
+	skipNext := false
 	for _, part := range parts[1:] {
+		if skipNext {
+			skipNext = false
+			continue
+		}
 		if part == "" || strings.HasPrefix(part, "-") {
 			continue
 		}
-		operands = append(operands, strings.Trim(part, "\"'`"))
+		if isShellRedirectionToken(part) {
+			if shellRedirectionConsumesFollowingToken(part) {
+				skipNext = true
+			}
+			continue
+		}
+		operand := strings.Trim(part, "\"'`")
+		if operand == "" {
+			continue
+		}
+		operands = append(operands, operand)
 	}
 	if len(operands) < 2 {
-		return "", "", false
+		return nil, "", false
 	}
-	return operands[0], operands[len(operands)-1], true
+	return operands[:len(operands)-1], operands[len(operands)-1], true
 }
 
 func resolveLineageMutationDestination(projectRoot, sourcePath, dest string) string {
@@ -151,4 +168,30 @@ func mergeHookLineageLabels(dst, src []session.LineageLabel) []session.LineageLa
 		merged = append(merged, label)
 	}
 	return merged
+}
+
+func isShellRedirectionToken(token string) bool {
+	if token == "" {
+		return false
+	}
+	if strings.HasPrefix(token, "2>&1") || strings.HasPrefix(token, "&>") {
+		return true
+	}
+	for _, prefix := range []string{
+		">>", "<<", "1>>", "2>>", "1>", "2>", ">", "<",
+	} {
+		if strings.HasPrefix(token, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func shellRedirectionConsumesFollowingToken(token string) bool {
+	switch token {
+	case ">", ">>", "<", "<<", "1>", "1>>", "2>", "2>>", "&>":
+		return true
+	default:
+		return false
+	}
 }

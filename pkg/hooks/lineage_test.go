@@ -264,6 +264,84 @@ func TestBashLineageMutationMergesExistingDestinationLineage(t *testing.T) {
 	}
 }
 
+func TestBashLineageMutationPropagatesAllMultiSourceCopies(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(projectRoot, "archive"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seedLineageRecord(t, state, projectRoot, "clean.txt", session.LineageLabel{
+		Sensitivity: "public",
+		Trust:       "trusted",
+		Provenance:  "user",
+	})
+	state.IncrementTurn()
+	seedLineageRecord(t, state, projectRoot, "tainted.txt", session.LineageLabel{
+		Sensitivity: "secret",
+		Trust:       "trusted",
+		Provenance:  "user",
+	})
+
+	propagateBashLineageMutation(projectRoot, state, &PostHookPayload{
+		ToolName:  "Bash",
+		ToolInput: map[string]interface{}{"command": "cp clean.txt tainted.txt archive/ >/dev/null 2>&1"},
+	})
+
+	if got := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "archive/clean.txt")); len(got) != 1 {
+		t.Fatalf("archive/clean.txt labels = %+v, want copied clean lineage", got)
+	}
+	if got := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "archive/tainted.txt")); len(got) != 1 {
+		t.Fatalf("archive/tainted.txt labels = %+v, want copied tainted lineage", got)
+	}
+	if got := state.DerivedLabelsForPath(ResolveTarget(projectRoot, ">/dev/null")); len(got) != 0 {
+		t.Fatalf("redirection token should be ignored, got lineage at %q: %+v", ">/dev/null", got)
+	}
+}
+
+func TestBashLineageMutationPropagatesAllMultiSourceLinks(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(projectRoot, "linked"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seedLineageRecord(t, state, projectRoot, "clean.txt", session.LineageLabel{
+		Sensitivity: "public",
+		Trust:       "trusted",
+		Provenance:  "user",
+	})
+	state.IncrementTurn()
+	seedLineageRecord(t, state, projectRoot, "tainted.txt", session.LineageLabel{
+		Sensitivity: "secret",
+		Trust:       "trusted",
+		Provenance:  "user",
+	})
+
+	propagateBashLineageMutation(projectRoot, state, &PostHookPayload{
+		ToolName:  "Bash",
+		ToolInput: map[string]interface{}{"command": "ln clean.txt tainted.txt linked/ >/dev/null"},
+	})
+
+	if got := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "linked/clean.txt")); len(got) != 1 {
+		t.Fatalf("linked/clean.txt labels = %+v, want copied clean lineage", got)
+	}
+	if got := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "linked/tainted.txt")); len(got) != 1 {
+		t.Fatalf("linked/tainted.txt labels = %+v, want copied tainted lineage", got)
+	}
+	if got := state.DerivedLabelsForPath(ResolveTarget(projectRoot, ">/dev/null")); len(got) != 0 {
+		t.Fatalf("redirection token should be ignored, got lineage at %q: %+v", ">/dev/null", got)
+	}
+}
+
 func TestGitOutgoingPathsWithoutUpstreamIncludesAllUnpushedCommits(t *testing.T) {
 	projectRoot := t.TempDir()
 	initGitRepo(t, projectRoot)
