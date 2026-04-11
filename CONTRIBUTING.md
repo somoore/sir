@@ -10,8 +10,8 @@ sir is a security tool and is still experimental. Keep changes small, explicit, 
 
 Prerequisites:
 
-- **Rust** (1.94.0+) — [rustup.rs](https://rustup.rs/)
-- **Go** (1.22+) — [go.dev/dl](https://go.dev/dl/)
+- **Rust** (1.94.0+): [rustup.rs](https://rustup.rs/)
+- **Go** (1.22+): [go.dev/dl](https://go.dev/dl/)
 - `make` is optional but convenient.
 
 Build and install locally:

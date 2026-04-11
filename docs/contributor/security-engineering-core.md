@@ -45,7 +45,7 @@ When you need broader context, jump to [ARCHITECTURE.md](../../ARCHITECTURE.md) 
 - Anything that touches `sir run` containment claims.
 - Anything that changes evidence logging or redaction.
 
-## Enforcement gradient
+## Enforcement Gradient
 
 This is the machine-checked summary of the core enforcement gradient. The matching parity test in `pkg/core/doc_parity_test.go` treats these rows as an executable, contributor-facing contract for the local fallback path.
 

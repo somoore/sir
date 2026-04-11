@@ -5,7 +5,7 @@ sir — Sandbox in Reverse — is an experimental security runtime for AI coding
 > **Note:** Minimum supported version is `0.118.0`. `sir doctor` warns on older versions.
 
 <!-- BEGIN GENERATED SUPPORT DOC -->
-## Status: limited support on `codex-cli` 0.118.0+ (Bash-only)
+## Status: limited support on codex-cli 0.118.0+ (Bash-only)
 
 | Surface | Status | Notes |
 |---|---|---|
