@@ -259,10 +259,10 @@ func TestSessionEnd_PostureSweep_NoDriftProducesNoAlert(t *testing.T) {
 }
 
 // TestSessionEnd_PostureSweep_UsesGlobalGeminiSettingsNotProjectShadow proves
-// the terminal sweep hashes ~/.gemini/settings.json, not a project-local
-// shadow at .gemini/settings.json. A tampered global Gemini config must be
-// detected even if the project tree contains a different file at the same
-// relative path.
+// the terminal sweep reads ~/.gemini/settings.json, not a project-local
+// shadow at .gemini/settings.json. Because Gemini settings are a managed
+// hook file, the combined session-end behavior should restore the global
+// file and emit hook_tamper, while leaving the project-local shadow alone.
 func TestSessionEnd_PostureSweep_UsesGlobalGeminiSettingsNotProjectShadow(t *testing.T) {
 	projectRoot := t.TempDir()
 	tmpHome := t.TempDir()
@@ -270,15 +270,20 @@ func TestSessionEnd_PostureSweep_UsesGlobalGeminiSettingsNotProjectShadow(t *tes
 
 	projectShadow := filepath.Join(projectRoot, ".gemini", "settings.json")
 	globalGemini := filepath.Join(tmpHome, ".gemini", "settings.json")
-	for _, path := range []string{projectShadow, globalGemini} {
+	canonicalPath := filepath.Join(tmpHome, ".sir", "hooks-canonical-gemini.json")
+	for _, path := range []string{projectShadow, globalGemini, canonicalPath} {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
 		}
 	}
+	canonical := []byte(`{"hooks":{"BeforeTool":"global-original"}}`)
 	if err := os.WriteFile(projectShadow, []byte(`{"hooks":{"BeforeTool":"project-shadow"}}`), 0o644); err != nil {
 		t.Fatalf("write project shadow: %v", err)
 	}
-	if err := os.WriteFile(globalGemini, []byte(`{"hooks":{"BeforeTool":"global-original"}}`), 0o644); err != nil {
+	if err := os.WriteFile(canonicalPath, canonical, 0o600); err != nil {
+		t.Fatalf("write Gemini canonical backup: %v", err)
+	}
+	if err := os.WriteFile(globalGemini, canonical, 0o644); err != nil {
 		t.Fatalf("write global gemini: %v", err)
 	}
 
@@ -312,7 +317,7 @@ func TestSessionEnd_PostureSweep_UsesGlobalGeminiSettingsNotProjectShadow(t *tes
 	}
 	beforeCount := len(beforeEntries)
 
-	if err := runSessionTerminalPostureSweep(projectRoot); err != nil {
+	if err := runSessionTerminalPostureSweep(projectRoot, agent.NewGeminiAgent()); err != nil {
 		t.Fatalf("runSessionTerminalPostureSweep: %v", err)
 	}
 
@@ -320,18 +325,25 @@ func TestSessionEnd_PostureSweep_UsesGlobalGeminiSettingsNotProjectShadow(t *tes
 	if err != nil {
 		t.Fatalf("read ledger after: %v", err)
 	}
-	var foundAlert bool
+	var foundHookTamper bool
 	for _, e := range afterEntries[beforeCount:] {
-		if e.Verb != "posture_change" {
-			continue
+		if e.Verb == "posture_change" && e.AlertType == "posture_change_session_end" && strings.Contains(e.Target, ".gemini/settings.json") {
+			t.Fatalf("Gemini hook tamper was downgraded to ordinary posture drift: %+v", e)
 		}
-		if e.Target != ".gemini/settings.json" {
-			t.Fatalf("posture_change target = %q, want .gemini/settings.json", e.Target)
+		if e.Verb == "posture_tamper" && e.AlertType == "hook_tamper" && strings.Contains(e.Target, ".gemini/settings.json") {
+			foundHookTamper = true
 		}
-		foundAlert = true
 	}
-	if !foundAlert {
-		t.Fatal("session sweep did not detect Gemini drift; likely hashed the project-local shadow path")
+	if !foundHookTamper {
+		t.Fatal("session sweep did not detect Gemini hook tamper; likely hashed the project-local shadow path")
+	}
+
+	restoredGlobal, err := os.ReadFile(globalGemini)
+	if err != nil {
+		t.Fatalf("read restored global gemini: %v", err)
+	}
+	if !jsonEqual(t, restoredGlobal, canonical) {
+		t.Fatalf("global Gemini config was not restored to canonical.\n got: %s\nwant: %s", restoredGlobal, canonical)
 	}
 
 	projectShadowAfter, err := os.ReadFile(projectShadow)
@@ -340,5 +352,196 @@ func TestSessionEnd_PostureSweep_UsesGlobalGeminiSettingsNotProjectShadow(t *tes
 	}
 	if string(projectShadowAfter) != `{"hooks":{"BeforeTool":"project-shadow"}}` {
 		t.Fatalf("project-local shadow was modified unexpectedly: %s", projectShadowAfter)
+	}
+}
+
+// TestSessionEnd_PostureSweep_RestoresHookConfigTamper verifies that a
+// last-turn hook-config edit is handled by the restore/fail-closed path
+// rather than the ordinary posture rebaseline path.
+func TestSessionEnd_PostureSweep_RestoresHookConfigTamper(t *testing.T) {
+	projectRoot := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	canonical := []byte(`{"theme":"dark","hooks":{"PreToolUse":[{"matcher":".*","hooks":[{"type":"command","command":"clean"}]}]}}`)
+	tampered := []byte(`{"theme":"dark","hooks":{"PreToolUse":[{"matcher":".*","hooks":[{"type":"command","command":"evil"}]}]}}`)
+
+	canonicalPath := filepath.Join(home, ".sir", "hooks-canonical.json")
+	if err := os.MkdirAll(filepath.Dir(canonicalPath), 0o700); err != nil {
+		t.Fatalf("mkdir canonical dir: %v", err)
+	}
+	if err := os.WriteFile(canonicalPath, canonical, 0o600); err != nil {
+		t.Fatalf("write canonical hooks backup: %v", err)
+	}
+
+	livePath := filepath.Join(home, ".claude", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(livePath), 0o700); err != nil {
+		t.Fatalf("mkdir live dir: %v", err)
+	}
+	if err := os.WriteFile(livePath, canonical, 0o600); err != nil {
+		t.Fatalf("seed live hooks config: %v", err)
+	}
+
+	l := lease.DefaultLease()
+	stateDir := session.StateDir(projectRoot)
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatalf("mkdir state: %v", err)
+	}
+	leaseBytes, err := json.Marshal(l)
+	if err != nil {
+		t.Fatalf("marshal lease: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "lease.json"), leaseBytes, 0o600); err != nil {
+		t.Fatalf("write lease: %v", err)
+	}
+
+	st := session.NewState(projectRoot)
+	st.PostureHashes = HashSentinelFiles(projectRoot, l.PostureFiles)
+	if err := st.Save(); err != nil {
+		t.Fatalf("save initial state: %v", err)
+	}
+
+	if err := os.WriteFile(livePath, tampered, 0o600); err != nil {
+		t.Fatalf("tamper live hooks config: %v", err)
+	}
+
+	beforeEntries, _ := ledger.ReadAll(projectRoot)
+	beforeCount := len(beforeEntries)
+
+	payload := []byte(`{"hook_event_name":"SessionEnd","session_id":"hook-tamper"}`)
+	origStdin := os.Stdin
+	defer func() { os.Stdin = origStdin }()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	os.Stdin = r
+	if _, err := w.Write(payload); err != nil {
+		t.Fatalf("write payload: %v", err)
+	}
+	w.Close()
+
+	if err := EvaluateSessionEnd(projectRoot, agent.NewClaudeAgent()); err != nil {
+		t.Fatalf("EvaluateSessionEnd returned error: %v", err)
+	}
+
+	restored, err := os.ReadFile(livePath)
+	if err != nil {
+		t.Fatalf("read restored live hooks config: %v", err)
+	}
+	if !jsonEqual(t, restored, canonical) {
+		t.Fatalf("hook config was not restored to canonical.\n got: %s\nwant: %s", restored, canonical)
+	}
+
+	reloaded, err := session.Load(projectRoot)
+	if err != nil {
+		t.Fatalf("reload session: %v", err)
+	}
+	if !reloaded.DenyAll {
+		t.Fatal("expected session to enter deny-all after hook config tamper")
+	}
+	if !strings.Contains(reloaded.DenyAllReason, ".claude/settings.json") {
+		t.Fatalf("deny-all reason should reference hook config tamper, got %q", reloaded.DenyAllReason)
+	}
+
+	afterEntries, err := ledger.ReadAll(projectRoot)
+	if err != nil {
+		t.Fatalf("ledger.ReadAll after: %v", err)
+	}
+	var foundHookTamper bool
+	for _, e := range afterEntries[beforeCount:] {
+		if e.Verb == "posture_change" && e.AlertType == "posture_change_session_end" && strings.Contains(e.Target, ".claude/settings.json") {
+			t.Fatalf("hook config tamper was rebaselined as ordinary posture drift: %+v", e)
+		}
+		if e.Verb == "posture_tamper" && e.AlertType == "hook_tamper" && strings.Contains(e.Target, ".claude/settings.json") {
+			foundHookTamper = true
+		}
+	}
+	if !foundHookTamper {
+		t.Fatal("expected hook_tamper ledger entry for last-turn hook config edit")
+	}
+}
+
+func TestSessionTerminalPostureSweep_RestoredHookTamperDoesNotDoubleAlert(t *testing.T) {
+	projectRoot := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	canonical := []byte(`{"theme":"dark","hooks":{"PreToolUse":[{"matcher":".*","hooks":[{"type":"command","command":"clean"}]}]}}`)
+	tampered := []byte(`{"theme":"dark","hooks":{"PreToolUse":[{"matcher":".*","hooks":[{"type":"command","command":"evil"}]}]}}`)
+
+	canonicalPath := filepath.Join(home, ".sir", "hooks-canonical.json")
+	if err := os.MkdirAll(filepath.Dir(canonicalPath), 0o700); err != nil {
+		t.Fatalf("mkdir canonical dir: %v", err)
+	}
+	if err := os.WriteFile(canonicalPath, canonical, 0o600); err != nil {
+		t.Fatalf("write canonical hooks backup: %v", err)
+	}
+
+	livePath := filepath.Join(home, ".claude", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(livePath), 0o700); err != nil {
+		t.Fatalf("mkdir live dir: %v", err)
+	}
+	if err := os.WriteFile(livePath, canonical, 0o600); err != nil {
+		t.Fatalf("seed live hooks config: %v", err)
+	}
+
+	l := lease.DefaultLease()
+	stateDir := session.StateDir(projectRoot)
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatalf("mkdir state: %v", err)
+	}
+	leaseBytes, err := json.Marshal(l)
+	if err != nil {
+		t.Fatalf("marshal lease: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "lease.json"), leaseBytes, 0o600); err != nil {
+		t.Fatalf("write lease: %v", err)
+	}
+
+	st := session.NewState(projectRoot)
+	st.PostureHashes = HashSentinelFiles(projectRoot, l.PostureFiles)
+	if err := st.Save(); err != nil {
+		t.Fatalf("save initial state: %v", err)
+	}
+
+	if err := os.WriteFile(livePath, tampered, 0o600); err != nil {
+		t.Fatalf("tamper live hooks config: %v", err)
+	}
+
+	if err := runSessionTerminalPostureSweep(projectRoot, agent.NewClaudeAgent()); err != nil {
+		t.Fatalf("first runSessionTerminalPostureSweep: %v", err)
+	}
+
+	afterFirst, err := ledger.ReadAll(projectRoot)
+	if err != nil {
+		t.Fatalf("read ledger after first sweep: %v", err)
+	}
+	firstHookTamperCount := 0
+	for _, e := range afterFirst {
+		if e.Verb == "posture_tamper" && e.AlertType == "hook_tamper" && strings.Contains(e.Target, ".claude/settings.json") {
+			firstHookTamperCount++
+		}
+	}
+	if firstHookTamperCount != 1 {
+		t.Fatalf("hook_tamper count after first sweep = %d, want 1", firstHookTamperCount)
+	}
+
+	if err := runSessionTerminalPostureSweep(projectRoot, agent.NewClaudeAgent()); err != nil {
+		t.Fatalf("second runSessionTerminalPostureSweep: %v", err)
+	}
+
+	afterSecond, err := ledger.ReadAll(projectRoot)
+	if err != nil {
+		t.Fatalf("read ledger after second sweep: %v", err)
+	}
+	secondHookTamperCount := 0
+	for _, e := range afterSecond {
+		if e.Verb == "posture_tamper" && e.AlertType == "hook_tamper" && strings.Contains(e.Target, ".claude/settings.json") {
+			secondHookTamperCount++
+		}
+	}
+	if secondHookTamperCount != 1 {
+		t.Fatalf("hook_tamper count after second sweep = %d, want 1", secondHookTamperCount)
 	}
 }
