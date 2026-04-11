@@ -221,6 +221,126 @@ sys.exit(0)
 	}
 }
 
+func TestLaunchLinuxNamespaceProof(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux namespace proof is Linux-only")
+	}
+	for _, name := range []string{"unshare", "mount"} {
+		requireLinuxLaunchProofBinary(t, name)
+	}
+	requireLinuxLaunchNamespaces(t)
+
+	hostNetNS, err := os.Readlink("/proc/self/ns/net")
+	if err != nil {
+		t.Fatalf("read host net namespace: %v", err)
+	}
+	hostMntNS, err := os.Readlink("/proc/self/ns/mnt")
+	if err != nil {
+		t.Fatalf("read host mount namespace: %v", err)
+	}
+
+	homeDir := t.TempDir()
+	projectRoot := t.TempDir()
+	proofDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	binDir := t.TempDir()
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if err := os.MkdirAll(filepath.Join(homeDir, ".sir", "projects"), 0o755); err != nil {
+		t.Fatalf("mkdir .sir/projects: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, ".mcp.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatalf("write .mcp.json: %v", err)
+	}
+	if err := lease.DefaultLease().Save(filepath.Join(session.DurableStateDir(projectRoot), "lease.json")); err != nil {
+		t.Fatalf("write runtime lease: %v", err)
+	}
+
+	agentScript := filepath.Join(binDir, "runtime-test")
+	if err := os.WriteFile(agentScript, []byte(`#!/bin/sh
+set -eu
+output_path="$1"
+netns="$(readlink /proc/self/ns/net)"
+mntns="$(readlink /proc/self/ns/mnt)"
+printf '{"netns":"%s","mntns":"%s"}\n' "$netns" "$mntns" > "$output_path"
+`), 0o755); err != nil {
+		t.Fatalf("write runtime-test launcher: %v", err)
+	}
+
+	outputPath := filepath.Join(proofDir, "linux-namespace-proof.json")
+	exitCode, err := Launch(projectRoot, Options{
+		Agent:       runtimeTestAgent{},
+		Passthrough: []string{outputPath},
+	})
+	if err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+	if exitCode != 0 {
+		data, _ := os.ReadFile(outputPath)
+		t.Fatalf("expected Linux launcher to succeed, exit=%d output=%s", exitCode, string(data))
+	}
+
+	var proof struct {
+		NetNS string `json:"netns"`
+		MntNS string `json:"mntns"`
+	}
+	rawProof, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read linux namespace proof: %v", err)
+	}
+	if err := json.Unmarshal(rawProof, &proof); err != nil {
+		t.Fatalf("unmarshal linux namespace proof: %v\n%s", err, string(rawProof))
+	}
+	if proof.NetNS == "" || proof.MntNS == "" {
+		t.Fatalf("linux namespace proof missing namespace ids: %+v", proof)
+	}
+	if proof.NetNS == hostNetNS {
+		t.Fatalf("child net namespace = %q, want distinct from host %q", proof.NetNS, hostNetNS)
+	}
+	if proof.MntNS == hostMntNS {
+		t.Fatalf("child mount namespace = %q, want distinct from host %q", proof.MntNS, hostMntNS)
+	}
+
+	receipt, err := session.LoadLastRuntimeContainment(projectRoot)
+	if err != nil {
+		t.Fatalf("load runtime receipt: %v", err)
+	}
+	if receipt.Mode != ContainmentModeLinuxNamespace {
+		t.Fatalf("runtime mode = %q, want %q", receipt.Mode, ContainmentModeLinuxNamespace)
+	}
+}
+
+func requireLinuxLaunchProofBinary(t *testing.T, name string) string {
+	t.Helper()
+	path, err := exec.LookPath(name)
+	if err == nil {
+		return path
+	}
+	msg := fmt.Sprintf("linux namespace proof requires %s on PATH: %v", name, err)
+	if os.Getenv("GITHUB_ACTIONS") == "true" {
+		t.Fatal(msg)
+	}
+	t.Skip(msg)
+	return ""
+}
+
+func requireLinuxLaunchNamespaces(t *testing.T) {
+	t.Helper()
+	cmd := exec.Command("unshare", "--user", "--map-root-user", "--net", "--mount", "--mount-proc", "/bin/sh", "-c", "readlink /proc/self/ns/net >/dev/null && readlink /proc/self/ns/mnt >/dev/null")
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		return
+	}
+	msg := fmt.Sprintf("linux namespace proof requires unprivileged user+network+mount namespaces: %v", err)
+	if trimmed := strings.TrimSpace(string(output)); trimmed != "" {
+		msg += " (" + trimmed + ")"
+	}
+	if os.Getenv("GITHUB_ACTIONS") == "true" {
+		t.Fatal(msg)
+	}
+	t.Skip(msg)
+}
+
 func TestLinuxContainmentBootstrapScriptIncludesReadonlyGuards(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
