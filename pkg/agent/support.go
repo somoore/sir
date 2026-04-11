@@ -79,12 +79,25 @@ func PublicSupportManifests() []SupportManifest {
 }
 
 func orderedPublicSupportManifests() []SupportManifest {
-	order := []AgentID{Claude, Gemini, Codex}
-	out := make([]SupportManifest, 0, len(order))
-	for _, id := range order {
-		if manifest, ok := SupportManifestForID(id); ok {
-			out = append(out, manifest)
+	regs := Registry()
+	byID := make(map[AgentID]*AgentSpec, len(regs))
+	for _, reg := range regs {
+		byID[reg.ID] = reg.Spec
+	}
+	canonical := []AgentID{Claude, Gemini, Codex}
+	out := make([]SupportManifest, 0, len(regs))
+	seen := make(map[AgentID]struct{}, len(regs))
+	for _, id := range canonical {
+		if spec, ok := byID[id]; ok {
+			out = append(out, SupportManifestForSpec(spec))
+			seen[id] = struct{}{}
 		}
+	}
+	for _, reg := range regs {
+		if _, ok := seen[reg.ID]; ok {
+			continue
+		}
+		out = append(out, SupportManifestForSpec(reg.Spec))
 	}
 	return out
 }

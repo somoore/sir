@@ -285,7 +285,15 @@ func TestCmdSupportJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("unmarshal support JSON: %v\n%s", err, out)
 	}
-	want := agent.PublicSupportManifests()
+	wantIDs := []agent.AgentID{agent.Claude, agent.Gemini, agent.Codex}
+	want := make([]agent.SupportManifest, 0, len(wantIDs))
+	for _, id := range wantIDs {
+		manifest, ok := agent.SupportManifestForID(id)
+		if !ok {
+			t.Fatalf("missing expected support manifest for %s", id)
+		}
+		want = append(want, manifest)
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("support JSON drifted\nwant: %#v\n got: %#v", want, got)
 	}
