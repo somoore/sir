@@ -122,7 +122,7 @@ func EvaluateSubagentStart(projectRoot string, ag agent.Agent) error {
 			return nil
 		}
 
-		if delegationRequiresApproval(state) {
+		if subagentDelegationRequiresApproval(state) {
 			resp = &HookResponse{
 				Decision: policy.VerdictAsk,
 				Reason:   FormatAskPostureElevated("delegate", fmt.Sprintf("delegate to sub-agent: %s", payload.AgentName), string(state.Posture), state.MCPInjectionSignals),
@@ -140,7 +140,8 @@ func EvaluateSubagentStart(projectRoot string, ag agent.Agent) error {
 			}
 		}
 
-		// If recently read untrusted content, ask before delegating to agent with dangerous tools
+		// Preserve the existing untrusted + dangerous-tools behavior, but
+		// allow read-only sub-agent launches to proceed.
 		if state.RecentlyReadUntrusted && hasDangerousTools {
 			resp = &HookResponse{
 				Decision: policy.VerdictAsk,
@@ -180,6 +181,16 @@ func logSubagentDecision(projectRoot, agentName, decision, reason string) {
 	if err := ledger.Append(projectRoot, entry); err != nil {
 		fmt.Fprintf(os.Stderr, "sir: ledger append error: %v\n", err)
 	}
+}
+
+func subagentDelegationRequiresApproval(state *session.State) bool {
+	if state.PendingInjectionAlert {
+		return true
+	}
+	if state.Posture == policy.PostureStateElevated || state.Posture == policy.PostureStateCritical {
+		return true
+	}
+	return len(state.TaintedMCPServers) > 0
 }
 
 func writeSubagentResponse(w io.Writer, resp *HookResponse, ag agent.Agent) error {

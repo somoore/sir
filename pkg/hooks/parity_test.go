@@ -466,3 +466,117 @@ func TestDelegationParity_SubagentStart_RiskySessionStates(t *testing.T) {
 		})
 	}
 }
+
+func TestDelegationParity_SubagentStart_RecentlyReadUntrustedPreservesReadOnlyDelegation(t *testing.T) {
+	cases := []struct {
+		name  string
+		tools []string
+		want  string
+	}{
+		{
+			name:  "read-only subagent",
+			tools: []string{"Read"},
+			want:  "",
+		},
+		{
+			name:  "dangerous-tools subagent",
+			tools: []string{"Read", "Bash"},
+			want:  "ask",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			projectRoot := t.TempDir()
+			l := lease.DefaultLease()
+
+			stateDir := session.StateDir(projectRoot)
+			if err := os.MkdirAll(stateDir, 0o700); err != nil {
+				t.Fatalf("mkdir state: %v", err)
+			}
+			if err := l.Save(stateDir + "/lease.json"); err != nil {
+				t.Fatalf("save lease: %v", err)
+			}
+
+			state := session.NewState(projectRoot)
+			if err := state.Save(); err != nil {
+				t.Fatalf("save initial session: %v", err)
+			}
+			state.PostureHashes = HashSentinelFiles(projectRoot, l.PostureFiles)
+			state.MarkUntrustedRead()
+			if err := state.Save(); err != nil {
+				t.Fatalf("save untrusted session: %v", err)
+			}
+
+			payloadJSON, err := json.Marshal(SubagentPayload{
+				HookEventName: "SubagentStart",
+				AgentName:     "general-purpose",
+				Tools:         tc.tools,
+			})
+			if err != nil {
+				t.Fatalf("marshal payload: %v", err)
+			}
+
+			origStdin, origStdout := os.Stdin, os.Stdout
+			defer func() {
+				os.Stdin = origStdin
+				os.Stdout = origStdout
+			}()
+
+			inR, inW, err := os.Pipe()
+			if err != nil {
+				t.Fatalf("pipe in: %v", err)
+			}
+			outR, outW, err := os.Pipe()
+			if err != nil {
+				t.Fatalf("pipe out: %v", err)
+			}
+			os.Stdin = inR
+			os.Stdout = outW
+
+			if _, err := inW.Write(payloadJSON); err != nil {
+				t.Fatalf("write payload: %v", err)
+			}
+			inW.Close()
+
+			done := make(chan error, 1)
+			go func() {
+				done <- EvaluateSubagentStart(projectRoot, &agent.ClaudeAgent{})
+			}()
+
+			if err := <-done; err != nil {
+				outW.Close()
+				t.Fatalf("EvaluateSubagentStart: %v", err)
+			}
+			outW.Close()
+
+			var buf bytes.Buffer
+			if _, err := io.Copy(&buf, outR); err != nil {
+				t.Fatalf("read stdout: %v", err)
+			}
+
+			if tc.want == "" {
+				if buf.Len() != 0 {
+					t.Fatalf("SubagentStart after untrusted read with %v: expected allow/no output, got %s", tc.tools, buf.String())
+				}
+				return
+			}
+
+			if buf.Len() == 0 {
+				t.Fatalf("SubagentStart after untrusted read with %v: expected %s response, got no output", tc.tools, tc.want)
+			}
+
+			var resp struct {
+				HookSpecificOutput struct {
+					PermissionDecision string `json:"permissionDecision"`
+				} `json:"hookSpecificOutput"`
+			}
+			if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+				t.Fatalf("unmarshal response: %v\nraw: %s", err, buf.String())
+			}
+			if resp.HookSpecificOutput.PermissionDecision != tc.want {
+				t.Fatalf("SubagentStart after untrusted read with %v: decision = %q, want %q", tc.tools, resp.HookSpecificOutput.PermissionDecision, tc.want)
+			}
+		})
+	}
+}
