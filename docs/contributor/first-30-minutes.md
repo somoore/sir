@@ -2,6 +2,8 @@
 
 Use this path when you are new to the repo and want the shortest safe route to a useful change.
 
+> **Note:** sir is a "sandbox in reverse" — it constrains AI coding agents from above at the hook layer rather than from below at the syscall layer, with a pure Rust policy oracle (`mister-core`) as the upper bound on what is ever allowed, and a Go layer that may only be stricter. sir is experimental. Your first change should fit that boundary: small, test-backed, and never widening what Rust denies.
+
 ## 1. Start from clean main
 
 ```bash
@@ -18,20 +20,18 @@ Start from a public issue labeled `good-first-security-change` or one of the nam
 
 Safe first examples in this repo:
 
-- add a public-contract assertion for a contributor or runtime doc guarantee
-- tighten a runtime status / doctor receipt test without widening containment claims
-- add an install or adapter-parity regression test
-- split a helper that mixes persistence and operator output without changing behavior
-- turn a confirmed bug into a follow-up backlog issue with starter files and validation commands
+- Add a public-contract assertion for a contributor or runtime doc guarantee.
+- Tighten a runtime status or doctor receipt test without widening containment claims.
+- Add an install or adapter-parity regression test.
+- Split a helper that mixes persistence and operator output without changing behavior.
+- Turn a confirmed bug into a follow-up backlog issue with starter files and validation commands.
 
 ## 3. Read only two files first
 
-- [Core Mental Model](core-mental-model.md): the trust boundaries and Go/Rust split in one short pass
-- [CONTRIBUTING.md](../../CONTRIBUTING.md): the repo workflow and required verification commands
+- [Core Mental Model](core-mental-model.md) — the trust boundaries and Go/Rust split in one short pass.
+- [CONTRIBUTING.md](../../CONTRIBUTING.md) — the repo workflow and required verification commands.
 
-After that, read one subsystem file that matches the change you want to make.
-If the change touches hook behavior, start with [pkg/hooks/doc.go](../../pkg/hooks/doc.go)
-before you open the individual hook files.
+After that, read one subsystem file that matches the change you want to make. If the change touches hook behavior, start with [pkg/hooks/doc.go](../../pkg/hooks/doc.go) before you open the individual hook files.
 
 ## 4. Run the core verification loop
 
@@ -63,18 +63,18 @@ make bench
 
 Good first repo-local contributions:
 
-- add or fix a shell classifier
-- tighten a docs or public-contract guarantee
-- add or improve a hook fixture
-- improve a user-facing approval/block message
-- add regression coverage around session, ledger, or explain behavior
+- Add or fix a shell classifier.
+- Tighten a docs or public-contract guarantee.
+- Add or improve a hook fixture.
+- Improve a user-facing approval or block message.
+- Add regression coverage around session, ledger, or `explain` behavior.
 
 Avoid these until you already understand the repo seams:
 
-- changing the MSTR/1 protocol
-- widening or narrowing policy behavior in Rust without adding tests
-- changing managed-mode semantics
-- changing runtime containment guarantees in docs without matching tests
+- Changing the MSTR/1 protocol.
+- Widening or narrowing policy behavior in Rust without adding tests.
+- Changing managed-mode semantics.
+- Changing runtime containment guarantees in docs without matching tests.
 
 ## 7. Open the right supporting docs
 

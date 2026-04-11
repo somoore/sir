@@ -1,21 +1,21 @@
 # Security Engineering Core
 
-This is the short version of the engineering guide. Use it when you need the
-rules quickly and do not want to start from the full architecture reference.
+This is the short version of the engineering guide. Use it when you need the rules quickly and do not want to start from the full architecture reference.
 
-When you need broader context, jump to [ARCHITECTURE.md](../../ARCHITECTURE.md)
-or the package docs for the subsystem you are touching.
+sir is a "sandbox in reverse": `mister-core` (Rust) is a pure, zero-dependency policy oracle that sets the upper bound on what is allowed, and Go collects facts, classifies tool calls, and enforces session-level gates — always stricter than Rust, never looser. Everything below is in service of that split.
+
+> **Note:** sir is experimental. The invariants below are the load-bearing pieces you cannot quietly relax.
+
+When you need broader context, jump to [ARCHITECTURE.md](../../ARCHITECTURE.md) or the package docs for the subsystem you are touching.
 
 ## Non-negotiable invariants
 
-1. Fail closed on corruption, unreadable state, and bridge errors.
-2. Resolve path authority before classification when a path can escape via
-   symlink or traversal.
-3. Go may add restrictions from session-level facts. It must never override a
-   Rust deny with a looser verdict.
-4. Posture tamper is a session-fatal event.
-5. Raw secrets never go to disk in telemetry or investigation evidence.
-6. New public guarantees need executable tests or contract checks.
+1. **Fail closed** on corruption, unreadable state, and bridge errors. Only `os.IsNotExist` may seed fresh defaults.
+2. **Resolve path authority** before classification when a path can escape via symlink or traversal.
+3. **Go may add restrictions** from session-level facts. It must never override a Rust deny with a looser verdict. Parity is machine-checked.
+4. **Posture tamper is session-fatal** — deny-all plus auto-restore from the canonical hook copy.
+5. **Raw secrets never go to disk** in telemetry, ledger entries, or investigation evidence. Hash or redact.
+6. **New public guarantees need executable tests or contract checks.** Prose alone does not count.
 
 ## Where the critical checks live
 
@@ -32,25 +32,22 @@ or the package docs for the subsystem you are touching.
 
 ## What a safe change looks like
 
-- keep the trust boundary small
-- add or update a regression test before changing behavior
-- update fixture replay or the invariant suite when the user-visible security
-  contract changes
-- keep docs honest about shipped behavior versus experimental behavior
+- Keep the trust boundary small.
+- Add or update a regression test before changing behavior.
+- Update fixture replay or the invariant suite when the user-visible security contract changes.
+- Keep docs honest about shipped behavior versus experimental behavior.
 
 ## What needs extra scrutiny
 
-- changes to MSTR/1 framing or request/response fields
-- anything that widens `approved_hosts`, `approved_remotes`, or MCP trust
-- anything that changes posture-file handling or deny-all behavior
-- anything that touches `sir run` containment claims
-- anything that changes evidence logging or redaction
+- Changes to MSTR/1 framing or request/response fields.
+- Anything that widens `approved_hosts`, `approved_remotes`, or MCP trust.
+- Anything that changes posture-file handling or deny-all behavior.
+- Anything that touches `sir run` containment claims.
+- Anything that changes evidence logging or redaction.
 
-## Enforcement Gradient
+## Enforcement gradient
 
-This is the machine-checked summary of the core enforcement gradient. The
-matching parity test in `pkg/core/doc_parity_test.go` treats these rows as an
-executable contributor-facing contract for the local fallback path.
+This is the machine-checked summary of the core enforcement gradient. The matching parity test in `pkg/core/doc_parity_test.go` treats these rows as an executable, contributor-facing contract for the local fallback path.
 
 ```text
 net_external         → deny (always, regardless of session state)
