@@ -226,6 +226,53 @@ func TestPostEvaluate_AllowTraceRedactsCredentialOnNonAlertTool(t *testing.T) {
 	}
 }
 
+// TestPostEvaluate_AllowTraceMarksSensitiveTarget confirms the OTLP contract
+// fix from the Codex review of #116: a clean Read of a sensitive path must
+// carry Sensitivity="secret" on the trace entry so telemetry.RedactTarget
+// hashes the path before it leaves the host. Without this, a clean
+// allow-path sensitive read could export the raw path to the collector.
+func TestPostEvaluate_AllowTraceMarksSensitiveTarget(t *testing.T) {
+	t.Setenv("SIR_LOG_TOOL_CONTENT", "1")
+	t.Setenv("HOME", t.TempDir())
+
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	if err := os.MkdirAll(session.StateDir(projectRoot), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	envPath := projectRoot + "/.env"
+	if err := os.WriteFile(envPath, []byte("DATABASE_URL=postgres://localhost/x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := postEvaluatePayload(&PostHookPayload{
+		ToolName:   "Read",
+		ToolInput:  map[string]interface{}{"file_path": envPath},
+		ToolOutput: "DATABASE_URL=postgres://localhost/x\n",
+	}, lease.DefaultLease(), state, projectRoot); err != nil {
+		t.Fatalf("postEvaluatePayload: %v", err)
+	}
+
+	entries, err := ledger.ReadAll(projectRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected one tool_trace entry, got %d", len(entries))
+	}
+	last := entries[0]
+	if last.Verb != "tool_trace" {
+		t.Fatalf("expected verb tool_trace, got %q", last.Verb)
+	}
+	if last.Sensitivity != "secret" {
+		t.Fatalf("expected Sensitivity=secret on clean sensitive read trace, got %q — OTLP would emit the raw path", last.Sensitivity)
+	}
+}
+
 // TestPostEvaluate_AllowTraceSuppressedWhenAlertFired confirms dedup: when
 // the credential scanner or MCP injection scanner has already written an
 // alert entry for the same tool call, we must not also write a tool_trace

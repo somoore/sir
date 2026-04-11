@@ -22,13 +22,19 @@ import (
 // There is no code path that writes a raw secret to disk, regardless of
 // env-var configuration.
 //
-// This trace is additive: alert-path entries (credential_in_output,
-// mcp_injection, sentinel_mutation, hook_tamper) continue to fire exactly
-// as before and carry their own Evidence field. A tool call that trips an
-// alert will produce both an alert entry and a tool_trace entry when the
-// env var is set, so the two views of the same event stay separable in
-// downstream SIEM queries.
-func applyPostEvaluateAllowTrace(payload *PostHookPayload, state *session.State, projectRoot string, ag agent.Agent) {
+// When the caller has already detected that the PostToolUse payload read
+// a sensitive path (e.g. ~/.aws/credentials, a .env file), sensitiveTarget
+// is true and we mark the ledger Entry with Sensitivity="secret". The
+// telemetry exporter then hashes Target via RedactTarget before emitting
+// to OTLP, so raw sensitive paths never leave the host even on clean
+// allow-path reads.
+//
+// This trace is additive only on non-alert paths. When an alert entry
+// (credential_in_output, mcp_credential_leak, mcp_injection,
+// sentinel_mutation) already fired for the same tool call, the caller
+// suppresses the tool_trace write — the alert entry already carries the
+// redacted evidence, and duplicating it is noise.
+func applyPostEvaluateAllowTrace(payload *PostHookPayload, state *session.State, projectRoot string, ag agent.Agent, sensitiveTarget bool) {
 	if !EnvLogToolContent() {
 		return
 	}
@@ -49,6 +55,9 @@ func applyPostEvaluateAllowTrace(payload *PostHookPayload, state *session.State,
 	}
 
 	entry := toolTraceEntry(payload, target, evidence)
+	if sensitiveTarget || state.SecretSession {
+		entry.Sensitivity = "secret"
+	}
 	if err := ledger.Append(projectRoot, entry); err != nil {
 		fmt.Fprintf(os.Stderr, "sir: ledger append error: %v\n", err)
 		return

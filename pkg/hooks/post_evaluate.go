@@ -165,7 +165,7 @@ func postEvaluatePayload(payload *PostHookPayload, l *lease.Lease, state *sessio
 	}
 
 	if !alertFired {
-		applyPostEvaluateAllowTrace(payload, state, projectRoot, ag)
+		applyPostEvaluateAllowTrace(payload, state, projectRoot, ag, sensitiveTarget != "")
 	}
 
 	return &HookResponse{Decision: policy.VerdictAllow}, nil
