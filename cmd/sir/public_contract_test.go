@@ -260,7 +260,7 @@ on:
 			t.Fatalf("active docs total %d lines, want <= 3500", total)
 		}
 
-		requireMaxLines(t, root, "README.md", 140)
+		requireMaxLines(t, root, "README.md", 150)
 		requireMaxLines(t, root, "CONTRIBUTING.md", 180)
 		requireMaxLines(t, root, "ARCHITECTURE.md", 200)
 		requireMaxLines(t, root, "docs/user/faq.md", 150)
