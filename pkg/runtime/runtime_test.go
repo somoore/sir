@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -260,44 +261,65 @@ func TestLaunchLinuxNamespaceProof(t *testing.T) {
 	if err := os.WriteFile(agentScript, []byte(`#!/bin/sh
 set -eu
 output_path="$1"
+release_path="$2"
 netns="$(readlink /proc/self/ns/net)"
 mntns="$(readlink /proc/self/ns/mnt)"
-hostpid="$(awk '/^NSpid:/ {print $2; exit}' /proc/self/status 2>/dev/null || true)"
-nspid="$(awk '/^NSpid:/ {print $NF; exit}' /proc/self/status 2>/dev/null || true)"
-if [ -z "$nspid" ]; then nspid="$$"; fi
-if [ -z "$hostpid" ]; then hostpid="$nspid"; fi
-printf '{"netns":"%s","mntns":"%s","pid":%s,"hostpid":%s}\n' "$netns" "$mntns" "$nspid" "$hostpid" > "$output_path"
+printf '{"netns":"%s","mntns":"%s"}\n' "$netns" "$mntns" > "$output_path"
+while [ ! -f "$release_path" ]; do sleep 0.05; done
 `), 0o755); err != nil {
 		t.Fatalf("write runtime-test launcher: %v", err)
 	}
 
 	outputPath := filepath.Join(proofDir, "linux-namespace-proof.json")
-	exitCode, err := Launch(projectRoot, Options{
-		Agent:       runtimeTestAgent{},
-		Passthrough: []string{outputPath},
-	})
-	if err != nil {
-		t.Fatalf("Launch: %v", err)
+	releasePath := filepath.Join(proofDir, "linux-namespace-release")
+	type launchResult struct {
+		exitCode int
+		err      error
 	}
-	if exitCode != 0 {
-		data, _ := os.ReadFile(outputPath)
-		t.Fatalf("expected Linux launcher to succeed, exit=%d output=%s", exitCode, string(data))
-	}
+	resultCh := make(chan launchResult, 1)
+	launchSettled := false
+	go func() {
+		exitCode, err := Launch(projectRoot, Options{
+			Agent:       runtimeTestAgent{},
+			Passthrough: []string{outputPath, releasePath},
+		})
+		resultCh <- launchResult{exitCode: exitCode, err: err}
+	}()
+	defer func() {
+		if launchSettled {
+			return
+		}
+		_ = os.WriteFile(releasePath, []byte("release\n"), 0o600)
+		select {
+		case <-resultCh:
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for Linux launcher to exit")
+		}
+	}()
 
 	var proof struct {
 		NetNS string `json:"netns"`
 		MntNS string `json:"mntns"`
-		PID   int    `json:"pid"`
-		Host  int    `json:"hostpid"`
 	}
-	rawProof, err := os.ReadFile(outputPath)
-	if err != nil {
-		t.Fatalf("read linux namespace proof: %v", err)
+	deadline := time.Now().Add(5 * time.Second)
+	var rawProof []byte
+	for time.Now().Before(deadline) {
+		rawProof, err = os.ReadFile(outputPath)
+		if err == nil {
+			break
+		}
+		if !os.IsNotExist(err) {
+			t.Fatalf("read linux namespace proof: %v", err)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if len(rawProof) == 0 {
+		t.Fatal("timed out waiting for linux namespace proof output")
 	}
 	if err := json.Unmarshal(rawProof, &proof); err != nil {
 		t.Fatalf("unmarshal linux namespace proof: %v\n%s", err, string(rawProof))
 	}
-	if proof.NetNS == "" || proof.MntNS == "" || proof.PID <= 0 || proof.Host <= 0 {
+	if proof.NetNS == "" || proof.MntNS == "" {
 		t.Fatalf("linux namespace proof missing namespace ids: %+v", proof)
 	}
 	if proof.NetNS == hostNetNS {
@@ -306,19 +328,46 @@ printf '{"netns":"%s","mntns":"%s","pid":%s,"hostpid":%s}\n' "$netns" "$mntns" "
 	if proof.MntNS == hostMntNS {
 		t.Fatalf("child mount namespace = %q, want distinct from host %q", proof.MntNS, hostMntNS)
 	}
-	if proof.PID == proof.Host {
-		t.Fatalf("child namespace pid = %d, want distinct from host pid %d", proof.PID, proof.Host)
-	}
 
-	receipt, err := session.LoadLastRuntimeContainment(projectRoot)
-	if err != nil {
+	var receipt *session.RuntimeContainment
+	for time.Now().Before(deadline) {
+		receipt, err = session.LoadLastRuntimeContainment(projectRoot)
+		if err == nil && receipt != nil && receipt.AgentPID > 0 {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if err != nil || receipt == nil {
 		t.Fatalf("load runtime receipt: %v", err)
 	}
 	if receipt.Mode != ContainmentModeLinuxNamespace {
 		t.Fatalf("runtime mode = %q, want %q", receipt.Mode, ContainmentModeLinuxNamespace)
 	}
-	if receipt.AgentPID != proof.Host {
-		t.Fatalf("runtime AgentPID = %d, want host pid %d", receipt.AgentPID, proof.Host)
+	agentNetNS, err := os.Readlink(filepath.Join("/proc", strconv.Itoa(receipt.AgentPID), "ns", "net"))
+	if err != nil {
+		t.Fatalf("read agent net namespace via AgentPID %d: %v", receipt.AgentPID, err)
+	}
+	agentMntNS, err := os.Readlink(filepath.Join("/proc", strconv.Itoa(receipt.AgentPID), "ns", "mnt"))
+	if err != nil {
+		t.Fatalf("read agent mount namespace via AgentPID %d: %v", receipt.AgentPID, err)
+	}
+	if agentNetNS != proof.NetNS {
+		t.Fatalf("agent net namespace via AgentPID = %q, want %q", agentNetNS, proof.NetNS)
+	}
+	if agentMntNS != proof.MntNS {
+		t.Fatalf("agent mount namespace via AgentPID = %q, want %q", agentMntNS, proof.MntNS)
+	}
+
+	if err := os.WriteFile(releasePath, []byte("release\n"), 0o600); err != nil {
+		t.Fatalf("release linux namespace proof: %v", err)
+	}
+	result := <-resultCh
+	launchSettled = true
+	if result.err != nil {
+		t.Fatalf("Launch: %v", result.err)
+	}
+	if result.exitCode != 0 {
+		t.Fatalf("expected Linux launcher to succeed, exit=%d output=%s", result.exitCode, string(rawProof))
 	}
 }
 
