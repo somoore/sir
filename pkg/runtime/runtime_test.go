@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -884,6 +885,154 @@ func TestTerminateLinuxContainment_KillsForkedChild(t *testing.T) {
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("forked child pid %d survived containment cleanup", childPID)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestTerminateLinuxContainment_ReapsForkedDescendant(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux containment reaping is Linux-only")
+	}
+
+	dir := t.TempDir()
+	helperPIDFile := filepath.Join(dir, "helper.pid")
+	descendantPIDFile := filepath.Join(dir, "descendant.pid")
+	cmd := exec.Command(os.Args[0], "-test.run=TestTerminateLinuxContainmentReapingHelper", "--", helperPIDFile, descendantPIDFile)
+	cmd.Env = append(os.Environ(), "SIR_TEST_LINUX_REAP_HELPER=1")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start helper process tree: %v", err)
+	}
+
+	helperPID, err := waitForPIDFile(helperPIDFile, time.Second)
+	if err != nil {
+		terminateLinuxContainment(cmd, 0)
+		t.Fatalf("discover helper pid: %v", err)
+	}
+
+	descendantPID, err := waitForPIDFile(descendantPIDFile, time.Second)
+	if err != nil {
+		terminateLinuxContainment(cmd, helperPID)
+		t.Fatalf("discover forked descendant pid: %v", err)
+	}
+	if err := syscall.Kill(descendantPID, syscall.Signal(0)); err != nil {
+		terminateLinuxContainment(cmd, helperPID)
+		t.Fatalf("forked descendant pid %d was not alive before teardown: %v", descendantPID, err)
+	}
+
+	terminateLinuxContainment(cmd, helperPID)
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		if err := syscall.Kill(descendantPID, syscall.Signal(0)); err != nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("forked descendant pid %d survived containment cleanup", descendantPID)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestTerminateLinuxContainment_ReapsDetachedDescendant(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux containment reaping is Linux-only")
+	}
+
+	dir := t.TempDir()
+	helperPIDFile := filepath.Join(dir, "helper.pid")
+	descendantPIDFile := filepath.Join(dir, "detached.pid")
+	cmd := exec.Command(os.Args[0], "-test.run=TestTerminateLinuxContainmentReapingHelper", "--", helperPIDFile, descendantPIDFile)
+	cmd.Env = append(os.Environ(), "SIR_TEST_LINUX_REAP_HELPER=1", "SIR_TEST_LINUX_REAP_MODE=detached")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start helper process tree: %v", err)
+	}
+
+	helperPID, err := waitForPIDFile(helperPIDFile, time.Second)
+	if err != nil {
+		terminateLinuxContainment(cmd, 0)
+		t.Fatalf("discover helper pid: %v", err)
+	}
+
+	descendantPID, err := waitForPIDFile(descendantPIDFile, time.Second)
+	if err != nil {
+		terminateLinuxContainment(cmd, helperPID)
+		t.Fatalf("discover detached descendant pid: %v", err)
+	}
+	helperPGID, err := syscall.Getpgid(helperPID)
+	if err != nil {
+		terminateLinuxContainment(cmd, helperPID)
+		t.Fatalf("read helper pgid: %v", err)
+	}
+	descendantPGID, err := syscall.Getpgid(descendantPID)
+	if err != nil {
+		terminateLinuxContainment(cmd, helperPID)
+		t.Fatalf("read detached descendant pgid: %v", err)
+	}
+	if descendantPGID == helperPGID {
+		terminateLinuxContainment(cmd, helperPID)
+		t.Fatalf("detached descendant pgid = %d, want distinct from helper pgid %d", descendantPGID, helperPGID)
+	}
+
+	terminateLinuxContainment(cmd, helperPID)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if err := syscall.Kill(descendantPID, syscall.Signal(0)); err != nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("detached descendant pid %d survived containment cleanup", descendantPID)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestTerminateLinuxContainmentReapingHelper(t *testing.T) {
+	if os.Getenv("SIR_TEST_LINUX_REAP_HELPER") != "1" {
+		t.Skip("helper process only")
+	}
+
+	args := flag.Args()
+	if len(args) != 2 {
+		t.Fatalf("helper args = %v, want helper and descendant pid files", args)
+	}
+
+	helperPIDFile := args[0]
+	descendantPIDFile := args[1]
+	if err := os.WriteFile(helperPIDFile, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
+		t.Fatalf("write helper pid: %v", err)
+	}
+
+	child := exec.Command("sleep", "30")
+	if os.Getenv("SIR_TEST_LINUX_REAP_MODE") == "detached" {
+		child.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	}
+	if err := child.Start(); err != nil {
+		t.Fatalf("start descendant process: %v", err)
+	}
+	if err := os.WriteFile(descendantPIDFile, []byte(strconv.Itoa(child.Process.Pid)), 0o600); err != nil {
+		t.Fatalf("write descendant pid: %v", err)
+	}
+
+	time.Sleep(30 * time.Second)
+}
+
+func waitForPIDFile(path string, timeout time.Duration) (int, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		raw, err := os.ReadFile(path)
+		if err == nil {
+			pid, convErr := strconv.Atoi(strings.TrimSpace(string(raw)))
+			if convErr != nil {
+				return 0, fmt.Errorf("parse pid: %w", convErr)
+			}
+			return pid, nil
+		}
+		if time.Now().After(deadline) {
+			return 0, fmt.Errorf("timed out waiting for pid file")
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
