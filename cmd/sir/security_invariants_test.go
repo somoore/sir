@@ -25,6 +25,8 @@ type securityInvariantFixture struct {
 	ReadOutput        string                 `json:"read_output,omitempty"`
 	EgressCommand     string                 `json:"egress_command,omitempty"`
 	DerivedPath       string                 `json:"derived_path,omitempty"`
+	LaunderCommand    string                 `json:"launder_command,omitempty"`
+	LaunderedPath     string                 `json:"laundered_path,omitempty"`
 	PushCommand       string                 `json:"push_command,omitempty"`
 	AllowedHosts      []string               `json:"allowed_hosts,omitempty"`
 	ToolName          string                 `json:"tool_name,omitempty"`
@@ -60,6 +62,8 @@ func TestSecurityInvariantSuiteV1(t *testing.T) {
 				runInvariantManagedModeRefusal(t, fixture)
 			case "lineage_carrying_push_denial":
 				runInvariantLineagePushDenial(t, fixture)
+			case "lineage_laundering_survives_sink":
+				runInvariantLineageLaunderingSurvivesSink(t, fixture)
 			case "evidence_redaction":
 				runInvariantEvidenceRedaction(t, fixture)
 			case "runtime_containment_failclosed":

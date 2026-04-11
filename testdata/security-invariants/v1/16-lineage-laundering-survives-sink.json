@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "name": "lineage-laundering-survives-sink",
+  "scenario": "lineage_laundering_survives_sink",
+  "description": "Derived lineage must survive archive, rename, and link laundering so the later sink still sees the taint.",
+  "sensitive_path": ".env",
+  "derived_path": "report.txt",
+  "launder_command": "cp report.txt archive/report.txt && mv archive/report.txt renamed/report.txt && ln -s renamed/report.txt linked/report.txt",
+  "laundered_path": "linked/report.txt",
+  "push_command": "git push origin main",
+  "expected": {
+    "decision": "ask"
+  }
+}

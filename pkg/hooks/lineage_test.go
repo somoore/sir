@@ -86,6 +86,97 @@ func TestDerivedLineageSurvivesTurnBoundaryAndGatesPushOrigin(t *testing.T) {
 	}
 }
 
+func TestDerivedLineageSurvivesArchiveRenameAndLinkLaundering(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	initGitRepo(t, projectRoot)
+
+	if err := os.MkdirAll(filepath.Join(projectRoot, "archive"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(projectRoot, "renamed"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(projectRoot, "linked"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	l := lease.DefaultLease()
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(projectRoot, ".env"), []byte("OPENAI_API_KEY=sk-secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, "report.txt"), []byte("copied secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := postEvaluatePayload(&PostHookPayload{
+		ToolName:  "Read",
+		ToolInput: map[string]interface{}{"file_path": ".env"},
+	}, l, state, projectRoot); err != nil {
+		t.Fatalf("postEvaluatePayload(read): %v", err)
+	}
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := postEvaluatePayload(&PostHookPayload{
+		ToolName:  "Write",
+		ToolInput: map[string]interface{}{"file_path": "report.txt"},
+	}, l, state, projectRoot); err != nil {
+		t.Fatalf("postEvaluatePayload(write): %v", err)
+	}
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	launderCmd := "cp report.txt archive/report.txt && mv archive/report.txt renamed/report.txt && ln -s renamed/report.txt linked/report.txt"
+	if _, err := postEvaluatePayload(&PostHookPayload{
+		ToolName:  "Bash",
+		ToolInput: map[string]interface{}{"command": launderCmd},
+	}, l, state, projectRoot); err != nil {
+		t.Fatalf("postEvaluatePayload(launder): %v", err)
+	}
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{"archive/report.txt", "renamed/report.txt", "linked/report.txt"} {
+		labels := state.DerivedLabelsForPath(ResolveTarget(projectRoot, path))
+		if len(labels) == 0 {
+			t.Fatalf("%s should preserve lineage after laundering, got none (tracked=%v)", path, state.DerivedPaths())
+		}
+	}
+
+	runGit(t, projectRoot, "add", "-A")
+	runGit(t, projectRoot, "commit", "-m", "add laundered report")
+
+	state.IncrementTurn()
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := session.Load(projectRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	intent := MapToolToIntent("Bash", map[string]interface{}{"command": "git push origin main"}, l)
+	labels := labelsForEvaluation(&HookPayload{ToolName: "Bash", ToolInput: map[string]interface{}{"command": "git push origin main"}}, intent, l, projectRoot)
+	req, err := buildCoreRequest(projectRoot, &HookPayload{ToolName: "Bash", ToolInput: map[string]interface{}{"command": "git push origin main"}}, intent, l, reloaded, labels)
+	if err != nil {
+		t.Fatalf("buildCoreRequest(push): %v", err)
+	}
+	if len(req.Intent.DerivedLabels) == 0 {
+		t.Fatalf("git push origin should surface derived labels after laundering, got none (labels=%v)", req.Intent.DerivedLabels)
+	}
+	if got := coreLabelsFromLineage(reloaded.DerivedLabelsForPaths(gitOutgoingPaths(projectRoot, "origin"))); len(got) == 0 {
+		t.Fatalf("gitOutgoingPaths should surface lineage after laundering, got none (paths=%v)", reloaded.DerivedPaths())
+	}
+}
+
 func TestGitOutgoingPathsWithoutUpstreamIncludesAllUnpushedCommits(t *testing.T) {
 	projectRoot := t.TempDir()
 	initGitRepo(t, projectRoot)
