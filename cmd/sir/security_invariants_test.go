@@ -84,6 +84,8 @@ func TestSecurityInvariantSuiteV1(t *testing.T) {
 				runInvariantCrossVersionLineageStateCompatibility(t, fixture)
 			case "cross_version_ledger_compatibility":
 				runInvariantCrossVersionLedgerCompatibility(t, fixture)
+			case "delegation_after_risky_state":
+				runInvariantDelegationAfterRiskyState(t, fixture)
 			default:
 				t.Fatalf("unknown security invariant scenario %q", fixture.Scenario)
 			}

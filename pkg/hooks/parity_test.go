@@ -17,10 +17,12 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/somoore/sir/pkg/agent"
 	"github.com/somoore/sir/pkg/lease"
+	"github.com/somoore/sir/pkg/policy"
 	"github.com/somoore/sir/pkg/session"
 )
 
@@ -157,5 +159,226 @@ func TestDelegationParity_SubagentStart_SecretSession(t *testing.T) {
 		t.Errorf("SubagentStart + secret session: decision = %q, want %q (Rust returns deny; Go must never be more permissive). reason: %s",
 			resp.HookSpecificOutput.PermissionDecision, "deny",
 			resp.HookSpecificOutput.PermissionDecisionReason)
+	}
+}
+
+func TestDelegationParity_PreToolUse_RiskySessionStates(t *testing.T) {
+	cases := []struct {
+		name            string
+		mutate          func(*session.State)
+		wantWarningText bool
+	}{
+		{
+			name: "tainted mcp server",
+			mutate: func(state *session.State) {
+				state.AddTaintedMCPServer("jira")
+			},
+		},
+		{
+			name: "elevated posture",
+			mutate: func(state *session.State) {
+				state.RaisePosture(policy.PostureStateElevated)
+			},
+		},
+		{
+			name: "pending injection alert",
+			mutate: func(state *session.State) {
+				state.SetPendingInjectionAlert("pending injection alert")
+			},
+			wantWarningText: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			projectRoot := t.TempDir()
+			l := lease.DefaultLease()
+
+			stateDir := session.StateDir(projectRoot)
+			if err := os.MkdirAll(stateDir, 0o700); err != nil {
+				t.Fatalf("mkdir state: %v", err)
+			}
+			if err := l.Save(stateDir + "/lease.json"); err != nil {
+				t.Fatalf("save lease: %v", err)
+			}
+
+			state := session.NewState(projectRoot)
+			if err := state.Save(); err != nil {
+				t.Fatalf("save initial session: %v", err)
+			}
+			tc.mutate(state)
+			if err := state.Save(); err != nil {
+				t.Fatalf("save mutated session: %v", err)
+			}
+
+			resp, err := evaluatePayload(&HookPayload{
+				ToolName:  "Agent",
+				ToolInput: map[string]interface{}{"task": "investigate repository"},
+				CWD:       projectRoot,
+			}, l, state, projectRoot)
+			if err != nil {
+				t.Fatalf("evaluatePayload: %v", err)
+			}
+			if resp.Decision == "allow" {
+				t.Fatalf("Agent delegation after %s: expected blocked or gated decision, got allow (%s)", tc.name, resp.Reason)
+			}
+			if tc.wantWarningText {
+				if resp.Decision != policy.VerdictAsk {
+					t.Fatalf("Agent delegation after %s: expected ask with warning, got %q (%s)", tc.name, resp.Decision, resp.Reason)
+				}
+				if !strings.Contains(resp.Reason, "suspicious patterns") || !strings.Contains(resp.Reason, "pending injection alert") {
+					t.Fatalf("Agent delegation after %s: expected suspicious-output warning in reason, got %q", tc.name, resp.Reason)
+				}
+			}
+		})
+	}
+}
+
+func TestDelegationParity_PreToolUse_RiskyStatePreservesSessionIntegrity(t *testing.T) {
+	projectRoot := t.TempDir()
+	l := lease.DefaultLease()
+
+	stateDir := session.StateDir(projectRoot)
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatalf("mkdir state: %v", err)
+	}
+	if err := l.Save(stateDir + "/lease.json"); err != nil {
+		t.Fatalf("save lease: %v", err)
+	}
+
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatalf("save initial session: %v", err)
+	}
+	state.AddTaintedMCPServer("jira")
+	if err := state.Save(); err != nil {
+		t.Fatalf("save tainted session: %v", err)
+	}
+
+	resp, err := evaluatePayload(&HookPayload{
+		ToolName:  "Agent",
+		ToolInput: map[string]interface{}{"task": "investigate repository"},
+		CWD:       projectRoot,
+	}, l, state, projectRoot)
+	if err != nil {
+		t.Fatalf("evaluatePayload risky delegation: %v", err)
+	}
+	if resp.Decision != policy.VerdictAsk {
+		t.Fatalf("delegation decision = %q, want ask (reason=%s)", resp.Decision, resp.Reason)
+	}
+	if !session.VerifySessionIntegrity(state) {
+		t.Fatal("delegation ask path should preserve session integrity for follow-up calls")
+	}
+}
+
+func TestDelegationParity_SubagentStart_RiskySessionStates(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*session.State)
+	}{
+		{
+			name: "tainted mcp server",
+			mutate: func(state *session.State) {
+				state.AddTaintedMCPServer("jira")
+			},
+		},
+		{
+			name: "elevated posture",
+			mutate: func(state *session.State) {
+				state.RaisePosture(policy.PostureStateElevated)
+			},
+		},
+		{
+			name: "pending injection alert",
+			mutate: func(state *session.State) {
+				state.SetPendingInjectionAlert("pending injection alert")
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			projectRoot := t.TempDir()
+			l := lease.DefaultLease()
+
+			stateDir := session.StateDir(projectRoot)
+			if err := os.MkdirAll(stateDir, 0o700); err != nil {
+				t.Fatalf("mkdir state: %v", err)
+			}
+			if err := l.Save(stateDir + "/lease.json"); err != nil {
+				t.Fatalf("save lease: %v", err)
+			}
+
+			state := session.NewState(projectRoot)
+			if err := state.Save(); err != nil {
+				t.Fatalf("save initial session: %v", err)
+			}
+			tc.mutate(state)
+			if err := state.Save(); err != nil {
+				t.Fatalf("save mutated session: %v", err)
+			}
+
+			payloadJSON, err := json.Marshal(SubagentPayload{
+				HookEventName: "SubagentStart",
+				AgentName:     "general-purpose",
+				Tools:         []string{"Read"},
+			})
+			if err != nil {
+				t.Fatalf("marshal payload: %v", err)
+			}
+
+			origStdin, origStdout := os.Stdin, os.Stdout
+			defer func() {
+				os.Stdin = origStdin
+				os.Stdout = origStdout
+			}()
+
+			inR, inW, err := os.Pipe()
+			if err != nil {
+				t.Fatalf("pipe in: %v", err)
+			}
+			outR, outW, err := os.Pipe()
+			if err != nil {
+				t.Fatalf("pipe out: %v", err)
+			}
+			os.Stdin = inR
+			os.Stdout = outW
+
+			if _, err := inW.Write(payloadJSON); err != nil {
+				t.Fatalf("write payload: %v", err)
+			}
+			inW.Close()
+
+			done := make(chan error, 1)
+			go func() {
+				done <- EvaluateSubagentStart(projectRoot, &agent.ClaudeAgent{})
+			}()
+
+			if err := <-done; err != nil {
+				outW.Close()
+				t.Fatalf("EvaluateSubagentStart: %v", err)
+			}
+			outW.Close()
+
+			var buf bytes.Buffer
+			if _, err := io.Copy(&buf, outR); err != nil {
+				t.Fatalf("read stdout: %v", err)
+			}
+			if buf.Len() == 0 {
+				t.Fatalf("SubagentStart after %s: expected blocked or gated response, got no output", tc.name)
+			}
+
+			var resp struct {
+				HookSpecificOutput struct {
+					PermissionDecision string `json:"permissionDecision"`
+				} `json:"hookSpecificOutput"`
+			}
+			if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+				t.Fatalf("unmarshal response: %v\nraw: %s", err, buf.String())
+			}
+			if resp.HookSpecificOutput.PermissionDecision == "allow" {
+				t.Fatalf("SubagentStart after %s: expected blocked or gated decision, got allow", tc.name)
+			}
+		})
 	}
 }

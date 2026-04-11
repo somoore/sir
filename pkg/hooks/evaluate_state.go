@@ -41,6 +41,19 @@ func consumePendingInjectionAlert(state *session.State) string {
 	return detail
 }
 
+func delegationRequiresApproval(state *session.State) bool {
+	if state.SecretSession {
+		return false
+	}
+	if state.PendingInjectionAlert || state.RecentlyReadUntrusted {
+		return true
+	}
+	if state.Posture == policy.PostureStateElevated || state.Posture == policy.PostureStateCritical {
+		return true
+	}
+	return len(state.TaintedMCPServers) > 0
+}
+
 func evaluateLeaseIntegrityGuard(projectRoot string, state *session.State) (*HookResponse, bool) {
 	if VerifyLeaseIntegrity(projectRoot, state) {
 		return nil, false

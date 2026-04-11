@@ -122,6 +122,15 @@ func EvaluateSubagentStart(projectRoot string, ag agent.Agent) error {
 			return nil
 		}
 
+		if delegationRequiresApproval(state) {
+			resp = &HookResponse{
+				Decision: policy.VerdictAsk,
+				Reason:   FormatAskPostureElevated("delegate", fmt.Sprintf("delegate to sub-agent: %s", payload.AgentName), string(state.Posture), state.MCPInjectionSignals),
+			}
+			logSubagentDecision(projectRoot, payload.AgentName, "ask", "tainted/elevated/pending-injection session")
+			return nil
+		}
+
 		// Check if sub-agent has dangerous tools (network, file write to posture)
 		hasDangerousTools := false
 		for _, tool := range payload.Tools {

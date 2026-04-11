@@ -103,7 +103,18 @@ func evaluatePayload(payload *HookPayload, l *lease.Lease, state *session.State,
 		return resp, nil
 	}
 
+	if intent.Verb == policy.VerbDelegate && (pendingInjectionDetail != "" || delegationRequiresApproval(state)) {
+		resp := &HookResponse{
+			Decision: policy.VerdictAsk,
+			Reason:   FormatAskPostureElevated(string(intent.Verb), intent.Target, string(state.Posture), state.MCPInjectionSignals),
+		}
+		overlayPendingInjectionWarning(resp, pendingInjectionDetail)
+		saveSessionBestEffort(state)
+		return resp, nil
+	}
+
 	if resp, handled := evaluateTaintedMCPInput(payload, l, state, projectRoot); handled {
+		overlayPendingInjectionWarning(resp, pendingInjectionDetail)
 		return resp, nil
 	}
 
