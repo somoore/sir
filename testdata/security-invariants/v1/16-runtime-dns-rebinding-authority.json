@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "runtime-dns-rebinding-authority",
+  "scenario": "runtime_dns_rebinding_authority",
+  "description": "Launch-time exact destinations must remain authoritative in the runtime proof surface even if the current lease drifts after launch.",
+  "expected": {
+    "status_contains": "Exact destinations: api.anthropic.com:443, localhost:*"
+  }
+}
