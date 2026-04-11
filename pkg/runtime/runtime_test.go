@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -221,6 +222,196 @@ sys.exit(0)
 	}
 }
 
+func TestLaunchLinuxNamespaceProof(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux namespace proof is Linux-only")
+	}
+	for _, name := range []string{"unshare", "mount"} {
+		requireLinuxLaunchProofBinary(t, name)
+	}
+	requireLinuxLaunchNamespaces(t)
+
+	hostNetNS, err := os.Readlink("/proc/self/ns/net")
+	if err != nil {
+		t.Fatalf("read host net namespace: %v", err)
+	}
+	hostMntNS, err := os.Readlink("/proc/self/ns/mnt")
+	if err != nil {
+		t.Fatalf("read host mount namespace: %v", err)
+	}
+
+	homeDir := t.TempDir()
+	projectRoot := t.TempDir()
+	proofDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	binDir := t.TempDir()
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if err := os.MkdirAll(filepath.Join(homeDir, ".sir", "projects"), 0o755); err != nil {
+		t.Fatalf("mkdir .sir/projects: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, ".mcp.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatalf("write .mcp.json: %v", err)
+	}
+	if err := lease.DefaultLease().Save(filepath.Join(session.DurableStateDir(projectRoot), "lease.json")); err != nil {
+		t.Fatalf("write runtime lease: %v", err)
+	}
+
+	agentScript := filepath.Join(binDir, "runtime-test")
+	if err := os.WriteFile(agentScript, []byte(`#!/bin/sh
+set -eu
+output_path="$1"
+release_path="$2"
+netns="$(readlink /proc/self/ns/net)"
+mntns="$(readlink /proc/self/ns/mnt)"
+printf '{"netns":"%s","mntns":"%s"}\n' "$netns" "$mntns" > "$output_path"
+while [ ! -f "$release_path" ]; do sleep 0.05; done
+`), 0o755); err != nil {
+		t.Fatalf("write runtime-test launcher: %v", err)
+	}
+
+	outputPath := filepath.Join(proofDir, "linux-namespace-proof.json")
+	releasePath := filepath.Join(proofDir, "linux-namespace-release")
+	type launchResult struct {
+		exitCode int
+		err      error
+	}
+	resultCh := make(chan launchResult, 1)
+	launchSettled := false
+	go func() {
+		exitCode, err := Launch(projectRoot, Options{
+			Agent:       runtimeTestAgent{},
+			Passthrough: []string{outputPath, releasePath},
+		})
+		resultCh <- launchResult{exitCode: exitCode, err: err}
+	}()
+	defer func() {
+		if launchSettled {
+			return
+		}
+		_ = os.WriteFile(releasePath, []byte("release\n"), 0o600)
+		select {
+		case <-resultCh:
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for Linux launcher to exit")
+		}
+	}()
+
+	var proof struct {
+		NetNS string `json:"netns"`
+		MntNS string `json:"mntns"`
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	var rawProof []byte
+	for time.Now().Before(deadline) {
+		rawProof, err = os.ReadFile(outputPath)
+		if err == nil {
+			break
+		}
+		if !os.IsNotExist(err) {
+			t.Fatalf("read linux namespace proof: %v", err)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if len(rawProof) == 0 {
+		t.Fatal("timed out waiting for linux namespace proof output")
+	}
+	if err := json.Unmarshal(rawProof, &proof); err != nil {
+		t.Fatalf("unmarshal linux namespace proof: %v\n%s", err, string(rawProof))
+	}
+	if proof.NetNS == "" || proof.MntNS == "" {
+		t.Fatalf("linux namespace proof missing namespace ids: %+v", proof)
+	}
+	if proof.NetNS == hostNetNS {
+		t.Fatalf("child net namespace = %q, want distinct from host %q", proof.NetNS, hostNetNS)
+	}
+	if proof.MntNS == hostMntNS {
+		t.Fatalf("child mount namespace = %q, want distinct from host %q", proof.MntNS, hostMntNS)
+	}
+
+	var receipt *session.RuntimeContainment
+	for time.Now().Before(deadline) {
+		receipt, err = session.LoadRuntimeContainment(projectRoot)
+		if err == nil && receipt != nil && receipt.AgentPID > 0 {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if err != nil || receipt == nil {
+		t.Fatalf("load active runtime receipt: %v", err)
+	}
+	if receipt.Mode != ContainmentModeLinuxNamespace {
+		t.Fatalf("runtime mode = %q, want %q", receipt.Mode, ContainmentModeLinuxNamespace)
+	}
+	agentNetNS, err := os.Readlink(filepath.Join("/proc", strconv.Itoa(receipt.AgentPID), "ns", "net"))
+	if err != nil {
+		t.Fatalf("read agent net namespace via AgentPID %d: %v", receipt.AgentPID, err)
+	}
+	agentMntNS, err := os.Readlink(filepath.Join("/proc", strconv.Itoa(receipt.AgentPID), "ns", "mnt"))
+	if err != nil {
+		t.Fatalf("read agent mount namespace via AgentPID %d: %v", receipt.AgentPID, err)
+	}
+	if agentNetNS != proof.NetNS {
+		t.Fatalf("agent net namespace via AgentPID = %q, want %q", agentNetNS, proof.NetNS)
+	}
+	if agentMntNS != proof.MntNS {
+		t.Fatalf("agent mount namespace via AgentPID = %q, want %q", agentMntNS, proof.MntNS)
+	}
+
+	if err := os.WriteFile(releasePath, []byte("release\n"), 0o600); err != nil {
+		t.Fatalf("release linux namespace proof: %v", err)
+	}
+	result := <-resultCh
+	launchSettled = true
+	if result.err != nil {
+		t.Fatalf("Launch: %v", result.err)
+	}
+	if result.exitCode != 0 {
+		t.Fatalf("expected Linux launcher to succeed, exit=%d output=%s", result.exitCode, string(rawProof))
+	}
+	finalReceipt, err := session.LoadLastRuntimeContainment(projectRoot)
+	if err != nil {
+		t.Fatalf("load final runtime receipt: %v", err)
+	}
+	if finalReceipt.Mode != ContainmentModeLinuxNamespace {
+		t.Fatalf("final runtime mode = %q, want %q", finalReceipt.Mode, ContainmentModeLinuxNamespace)
+	}
+	if finalReceipt.AgentPID != receipt.AgentPID {
+		t.Fatalf("final runtime AgentPID = %d, want %d", finalReceipt.AgentPID, receipt.AgentPID)
+	}
+}
+
+func requireLinuxLaunchProofBinary(t *testing.T, name string) string {
+	t.Helper()
+	path, err := exec.LookPath(name)
+	if err == nil {
+		return path
+	}
+	msg := fmt.Sprintf("linux namespace proof requires %s on PATH: %v", name, err)
+	if os.Getenv("GITHUB_ACTIONS") == "true" {
+		t.Fatal(msg)
+	}
+	t.Skip(msg)
+	return ""
+}
+
+func requireLinuxLaunchNamespaces(t *testing.T) {
+	t.Helper()
+	cmd := exec.Command("unshare", "--fork", "--pid", "--user", "--map-root-user", "--net", "--mount", "--mount-proc", "/bin/sh", "-c", "readlink /proc/self/ns/net >/dev/null && readlink /proc/self/ns/mnt >/dev/null")
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		return
+	}
+	msg := fmt.Sprintf("linux namespace proof requires unprivileged user+network+mount namespaces: %v", err)
+	if trimmed := strings.TrimSpace(string(output)); trimmed != "" {
+		msg += " (" + trimmed + ")"
+	}
+	if os.Getenv("GITHUB_ACTIONS") == "true" {
+		t.Fatal(msg)
+	}
+	t.Skip(msg)
+}
+
 func TestLinuxContainmentBootstrapScriptIncludesReadonlyGuards(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -414,7 +605,10 @@ func TestLinuxContainmentAllowlistScriptIncludesHostsAndFirewallRules(t *testing
 		t.Fatalf("linuxContainmentAllowlistScript: %v", err)
 	}
 	for _, fragment := range []string{
-		"echo $$ >",
+		"# Capture the host-visible PID even when the child becomes pid 1 inside a nested pid namespace.",
+		"ns_host_pid=$(awk '/^NSpid:/ {print $2; exit}' /proc/self/status 2>/dev/null || true)",
+		"if [ -z \"$ns_host_pid\" ]; then ns_host_pid=$$; fi",
+		"echo \"$ns_host_pid\" >",
 		"while [ ! -f ",
 		"hosts_override=$(mktemp",
 		"iptables -P OUTPUT DROP",
@@ -651,6 +845,7 @@ func TestSignalLinuxContainmentReady_CleansUpOnWriteError(t *testing.T) {
 		cmd,
 		filepath.Join(t.TempDir(), "missing", "ready"),
 		func() { cleanupCalls++ },
+		0,
 	)
 	if err == nil {
 		t.Fatal("expected ready-file error")
@@ -663,6 +858,34 @@ func TestSignalLinuxContainmentReady_CleansUpOnWriteError(t *testing.T) {
 	}
 	if err := cmd.Process.Signal(syscall.Signal(0)); err == nil {
 		t.Fatal("expected helper process to be gone after readiness failure")
+	}
+}
+
+func TestTerminateLinuxContainment_KillsForkedChild(t *testing.T) {
+	pidFile := filepath.Join(t.TempDir(), "child.pid")
+	cmd := exec.Command("sh", "-c", fmt.Sprintf("sleep 30 & echo $! > %s; wait", shellQuote(pidFile)))
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start helper process group: %v", err)
+	}
+
+	childPID, err := waitForLinuxNamespacePID(pidFile, cmd.Process.Pid, time.Second)
+	if err != nil {
+		terminateLinuxContainment(cmd, 0)
+		t.Fatalf("discover forked child pid: %v", err)
+	}
+
+	terminateLinuxContainment(cmd, childPID)
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		if err := syscall.Kill(childPID, syscall.Signal(0)); err != nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("forked child pid %d survived containment cleanup", childPID)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
