@@ -365,6 +365,116 @@ func TestDerivedSecretLineageTargetsIgnoreNestedMetadataUnderArtifactAndAttachme
 	}
 }
 
+func TestDerivedSecretLineageTargetsIgnoreNestedMetadataUnderArtifactAndAttachmentObjects(t *testing.T) {
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	derivedPath := ResolveTarget(projectRoot, "report.txt")
+	state.DerivedFileLineage[derivedPath] = session.DerivedPathRecord{
+		Labels: []session.LineageLabel{{
+			Sensitivity: "secret",
+			Trust:       "trusted",
+			Provenance:  "user",
+		}},
+	}
+
+	cases := []struct {
+		name  string
+		input map[string]any
+	}{
+		{
+			name: "artifact metadata string",
+			input: map[string]any{
+				"artifact": map[string]any{
+					"metadata": "report.txt",
+				},
+			},
+		},
+		{
+			name: "attachment nested metadata string",
+			input: map[string]any{
+				"attachment": map[string]any{
+					"details": map[string]any{
+						"summary": "report.txt",
+					},
+				},
+			},
+		},
+		{
+			name: "artifact list of metadata objects",
+			input: map[string]any{
+				"artifacts": []interface{}{
+					map[string]any{
+						"note": "report.txt",
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			targets := derivedSecretLineageTargets(tc.input, projectRoot, state)
+			if len(targets) != 0 {
+				t.Fatalf("derivedSecretLineageTargets(%q) = %v, want no targets", tc.name, targets)
+			}
+		})
+	}
+}
+
+func TestDerivedSecretLineageTargetsRecognizeNestedExplicitPathFields(t *testing.T) {
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	derivedPath := ResolveTarget(projectRoot, "report.txt")
+	state.DerivedFileLineage[derivedPath] = session.DerivedPathRecord{
+		Labels: []session.LineageLabel{{
+			Sensitivity: "secret",
+			Trust:       "trusted",
+			Provenance:  "user",
+		}},
+	}
+
+	cases := []struct {
+		name  string
+		input map[string]any
+	}{
+		{
+			name: "artifact path field",
+			input: map[string]any{
+				"artifact": map[string]any{
+					"path": "report.txt",
+				},
+			},
+		},
+		{
+			name: "attachment camelCase path field",
+			input: map[string]any{
+				"attachment": map[string]any{
+					"filePath": "report.txt",
+				},
+			},
+		},
+		{
+			name: "nested explicit path field",
+			input: map[string]any{
+				"artifact": map[string]any{
+					"metadata": map[string]any{
+						"artifactPath": "report.txt",
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			targets := derivedSecretLineageTargets(tc.input, projectRoot, state)
+			if len(targets) != 1 || targets[0] != "report.txt" {
+				t.Fatalf("derivedSecretLineageTargets(%q) = %v, want [report.txt]", tc.name, targets)
+			}
+		})
+	}
+}
+
 func initGitRepo(t *testing.T, dir string) {
 	t.Helper()
 	runGit(t, dir, "init")

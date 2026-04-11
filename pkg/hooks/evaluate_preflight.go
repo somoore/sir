@@ -99,12 +99,11 @@ func evaluateTaintedMCPInput(payload *HookPayload, l *lease.Lease, state *sessio
 func derivedSecretLineageTargets(input any, projectRoot string, state *session.State) []string {
 	seen := make(map[string]struct{})
 	var targets []string
-	var walk func(any, bool, string)
-	walk = func(value any, pathContext bool, key string) {
-		pathContext = pathContext || isPathBearingMCPKey(key)
+	var walk func(any, string)
+	walk = func(value any, key string) {
 		switch typed := value.(type) {
 		case string:
-			if typed == "" || !pathContext {
+			if typed == "" || !isPathBearingMCPKey(key) {
 				return
 			}
 			if _, ok := seen[typed]; ok {
@@ -120,15 +119,15 @@ func derivedSecretLineageTargets(input any, projectRoot string, state *session.S
 			}
 		case []interface{}:
 			for _, item := range typed {
-				walk(item, pathContext, key)
+				walk(item, key)
 			}
 		case map[string]any:
 			for childKey, item := range typed {
-				walk(item, pathContext, childKey)
+				walk(item, childKey)
 			}
 		}
 	}
-	walk(input, false, "")
+	walk(input, "")
 	return targets
 }
 
