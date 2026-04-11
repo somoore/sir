@@ -10,10 +10,12 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -298,6 +300,32 @@ func TestStartLocalProxyTracksHTTPEgressDecisions(t *testing.T) {
 	}
 	if stats.lastBlockedDest != "127.0.0.2:80" {
 		t.Fatalf("lastBlockedDest = %q, want %q", stats.lastBlockedDest, "127.0.0.2:80")
+	}
+}
+
+func TestSignalLinuxContainmentReady_CleansUpOnWriteError(t *testing.T) {
+	cmd := exec.Command("sleep", "30")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start helper process: %v", err)
+	}
+
+	cleanupCalls := 0
+	err := signalLinuxContainmentReady(
+		cmd,
+		filepath.Join(t.TempDir(), "missing", "ready"),
+		func() { cleanupCalls++ },
+	)
+	if err == nil {
+		t.Fatal("expected ready-file error")
+	}
+	if !strings.Contains(err.Error(), "signal linux containment readiness") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cleanupCalls != 1 {
+		t.Fatalf("cleanupCalls = %d, want 1", cleanupCalls)
+	}
+	if err := cmd.Process.Signal(syscall.Signal(0)); err == nil {
+		t.Fatal("expected helper process to be gone after readiness failure")
 	}
 }
 
