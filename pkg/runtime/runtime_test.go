@@ -45,6 +45,17 @@ func TestSelectLauncherMatchesPlatform(t *testing.T) {
 }
 
 func TestContainmentDirectSocketBoundaryKeepsNetworkOutboundLoopbackOnly(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("sandbox-exec direct-socket proof is macOS-only")
+	}
+	if _, err := exec.LookPath("sandbox-exec"); err != nil {
+		t.Skip("sandbox-exec not available")
+	}
+	pythonBin, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 not available")
+	}
+
 	homeDir := t.TempDir()
 	projectRoot := t.TempDir()
 	t.Setenv("HOME", homeDir)
@@ -54,14 +65,62 @@ func TestContainmentDirectSocketBoundaryKeepsNetworkOutboundLoopbackOnly(t *test
 		t.Fatalf("BuildDarwinProfile: %v", err)
 	}
 
-	if !strings.Contains(profile, "(deny network-outbound)") {
-		t.Fatalf("sandbox profile missing network-outbound deny:\n%s", profile)
+	loopbackListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen loopback: %v", err)
 	}
-	if !strings.Contains(profile, `(allow network-outbound (remote ip "localhost:*"))`) {
-		t.Fatalf("sandbox profile missing loopback-only network allowance:\n%s", profile)
+	defer loopbackListener.Close()
+	loopbackPort := loopbackListener.Addr().(*net.TCPAddr).Port
+	accepted := make(chan struct{}, 1)
+	go func() {
+		conn, acceptErr := loopbackListener.Accept()
+		if acceptErr == nil {
+			_ = conn.Close()
+			accepted <- struct{}{}
+		}
+	}()
+
+	allowLoopback := exec.Command(
+		"sandbox-exec",
+		"-p",
+		profile,
+		pythonBin,
+		"-c",
+		fmt.Sprintf("import socket; s=socket.create_connection(('127.0.0.1', %d), 1); s.close()", loopbackPort),
+	)
+	if output, err := allowLoopback.CombinedOutput(); err != nil {
+		t.Fatalf("expected loopback direct socket to stay allowed: %v\n%s", err, string(output))
 	}
-	if got := strings.Count(profile, "(allow network-outbound"); got != 2 {
-		t.Fatalf("sandbox profile allows %d network-outbound rules, want 2:\n%s", got, profile)
+	select {
+	case <-accepted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("sandboxed loopback direct socket never reached local listener")
+	}
+
+	blockNonLoopback := exec.Command(
+		"sandbox-exec",
+		"-p",
+		profile,
+		pythonBin,
+		"-c",
+		`import socket, sys
+s = socket.socket()
+s.settimeout(1)
+try:
+    s.connect(("203.0.113.10", 443))
+except OSError as exc:
+    msg = str(exc)
+    if "Operation not permitted" in msg or "Permission denied" in msg:
+        sys.exit(0)
+    print(msg, file=sys.stderr)
+    sys.exit(2)
+else:
+    print("unexpected non-loopback direct socket success", file=sys.stderr)
+    sys.exit(1)
+`,
+	)
+	if output, err := blockNonLoopback.CombinedOutput(); err != nil {
+		t.Fatalf("expected non-loopback direct socket to be blocked by sandbox policy: %v\n%s", err, string(output))
 	}
 }
 
