@@ -19,6 +19,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/somoore/sir/pkg/agent"
 	"github.com/somoore/sir/pkg/lease"
@@ -267,6 +268,53 @@ func TestDelegationParity_PreToolUse_LeaseDisallowsDelegationPreemptsRiskyAsk(t 
 	}
 	if resp.Decision != policy.VerdictDeny {
 		t.Fatalf("Agent delegation with allow_delegation=false and risky state = %q, want %q (reason=%s)", resp.Decision, policy.VerdictDeny, resp.Reason)
+	}
+}
+
+func TestDelegationParity_PreToolUse_LeaseDisallowPersistsTurnAdvance(t *testing.T) {
+	projectRoot := t.TempDir()
+	l := lease.DefaultLease()
+	l.AllowDelegation = false
+
+	stateDir := session.StateDir(projectRoot)
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatalf("mkdir state: %v", err)
+	}
+	if err := l.Save(stateDir + "/lease.json"); err != nil {
+		t.Fatalf("save lease: %v", err)
+	}
+
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatalf("save initial session: %v", err)
+	}
+	before := time.Now().Add(-2 * session.TurnGapThreshold)
+	state.LastToolCallAt = before
+	if err := state.Save(); err != nil {
+		t.Fatalf("save stale session: %v", err)
+	}
+
+	resp, err := evaluatePayload(&HookPayload{
+		ToolName:  "Agent",
+		ToolInput: map[string]interface{}{"task": "delegate work to a sub-agent"},
+		CWD:       projectRoot,
+	}, l, state, projectRoot)
+	if err != nil {
+		t.Fatalf("evaluatePayload: %v", err)
+	}
+	if resp.Decision != policy.VerdictDeny {
+		t.Fatalf("Agent delegation with allow_delegation=false = %q, want %q (reason=%s)", resp.Decision, policy.VerdictDeny, resp.Reason)
+	}
+
+	loaded, err := session.Load(projectRoot)
+	if err != nil {
+		t.Fatalf("reload session: %v", err)
+	}
+	if loaded.TurnCounter != 1 {
+		t.Fatalf("TurnCounter = %d, want 1 after persisted turn advance", loaded.TurnCounter)
+	}
+	if !loaded.LastToolCallAt.After(before) {
+		t.Fatalf("LastToolCallAt = %v, want persisted update after %v", loaded.LastToolCallAt, before)
 	}
 }
 

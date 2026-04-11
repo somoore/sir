@@ -66,6 +66,7 @@ func evaluateDelegationHardDeny(intent Intent, l *lease.Lease, state *session.St
 		if ag != nil {
 			agentName = AgentDisplayName(string(ag.ID()))
 		}
+		saveSessionBestEffort(state)
 		return &HookResponse{
 			Decision: policy.VerdictDeny,
 			Reason:   FormatBlockDelegation(agentName),
@@ -73,6 +74,7 @@ func evaluateDelegationHardDeny(intent Intent, l *lease.Lease, state *session.St
 	}
 
 	if !l.AllowDelegation {
+		saveSessionBestEffort(state)
 		return &HookResponse{
 			Decision: policy.VerdictDeny,
 			Reason: FormatBlock(
