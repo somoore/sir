@@ -133,7 +133,7 @@ type Agent interface {
 // with an existing settings.json. This keeps install.go's merge loop working
 // without an extra unmarshal round-trip.
 type MapBuilder interface {
-	GenerateHooksConfigMap(sirBinaryPath, mode string) map[string]interface{}
+	GenerateHooksConfigMap(sirBinaryPath, mode string) (map[string]interface{}, error)
 }
 
 // Registration is the single source of truth for one supported agent.

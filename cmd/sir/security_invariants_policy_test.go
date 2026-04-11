@@ -111,7 +111,7 @@ func runInvariantHookTamperRestore(t *testing.T, fixture securityInvariantFixtur
 	if !ok {
 		t.Fatalf("agent %q does not implement MapBuilder", fixture.TamperedAgent)
 	}
-	liveConfig := builder.GenerateHooksConfigMap("sir", l.Mode)
+	liveConfig := mustHooksConfigMap(t, builder, "sir", l.Mode)
 	env.writeSettingsJSON(liveConfig)
 
 	canonicalPath := spec.ConfigStrategy.CanonicalBackupPath(env.home)

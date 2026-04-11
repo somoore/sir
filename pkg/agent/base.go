@@ -209,8 +209,12 @@ func baseDetectInstallation(spec *AgentSpec) bool {
 // the reverse-lookup of Spec.EventNames (i.e. the agent-native wire name);
 // when no reverse mapping exists, the sir-internal name is used as-is. When
 // ManagedSubtreeKey is empty, the emitted document is the hooks map itself.
-func baseGenerateHooksConfigMap(spec *AgentSpec, sirBinaryPath, mode string) map[string]interface{} {
+func baseGenerateHooksConfigMap(spec *AgentSpec, sirBinaryPath, mode string) (map[string]interface{}, error) {
 	_ = mode // accepted for forward compatibility
+	layout := spec.ConfigStrategy.EffectiveLayout()
+	if layout != ConfigLayoutMatcherGroups {
+		return nil, fmt.Errorf("unsupported config layout: %s", layout)
+	}
 
 	// Build reverse map: sir-internal -> agent-native.
 	wireNameFor := func(sirEvent string) string {
@@ -228,37 +232,35 @@ func baseGenerateHooksConfigMap(spec *AgentSpec, sirBinaryPath, mode string) map
 		if spec.CommandFlag != "" {
 			command = command + " " + spec.CommandFlag
 		}
-		var entry interface{}
-		switch spec.ConfigStrategy.EffectiveLayout() {
-		case ConfigLayoutMatcherGroups:
-			group := map[string]interface{}{
-				"hooks": []interface{}{
-					map[string]interface{}{
-						"type":    "command",
-						"command": command,
-						"timeout": reg.Timeout,
-					},
+		group := map[string]interface{}{
+			"hooks": []interface{}{
+				map[string]interface{}{
+					"type":    "command",
+					"command": command,
+					"timeout": reg.Timeout,
 				},
-			}
-			if reg.Matcher != "" {
-				group["matcher"] = reg.Matcher
-			}
-			entry = group
-		default:
-			panic("unsupported config layout: " + string(spec.ConfigStrategy.EffectiveLayout()))
+			},
 		}
+		if reg.Matcher != "" {
+			group["matcher"] = reg.Matcher
+		}
+		entry := interface{}(group)
 		wireName := wireNameFor(reg.Event)
 		hooks[wireName] = []interface{}{entry}
 	}
 
 	wrapperKey := spec.ConfigStrategy.ManagedSubtreeKey
 	if wrapperKey == "" {
-		return hooks
+		return hooks, nil
 	}
-	return map[string]interface{}{wrapperKey: hooks}
+	return map[string]interface{}{wrapperKey: hooks}, nil
 }
 
 // baseGenerateHooksConfig is the []byte form of baseGenerateHooksConfigMap.
 func baseGenerateHooksConfig(spec *AgentSpec, sirBinaryPath, mode string) ([]byte, error) {
-	return json.Marshal(baseGenerateHooksConfigMap(spec, sirBinaryPath, mode))
+	config, err := baseGenerateHooksConfigMap(spec, sirBinaryPath, mode)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(config)
 }

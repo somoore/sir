@@ -88,6 +88,16 @@ func cmdInstall(projectRoot, mode string) {
 		fmt.Printf("  %s\n\n", managedPolicyNotice(policy))
 	}
 
+	for _, ag := range agents {
+		hooksConfig, err := generatedHooksConfigForAgent(ag, l.Mode)
+		if err != nil {
+			fatal("preflight %s install: %v", ag.Name(), err)
+		}
+		if err := validateGeneratedHooksPolicy(ag, hooksConfig, policy); err != nil {
+			fatal("preflight %s install: %v", ag.Name(), err)
+		}
+	}
+
 	// Preview changes before applying them.
 	if !opts.skipPreview {
 		fmt.Println("sir install will:")
@@ -129,7 +139,9 @@ func cmdInstall(projectRoot, mode string) {
 
 	// Install per agent.
 	for _, ag := range agents {
-		installForAgent(ag, l.Mode, homeDir, opts.skipPreview, policy)
+		if err := installForAgent(ag, l.Mode, homeDir, opts.skipPreview, policy); err != nil {
+			fatal("install %s hooks: %v", ag.Name(), err)
+		}
 	}
 
 	// Create sir state directory

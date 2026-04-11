@@ -178,6 +178,6 @@ func (g *GeminiAgent) DetectInstallation() bool  { return baseDetectInstallation
 func (g *GeminiAgent) GenerateHooksConfig(sirBinaryPath, mode string) ([]byte, error) {
 	return baseGenerateHooksConfig(&geminiSpec, sirBinaryPath, mode)
 }
-func (g *GeminiAgent) GenerateHooksConfigMap(sirBinaryPath, mode string) map[string]interface{} {
+func (g *GeminiAgent) GenerateHooksConfigMap(sirBinaryPath, mode string) (map[string]interface{}, error) {
 	return baseGenerateHooksConfigMap(&geminiSpec, sirBinaryPath, mode)
 }

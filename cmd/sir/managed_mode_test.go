@@ -17,7 +17,7 @@ import (
 
 func writeManagedPolicyForEnv(t *testing.T, env *testEnv, l *lease.Lease) string {
 	t.Helper()
-	claudeHooks := agent.NewClaudeAgent().GenerateHooksConfigMap(sirBinaryPath, l.Mode)
+	claudeHooks := mustHooksConfigMap(t, agent.NewClaudeAgent(), sirBinaryPath, l.Mode)
 	rawHooks, err := json.Marshal(claudeHooks)
 	if err != nil {
 		t.Fatal(err)
@@ -156,7 +156,7 @@ func TestCmdDoctor_ManagedModeRestoresLeaseAndHooks(t *testing.T) {
 	managedLease.ApprovedHosts = []string{"localhost"}
 	writeManagedPolicyForEnv(t, env, managedLease)
 
-	claudeConfig := agent.NewClaudeAgent().GenerateHooksConfigMap(sirBinaryPath, managedLease.Mode)
+	claudeConfig := mustHooksConfigMap(t, agent.NewClaudeAgent(), sirBinaryPath, managedLease.Mode)
 	env.writeSettingsJSON(claudeConfig)
 	if err := managedLease.Save(env.leasePath); err != nil {
 		t.Fatal(err)

@@ -132,7 +132,10 @@ func TestGenerateHooksConfig_GuardMode(t *testing.T) {
 	sirBinaryPath = "sir"
 	t.Cleanup(func() { sirBinaryPath = origBin })
 
-	config := generateHooksConfig("guard")
+	config, err := generateHooksConfig("guard")
+	if err != nil {
+		t.Fatalf("generateHooksConfig: %v", err)
+	}
 	hooks, ok := config["hooks"].(map[string]interface{})
 	if !ok {
 		t.Fatal("expected hooks key in config")
@@ -172,7 +175,10 @@ func TestGenerateHooksConfig_GuardMode(t *testing.T) {
 func TestGenerateHooksConfig_TypesAreCorrect(t *testing.T) {
 	// Regression test: the merge loop in cmdInstall asserts []interface{}, not
 	// []map[string]interface{}. Verify generateHooksConfig returns the right types.
-	config := generateHooksConfig("guard")
+	config, err := generateHooksConfig("guard")
+	if err != nil {
+		t.Fatalf("generateHooksConfig: %v", err)
+	}
 	hooks := config["hooks"].(map[string]interface{})
 	for _, event := range []string{"PreToolUse", "PostToolUse"} {
 		// Must be assertable as []interface{} (not just []map[string]interface{})
