@@ -12,12 +12,15 @@ func RuntimePath(projectRoot string) string {
 	return filepath.Join(DurableStateDir(projectRoot), "runtime.json")
 }
 
-// SaveRuntimeContainment persists the active runtime-containment descriptor.
-func SaveRuntimeContainment(projectRoot string, info *RuntimeContainment) error {
+// RuntimeLastPath returns the durable completed-runtime receipt path.
+func RuntimeLastPath(projectRoot string) string {
+	return filepath.Join(DurableStateDir(projectRoot), "runtime-last.json")
+}
+
+func saveRuntimeContainment(path string, info *RuntimeContainment) error {
 	if info == nil {
 		return nil
 	}
-	path := RuntimePath(projectRoot)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
@@ -28,9 +31,8 @@ func SaveRuntimeContainment(projectRoot string, info *RuntimeContainment) error 
 	return writeFileAtomic(path, data, 0o600)
 }
 
-// LoadRuntimeContainment reads the active runtime-containment descriptor.
-func LoadRuntimeContainment(projectRoot string) (*RuntimeContainment, error) {
-	data, err := os.ReadFile(RuntimePath(projectRoot))
+func loadRuntimeContainment(path string) (*RuntimeContainment, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -39,6 +41,26 @@ func LoadRuntimeContainment(projectRoot string) (*RuntimeContainment, error) {
 		return nil, err
 	}
 	return &info, nil
+}
+
+// SaveRuntimeContainment persists the active runtime-containment descriptor.
+func SaveRuntimeContainment(projectRoot string, info *RuntimeContainment) error {
+	return saveRuntimeContainment(RuntimePath(projectRoot), info)
+}
+
+// LoadRuntimeContainment reads the active runtime-containment descriptor.
+func LoadRuntimeContainment(projectRoot string) (*RuntimeContainment, error) {
+	return loadRuntimeContainment(RuntimePath(projectRoot))
+}
+
+// SaveLastRuntimeContainment persists the most recent completed runtime receipt.
+func SaveLastRuntimeContainment(projectRoot string, info *RuntimeContainment) error {
+	return saveRuntimeContainment(RuntimeLastPath(projectRoot), info)
+}
+
+// LoadLastRuntimeContainment reads the most recent completed runtime receipt.
+func LoadLastRuntimeContainment(projectRoot string) (*RuntimeContainment, error) {
+	return loadRuntimeContainment(RuntimeLastPath(projectRoot))
 }
 
 // RemoveRuntimeContainment removes the runtime-containment descriptor.

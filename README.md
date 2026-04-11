@@ -88,7 +88,7 @@ Expected result: sir asks before the read, blocks the external request, and reco
 - Shell classification is wrapper-aware and prefix-aware, not full shell semantics.
 - Model-internal reasoning and paraphrase are out of scope.
 - Codex remains limited by the current upstream Bash-only hook surface.
-- `sir run <agent>` strengthens the boundary below hooks, but it is still experimental.
+- `sir run <agent>` is a measured preview below hooks: `sir status` reports the launch mode, policy size, and blocked/allowed egress counts from the most recent contained run.
 
 ## Deeper docs
 

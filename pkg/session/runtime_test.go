@@ -31,6 +31,36 @@ func TestInspectRuntimeContainmentActive(t *testing.T) {
 	}
 }
 
+func TestInspectRuntimeContainmentFallsBackToLastReceipt(t *testing.T) {
+	projectRoot := t.TempDir()
+	info := &RuntimeContainment{
+		AgentID:                 "claude",
+		Mode:                    "darwin_local_proxy",
+		AllowedHostCount:        2,
+		AllowedDestinationCount: 4,
+		AllowedEgressCount:      3,
+		BlockedEgressCount:      1,
+		LastBlockedDestination:  "api.example.com:443",
+		StartedAt:               time.Now().Add(-time.Minute),
+		EndedAt:                 time.Now().Add(-30 * time.Second),
+		ExitCode:                0,
+	}
+	if err := SaveLastRuntimeContainment(projectRoot, info); err != nil {
+		t.Fatalf("SaveLastRuntimeContainment: %v", err)
+	}
+
+	inspection, err := InspectRuntimeContainment(projectRoot, time.Now())
+	if err != nil {
+		t.Fatalf("InspectRuntimeContainment: %v", err)
+	}
+	if inspection == nil || inspection.Health != RuntimeContainmentInactive {
+		t.Fatalf("expected inactive inspection, got %+v", inspection)
+	}
+	if inspection.Info == nil || inspection.Info.AllowedEgressCount != 3 || inspection.Info.BlockedEgressCount != 1 {
+		t.Fatalf("unexpected inactive receipt: %+v", inspection)
+	}
+}
+
 func TestInspectRuntimeContainmentStaleHeartbeat(t *testing.T) {
 	projectRoot := t.TempDir()
 	shadowHome := t.TempDir()
@@ -166,6 +196,39 @@ func TestTouchRuntimeContainmentUpdatesHeartbeat(t *testing.T) {
 	}
 	if !reloaded.StartedAt.Equal(original) {
 		t.Fatalf("started_at should be preserved: got %v want %v", reloaded.StartedAt, original)
+	}
+}
+
+func TestSaveAndLoadLastRuntimeContainment(t *testing.T) {
+	projectRoot := t.TempDir()
+	info := &RuntimeContainment{
+		AgentID:                 "gemini",
+		Mode:                    "linux_network_namespace_allowlist",
+		AllowedHostCount:        3,
+		AllowedDestinationCount: 9,
+		AllowedEgressCount:      5,
+		BlockedEgressCount:      2,
+		LastBlockedDestination:  "api.example.com:443",
+		ExitCode:                17,
+		StartedAt:               time.Now().Add(-time.Minute).UTC().Truncate(time.Second),
+		EndedAt:                 time.Now().UTC().Truncate(time.Second),
+	}
+	if err := SaveLastRuntimeContainment(projectRoot, info); err != nil {
+		t.Fatalf("SaveLastRuntimeContainment: %v", err)
+	}
+
+	reloaded, err := LoadLastRuntimeContainment(projectRoot)
+	if err != nil {
+		t.Fatalf("LoadLastRuntimeContainment: %v", err)
+	}
+	if reloaded.AgentID != info.AgentID || reloaded.Mode != info.Mode {
+		t.Fatalf("unexpected last receipt identity: %+v", reloaded)
+	}
+	if reloaded.AllowedEgressCount != info.AllowedEgressCount || reloaded.BlockedEgressCount != info.BlockedEgressCount {
+		t.Fatalf("unexpected last receipt counters: %+v", reloaded)
+	}
+	if reloaded.LastBlockedDestination != info.LastBlockedDestination || reloaded.ExitCode != info.ExitCode {
+		t.Fatalf("unexpected last receipt details: %+v", reloaded)
 	}
 }
 

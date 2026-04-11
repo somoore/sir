@@ -41,10 +41,12 @@ func (p *LocalProxy) serveSOCKSConn(conn net.Conn) {
 	}
 	host = NormalizeProxyHost(host)
 	if !p.isAllowed(host, port) {
+		p.recordBlockedEgress(net.JoinHostPort(host, port))
 		writeSOCKSFailure(conn, 0x02)
 		_ = conn.Close()
 		return
 	}
+	p.recordAllowedEgress()
 
 	upstream, err := p.dialAllowedTarget(context.Background(), "tcp", host, port)
 	if err != nil {

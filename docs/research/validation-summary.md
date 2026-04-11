@@ -8,7 +8,7 @@ This is the short production-facing summary of the evidence behind sir's current
 - Claude Code is the reference-support target.
 - Gemini CLI is near-parity on tool-path coverage, with fewer lifecycle hooks.
 - Codex support is real but limited by the current upstream Bash-only hook surface.
-- `sir run <agent>` is an **experimental** below-hook containment path on macOS and Linux, not yet a cross-platform transparent egress firewall.
+- `sir run <agent>` is a **measured preview** below-hook containment path on macOS and Linux, not yet a cross-platform transparent egress firewall.
 
 ## Evidence that supports those claims
 
@@ -25,6 +25,7 @@ This is the short production-facing summary of the evidence behind sir's current
 - Rust unit tests for the policy oracle and shared protocol surface
 - Replay harness for normalized hook payload fixtures via `make replay`
 - Benchmark budget enforcement for the hook path, ledger path, session mutation, runtime containment bookkeeping, MCP inventory parsing, and `sir explain`
+- Durable runtime receipts in `sir status` / `sir doctor` that record the last contained launch mode, allowlist size, and blocked/allowed egress counts
 - Public-contract test that keeps the shipped docs and toolchain promises aligned with the codebase
 
 ### Supply-chain and release verification

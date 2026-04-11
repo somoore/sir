@@ -21,9 +21,12 @@ func (p *LocalProxy) serveHTTP(w http.ResponseWriter, req *http.Request) {
 	host := NormalizeProxyHost(req.URL.Host)
 	port := requestURLPort(req.URL)
 	if !p.isAllowed(host, port) {
-		http.Error(w, fmt.Sprintf("sir run proxy blocked destination %q", net.JoinHostPort(host, port)), http.StatusForbidden)
+		dest := net.JoinHostPort(host, port)
+		p.recordBlockedEgress(dest)
+		http.Error(w, fmt.Sprintf("sir run proxy blocked destination %q", dest), http.StatusForbidden)
 		return
 	}
+	p.recordAllowedEgress()
 
 	outReq := req.Clone(req.Context())
 	outReq.RequestURI = ""
@@ -50,9 +53,12 @@ func (p *LocalProxy) serveConnect(w http.ResponseWriter, req *http.Request) {
 	host := NormalizeProxyHost(req.Host)
 	port := connectDialPort(req.Host)
 	if !p.isAllowed(host, port) {
-		http.Error(w, fmt.Sprintf("sir run proxy blocked destination %q", net.JoinHostPort(host, port)), http.StatusForbidden)
+		dest := net.JoinHostPort(host, port)
+		p.recordBlockedEgress(dest)
+		http.Error(w, fmt.Sprintf("sir run proxy blocked destination %q", dest), http.StatusForbidden)
 		return
 	}
+	p.recordAllowedEgress()
 
 	upstream, err := p.dialAllowedTarget(req.Context(), "tcp", host, port)
 	if err != nil {
