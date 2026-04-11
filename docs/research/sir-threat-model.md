@@ -9,13 +9,7 @@ This approach exists because AI coding agents are not a single sandboxable proce
 This document lays out the shipped threat model, the trust assumptions behind it, and the residual risk that remains so external researchers can evaluate it honestly.
 
 <!-- BEGIN GENERATED SUPPORT SCOPE -->
-> **Note: Scope.** The threat model is written primarily against Claude Code because Claude Code is the **reference-support** target: it has the richest hook surface (10 events), native interactive approval, and the most complete sir coverage.
->
-> - **Claude Code — reference support.** Richest hook surface, full lifecycle coverage.
-> - **Gemini CLI — near-parity support.** Full tool-path coverage for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Four Claude-specific lifecycle mitigations are not available: `SubagentStart` delegation gating, `ConfigChange` tamper detection at the moment of change, `InstructionsLoaded` pre-read scanning, and `Elicitation` interception.
-> - **Codex — limited support.** Bash-only hook surface. Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools bypass `PreToolUse`, so sir relies on sentinel hashing plus a final `Stop` sweep as the posture backstop.
->
-> Wherever a mitigation below depends on one of the missing hooks, the threat is correspondingly wider on the affected agent. See [../user/codex-support.md](../user/codex-support.md) and [../user/gemini-support.md](../user/gemini-support.md) for the per-agent coverage matrices.
+**Scope note.** The threat model is written primarily against Claude Code because Claude Code is the **reference-support** target: it has the richest hook surface (10 events), native interactive approval, and the most complete sir coverage. Gemini CLI has **near-parity support** — full tool-path coverage for file IFC labeling, shell classification, MCP scanning, and credential output scanning — but four Claude-specific lifecycle mitigations are not available: SubagentStart delegation gating, ConfigChange tamper detection at the moment of change, InstructionsLoaded pre-read scanning, and Elicitation interception. Codex has **limited support** with a Bash-only hook surface: Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools bypass PreToolUse, so sir relies on sentinel hashing plus a final `Stop` sweep as the posture backstop. Wherever a mitigation below depends on one of the missing hooks, the threat is correspondingly wider on the affected agent. See [../user/codex-support.md](../user/codex-support.md) and [../user/gemini-support.md](../user/gemini-support.md) for the per-agent coverage matrices.
 <!-- END GENERATED SUPPORT SCOPE -->
 
 ## Assets and trust boundaries

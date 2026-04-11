@@ -16,7 +16,7 @@ make verify-release RELEASE_TAG=vX.Y.Z
 
 That script downloads the tagged release assets and verifies:
 
-- Cosign signatures on every archive.
+- cosign signatures on every archive.
 - The signed `checksums.txt`.
 - The signed `aibom.json`.
 - SLSA provenance for every archive.
@@ -126,7 +126,7 @@ Expected result:
 
 - `PreToolUse` fires `mcp_credential_leak` for untrusted MCP servers.
 - The request is denied before it reaches the server.
-- Trusted MCP servers bypass the credential scan, so the hook does not emit `mcp_credential_leak` for a trusted server.
+- trusted MCP servers bypass the credential scan, so the hook does not emit `mcp_credential_leak` for a trusted server.
 - If `SIR_LOG_TOOL_CONTENT=1`, `sir explain --last` shows redacted evidence.
 
 ### Injection marker in MCP response
