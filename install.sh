@@ -146,6 +146,29 @@ fi
 RUST_VERSION="1.94.0"
 GO_MIN_VERSION="1.22"
 
+# --- Pinned rustup installer ---
+# RUSTUP_VERSION is the version of the *installer* (rustup-init), not the Rust
+# toolchain. RUST_VERSION above is the toolchain that rustup-init will fetch.
+#
+# The rustup-init binary is pinned by SHA-256 so this script never executes
+# an unverified remote blob — addresses OpenSSF Scorecard findings about
+# `curl | sh` supply-chain exposure (see issue #95).
+#
+# Canonical hashes are published at:
+#   https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/<target>/rustup-init.sha256
+# Each file is one line: "<hex-sha256>  rustup-init".
+#
+# To refresh on a rustup version bump:
+#   for t in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu \
+#            x86_64-apple-darwin aarch64-apple-darwin; do
+#     curl -fsSL "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/$t/rustup-init.sha256"
+#   done
+RUSTUP_VERSION="1.28.2"
+RUSTUP_INIT_SHA256_LINUX_X86_64="20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c"
+RUSTUP_INIT_SHA256_LINUX_ARM64="e3853c5a252fca15252d07cb23a1bdd9377a8c6f3efa01531109281ae47f841c"
+RUSTUP_INIT_SHA256_DARWIN_X86_64="9c331076f62b4d0edeae63d9d1c9442d5fe39b37b05025ec8d41c5ed35486496"
+RUSTUP_INIT_SHA256_DARWIN_ARM64="20ef5516c31b1ac2290084199ba77dbbcaa1406c45c1d978ca68558ef5964ef5"
+
 # --- Source verification ---
 # If building from a git checkout, verify the commit is on main or a tag
 if [ -d ".git" ]; then
@@ -161,17 +184,83 @@ fi
 # Check for Rust toolchain
 if ! command -v cargo &> /dev/null; then
     warn "Rust toolchain not found."
-    echo "    Installing Rust $RUST_VERSION via rustup..."
+    echo "    Installing Rust $RUST_VERSION via rustup-init $RUSTUP_VERSION..."
     echo ""
-    echo "  About to download and run the official Rust installer (rustup)."
-    echo "  Source: https://sh.rustup.rs"
+    echo "  About to download and run the official Rust installer (rustup-init)."
+    echo "  Source: https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/"
     echo "  To verify this independently: https://rust-lang.org/tools/install"
     echo "  Press Ctrl+C to cancel."
     echo ""
-    # Supply chain note: rustup is downloaded over HTTPS from rust-lang.org.
-    # sir cannot verify this script's integrity before execution.
+    # Supply chain note: rustup-init is downloaded over HTTPS from
+    # static.rust-lang.org, then verified against a pinned SHA-256 before
+    # it is ever executed. This replaces the previous `curl | sh` pattern
+    # which executed unverified bytes straight from the network.
     # See https://rust-lang.org/tools/install for manual verification steps.
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain "$RUST_VERSION"
+
+    # Detect host triple for rustup-init download.
+    RUSTUP_OS=$(uname -s)
+    RUSTUP_ARCH=$(uname -m)
+    case "${RUSTUP_OS}-${RUSTUP_ARCH}" in
+        Linux-x86_64)
+            RUSTUP_TARGET="x86_64-unknown-linux-gnu"
+            RUSTUP_EXPECTED_SHA256="$RUSTUP_INIT_SHA256_LINUX_X86_64"
+            ;;
+        Linux-aarch64 | Linux-arm64)
+            RUSTUP_TARGET="aarch64-unknown-linux-gnu"
+            RUSTUP_EXPECTED_SHA256="$RUSTUP_INIT_SHA256_LINUX_ARM64"
+            ;;
+        Darwin-x86_64)
+            RUSTUP_TARGET="x86_64-apple-darwin"
+            RUSTUP_EXPECTED_SHA256="$RUSTUP_INIT_SHA256_DARWIN_X86_64"
+            ;;
+        Darwin-arm64)
+            RUSTUP_TARGET="aarch64-apple-darwin"
+            RUSTUP_EXPECTED_SHA256="$RUSTUP_INIT_SHA256_DARWIN_ARM64"
+            ;;
+        *)
+            error "Unsupported platform for pinned rustup-init: ${RUSTUP_OS}-${RUSTUP_ARCH}.
+    Supported: Linux x86_64, Linux arm64, macOS x86_64, macOS arm64.
+    For other platforms, install Rust $RUST_VERSION manually from
+    https://rust-lang.org/tools/install and re-run this script."
+            ;;
+    esac
+
+    # Download to a scratch dir so we never leave half-verified blobs behind.
+    RUSTUP_TMPDIR=$(mktemp -d 2>/dev/null || mktemp -d -t rustup-init)
+    # shellcheck disable=SC2064
+    trap "rm -rf \"$RUSTUP_TMPDIR\"" EXIT INT TERM
+    RUSTUP_URL="https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${RUSTUP_TARGET}/rustup-init"
+
+    info "Downloading rustup-init ${RUSTUP_VERSION} for ${RUSTUP_TARGET}..."
+    curl --proto '=https' --tlsv1.2 -fsSL -o "$RUSTUP_TMPDIR/rustup-init" "$RUSTUP_URL"
+
+    # Verify SHA-256 before executing. Fail closed on mismatch.
+    # Prefer shasum (present on both macOS and most Linux) over sha256sum
+    # (missing on default macOS), matching how the rest of this script
+    # handles the same portability gap below.
+    info "Verifying rustup-init SHA-256..."
+    if command -v sha256sum &> /dev/null; then
+        echo "${RUSTUP_EXPECTED_SHA256}  rustup-init" \
+            | (cd "$RUSTUP_TMPDIR" && sha256sum --check --status) \
+            || error "rustup-init SHA-256 verification failed.
+    expected: $RUSTUP_EXPECTED_SHA256
+    Refusing to execute unverified installer. Aborting."
+    else
+        echo "${RUSTUP_EXPECTED_SHA256}  rustup-init" \
+            | (cd "$RUSTUP_TMPDIR" && shasum -a 256 --check --status) \
+            || error "rustup-init SHA-256 verification failed.
+    expected: $RUSTUP_EXPECTED_SHA256
+    Refusing to execute unverified installer. Aborting."
+    fi
+    info "rustup-init SHA-256 verified."
+
+    chmod +x "$RUSTUP_TMPDIR/rustup-init"
+    "$RUSTUP_TMPDIR/rustup-init" -y --default-toolchain "$RUST_VERSION"
+
+    rm -rf "$RUSTUP_TMPDIR"
+    trap - EXIT INT TERM
+
+    # shellcheck disable=SC1091
     source "$HOME/.cargo/env"
     info "Rust $RUST_VERSION installed."
 else
