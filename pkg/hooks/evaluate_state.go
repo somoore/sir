@@ -47,7 +47,7 @@ func delegationRequiresApproval(state *session.State) bool {
 	if state.SecretSession {
 		return false
 	}
-	if state.PendingInjectionAlert || state.RecentlyReadUntrusted {
+	if state.PendingInjectionAlert {
 		return true
 	}
 	if state.Posture == policy.PostureStateElevated || state.Posture == policy.PostureStateCritical {

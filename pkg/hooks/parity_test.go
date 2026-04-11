@@ -355,6 +355,15 @@ func TestDelegationParity_PreToolUse_RiskyStatePreservesSessionIntegrity(t *test
 	}
 }
 
+func TestDelegationParity_PreToolUse_RecentlyReadUntrustedDoesNotForceApproval(t *testing.T) {
+	state := session.NewState(t.TempDir())
+	state.MarkUntrustedRead()
+
+	if delegationRequiresApproval(state) {
+		t.Fatal("RecentlyReadUntrusted alone should not force delegation approval; only the taint/elevated/pending-alert rules should gate")
+	}
+}
+
 func TestDelegationParity_SubagentStart_RiskySessionStates(t *testing.T) {
 	cases := []struct {
 		name   string
