@@ -5,7 +5,7 @@
 
 > A local, hook-mediated security runtime for AI coding agents. Quiet on normal coding. Loud on dangerous transitions.
 
-[![CI](https://github.com/somoore/sir/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/somoore/sir/actions/workflows/ci.yml)
+[![Build](https://github.com/somoore/sir/actions/workflows/post-merge.yml/badge.svg?branch=main)](https://github.com/somoore/sir/actions/workflows/post-merge.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/somoore/sir/badge)](https://securityscorecards.dev/viewer/?uri=github.com/somoore/sir)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Status: experimental](https://img.shields.io/badge/status-experimental-orange)](#hard-limits)
