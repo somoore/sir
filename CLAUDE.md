@@ -10,7 +10,7 @@ Security runtime for AI coding agents. Go CLI, Rust policy oracle, quiet on norm
 
 ## Layout
 
-```
+```text
 cmd/sir/        CLI entrypoints
 pkg/agent/      Claude / Gemini / Codex adapters
 pkg/hooks/      hook handlers, shell mapping, labels, MCP scans
