@@ -133,7 +133,18 @@ func derivedSecretLineageTargets(input any, projectRoot string, state *session.S
 
 func isPathBearingMCPKey(key string) bool {
 	normalized := normalizeMCPArgKey(key)
-	return strings.HasSuffix(normalized, "path") || strings.HasSuffix(normalized, "paths")
+	switch {
+	case strings.HasSuffix(normalized, "path"), strings.HasSuffix(normalized, "paths"):
+		return true
+	case normalized == "file", normalized == "files":
+		return true
+	case normalized == "artifact", normalized == "artifacts":
+		return true
+	case normalized == "attachment", normalized == "attachments":
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeMCPArgKey(key string) string {

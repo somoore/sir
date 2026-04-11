@@ -285,19 +285,25 @@ func TestTaintedMCPInputGatesOnGenericPathLikeKeys(t *testing.T) {
 		{name: "snake_case source_path", key: "source_path"},
 		{name: "camelCase outputPath", key: "outputPath"},
 		{name: "camelCase localFilePath", key: "localFilePath"},
+		{name: "camelCase filePath", key: "filePath"},
+		{name: "camelCase artifactPath", key: "artifactPath"},
+		{name: "camelCase attachmentPath", key: "attachmentPath"},
+		{name: "snake_case file_path", key: "file_path"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			resp, err := evaluateTaintedMCPInput(&HookPayload{
+			resp, handled := evaluateTaintedMCPInput(&HookPayload{
 				ToolName:  "mcp__jira__write",
 				ToolInput: map[string]interface{}{tc.key: "report.txt"},
-			}, state, projectRoot)
-			if err != nil {
-				t.Fatalf("evaluateTaintedMCPInput: %v", err)
+			}, l, state, projectRoot)
+			if !handled || resp == nil || resp.Decision != "ask" {
+				t.Fatalf("evaluateTaintedMCPInput(%q) = %+v, handled=%v, want ask", tc.key, resp, handled)
 			}
-			if resp == nil || resp.Decision != "ask" {
-				t.Fatalf("evaluateTaintedMCPInput(%q) = %+v, want ask", tc.key, resp)
+			targets := derivedSecretLineageTargets(map[string]any{tc.key: "report.txt"}, projectRoot, state)
+			if len(targets) != 1 || targets[0] != "report.txt" {
+				t.Fatalf("derivedSecretLineageTargets(%q) = %v, want [report.txt]", tc.key, targets)
+			}
 			}
 		})
 	}
