@@ -428,6 +428,42 @@ func TestEvaluatePayload_InstallNewPackage(t *testing.T) {
 	}
 }
 
+func TestEvaluatePayload_ApprovedMCPGatePreservesSessionIntegrity(t *testing.T) {
+	projectRoot := t.TempDir()
+	l := lease.DefaultLease()
+	l.ApprovedMCPServers = []string{"jira"}
+	state := newTestSession(t, projectRoot)
+	state.MarkSecretSession()
+	if err := state.Save(); err != nil {
+		t.Fatalf("save secret session: %v", err)
+	}
+
+	firstResp, err := ExportEvaluatePayload(&HookPayload{
+		ToolName:  "mcp__jira__create_issue",
+		ToolInput: map[string]interface{}{"summary": "publish report"},
+	}, l, state, projectRoot)
+	if err != nil {
+		t.Fatalf("evaluate approved MCP gate: %v", err)
+	}
+	if got := string(firstResp.Decision); got != "ask" {
+		t.Fatalf("approved MCP gate decision = %q, want ask (reason=%s)", got, firstResp.Reason)
+	}
+	if !session.VerifySessionIntegrity(state) {
+		t.Fatal("approved MCP gate should persist the updated session hash")
+	}
+
+	secondResp, err := ExportEvaluatePayload(&HookPayload{
+		ToolName:  "mcp__rogue__create_issue",
+		ToolInput: map[string]interface{}{"summary": "publish report"},
+	}, l, state, projectRoot)
+	if err != nil {
+		t.Fatalf("evaluate follow-up unapproved MCP call: %v", err)
+	}
+	if got := string(secondResp.Decision); got != "ask" {
+		t.Fatalf("follow-up unapproved MCP decision = %q, want ask (reason=%s)", got, secondResp.Reason)
+	}
+}
+
 func TestEvaluatePayload_InstallKnownPackage(t *testing.T) {
 	// A project with package-lock.json that CONTAINS "express"
 	projectRoot := t.TempDir()

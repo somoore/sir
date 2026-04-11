@@ -11,6 +11,7 @@ import (
 	"github.com/somoore/sir/pkg/hooks"
 	"github.com/somoore/sir/pkg/lease"
 	"github.com/somoore/sir/pkg/ledger"
+	"github.com/somoore/sir/pkg/policy"
 	"github.com/somoore/sir/pkg/posture"
 	"github.com/somoore/sir/pkg/session"
 )
@@ -150,6 +151,88 @@ func runInvariantMCPResponseMiddleWindowInjection(t *testing.T, fixture security
 	}
 	if !state.IsMCPServerTainted(fixture.Expected["server"]) {
 		t.Fatalf("expected %q to be tainted", fixture.Expected["server"])
+	}
+}
+
+func runInvariantMCPTaintedSinkGate(t *testing.T, fixture securityInvariantFixture) {
+	t.Helper()
+	forceLocalPolicyFallbackForCLI(t)
+
+	env := newTestEnv(t)
+	l := env.writeDefaultLease()
+	l.ApprovedMCPServers = []string{"jira"}
+	state := session.NewState(env.projectRoot)
+	env.writeSession(state)
+
+	if err := os.WriteFile(filepath.Join(env.projectRoot, fixture.SensitivePath), []byte(fixture.ReadOutput), 0o600); err != nil {
+		t.Fatalf("write sensitive file: %v", err)
+	}
+	if _, err := hooks.ExportPostEvaluatePayload(&hooks.PostHookPayload{
+		ToolName:  "Read",
+		ToolInput: map[string]interface{}{"file_path": fixture.SensitivePath},
+	}, l, state, env.projectRoot); err != nil {
+		t.Fatalf("post-evaluate sensitive read: %v", err)
+	}
+	if err := state.Save(); err != nil {
+		t.Fatalf("save state after sensitive read: %v", err)
+	}
+
+	secretSessionResp, err := hooks.ExportEvaluatePayload(&hooks.HookPayload{
+		ToolName:  fixture.ToolName,
+		ToolInput: map[string]interface{}{"summary": "publish the secret-derived file"},
+	}, l, state, env.projectRoot)
+	if err != nil {
+		t.Fatalf("evaluate secret-session MCP call: %v", err)
+	}
+	if got, want := string(secretSessionResp.Decision), fixture.Expected["secret_session_decision"]; got != want {
+		t.Fatalf("secret-session MCP decision = %q, want %q (reason=%s)", got, want, secretSessionResp.Reason)
+	}
+	unapprovedResp, err := hooks.ExportEvaluatePayload(&hooks.HookPayload{
+		ToolName:  "mcp__rogue__create_issue",
+		ToolInput: fixture.ToolInput,
+	}, l, state, env.projectRoot)
+	if err != nil {
+		t.Fatalf("evaluate unapproved MCP call: %v", err)
+	}
+	if got := string(unapprovedResp.Decision); got != string(policy.VerdictAsk) {
+		t.Fatalf("unapproved MCP decision = %q, want ask (reason=%s)", got, unapprovedResp.Reason)
+	}
+	if !strings.Contains(unapprovedResp.Reason, "sir hasn't seen before") {
+		t.Fatalf("expected unapproved MCP call to use the existing unapproved-server path, got %q", unapprovedResp.Reason)
+	}
+	if err := state.Save(); err != nil {
+		t.Fatalf("save state after secret-session MCP call: %v", err)
+	}
+
+	derivedPath := hooks.ResolveTarget(env.projectRoot, fixture.DerivedPath)
+	state.DerivedFileLineage[derivedPath] = session.DerivedPathRecord{
+		Labels: []session.LineageLabel{{
+			Sensitivity: "secret",
+			Trust:       "trusted",
+			Provenance:  "user",
+		}},
+	}
+	state.IncrementTurn()
+	if err := state.Save(); err != nil {
+		t.Fatalf("save state after turn increment: %v", err)
+	}
+	reloaded, err := session.Load(env.projectRoot)
+	if err != nil {
+		t.Fatalf("reload session after turn increment: %v", err)
+	}
+	if got := reloaded.DerivedLabelsForPath(derivedPath); len(got) == 0 {
+		t.Fatalf("expected derived lineage on %s after turn advance", derivedPath)
+	}
+
+	derivedResp, err := hooks.ExportEvaluatePayload(&hooks.HookPayload{
+		ToolName:  fixture.ToolName,
+		ToolInput: fixture.ToolInput,
+	}, l, reloaded, env.projectRoot)
+	if err != nil {
+		t.Fatalf("evaluate derived-lineage MCP call: %v", err)
+	}
+	if got, want := string(derivedResp.Decision), fixture.Expected["derived_lineage_decision"]; got != want {
+		t.Fatalf("derived-lineage MCP decision = %q, want %q (reason=%s)", got, want, derivedResp.Reason)
 	}
 }
 
