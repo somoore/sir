@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/somoore/sir/pkg/agent"
+	"github.com/somoore/sir/pkg/lease"
+	"github.com/somoore/sir/pkg/posture"
 	"github.com/somoore/sir/pkg/session"
 	"github.com/somoore/sir/pkg/telemetry"
 )
@@ -433,6 +435,183 @@ func TestCmdDoctor_PrunesStaleRuntimeContainment(t *testing.T) {
 	} else if inspection != nil {
 		t.Fatalf("expected stale runtime containment to be pruned, got %#v", inspection)
 	}
+}
+
+func TestCmdDoctor_RepairOrdering(t *testing.T) {
+	env := newTestEnv(t)
+	createDoctorPostureFiles(t, env)
+
+	managedLease := lease.DefaultLease()
+	managedLease.ApprovedHosts = []string{"localhost"}
+	writeManagedPolicyForEnv(t, env, managedLease)
+
+	claudeConfig := mustHooksConfigMap(t, agent.NewClaudeAgent(), sirBinaryPath, managedLease.Mode)
+	env.writeSettingsJSON(claudeConfig)
+	if err := managedLease.Save(env.leasePath); err != nil {
+		t.Fatal(err)
+	}
+
+	state := session.NewState(env.projectRoot)
+	state.SetDenyAll("test reason")
+	state.LeaseHash = mustManagedLeaseHash(t, managedLease)
+	globalHash, err := posture.HashGlobalHooks(env.projectRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.GlobalHookHash = globalHash
+	env.writeSession(state)
+
+	tamperedLease := lease.DefaultLease()
+	tamperedLease.ApprovedHosts = append(tamperedLease.ApprovedHosts, "evil.example.com")
+	if err := tamperedLease.Save(env.leasePath); err != nil {
+		t.Fatal(err)
+	}
+	env.writeSettingsJSON(map[string]interface{}{
+		"hooks": map[string]interface{}{
+			"PreToolUse": []interface{}{
+				map[string]interface{}{
+					"matcher": ".*",
+					"hooks": []interface{}{
+						map[string]interface{}{
+							"type":    "command",
+							"command": "evil guard evaluate",
+						},
+					},
+				},
+			},
+		},
+	})
+
+	shadowStateHome := filepath.Join(t.TempDir(), "sir-run-state-missing")
+	if err := session.SaveRuntimeContainment(env.projectRoot, &session.RuntimeContainment{
+		AgentID:         string(agent.Claude),
+		Mode:            "linux_network_namespace_allowlist",
+		ShadowStateHome: shadowStateHome,
+		StartedAt:       time.Now().Add(-time.Minute),
+		HeartbeatAt:     time.Now().Add(-time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureStdout(t, func() {
+		cmdDoctor(env.projectRoot)
+	})
+
+	requireOrderedSubstrings(t, out,
+		"Cleared: session deny-all (test reason)",
+		"Restored: lease.json from managed policy",
+		"hooks subtree from managed policy",
+		"Cleared: stale runtime containment",
+		"sir doctor — recovery complete",
+	)
+}
+
+func TestDoctorNoSessionBootstrap_PreservesLinesOnSessionStartError(t *testing.T) {
+	env := newTestEnv(t)
+
+	sirDir := filepath.Join(env.home, ".sir")
+	if err := os.RemoveAll(sirDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sirDir, []byte("not-a-directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := doctorNoSessionBootstrap(env.projectRoot, nil, lease.DefaultLease())
+	if err == nil {
+		t.Fatal("expected bootstrap to fail when ~/.sir is a file")
+	}
+	if report == nil {
+		t.Fatal("expected bootstrap report on error")
+	}
+	if got := strings.Join(report.lines, "\n"); !strings.Contains(got, "No active session found. Initializing fresh session.") {
+		t.Fatalf("bootstrap report missing initialization line:\n%s", got)
+	}
+}
+
+func TestRunDoctorRepairs_PreservesPartialOutputOnHookRepairError(t *testing.T) {
+	env := newTestEnv(t)
+	createDoctorPostureFiles(t, env)
+
+	managedLease := lease.DefaultLease()
+	policyPath := writeManagedPolicyForEnv(t, env, managedLease)
+	env.writeSettingsJSON(mustHooksConfigMap(t, agent.NewClaudeAgent(), sirBinaryPath, managedLease.Mode))
+
+	policy, err := loadManagedPolicyForCLI()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if policy == nil {
+		t.Fatal("expected managed policy to load")
+	}
+
+	state := session.NewState(env.projectRoot)
+	state.SetDenyAll("test reason")
+	state.LeaseHash = "stale-lease-hash"
+	state.GlobalHookHash = "stale-global-hook-hash"
+
+	if err := os.WriteFile(policyPath, []byte("{not-json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var report *doctorRepairReport
+	out := captureStdout(t, func() {
+		var err error
+		report, _, err = runDoctorRepairs(env.projectRoot, policy, managedLease, state)
+		if err == nil {
+			t.Fatal("expected hook repair to fail after corrupting managed policy")
+		}
+	})
+	if report == nil {
+		t.Fatal("expected repair report on error")
+	}
+	if !strings.Contains(out, "Cleared: session deny-all (test reason)") {
+		t.Fatalf("repair output missing deny-all clear line:\n%s", out)
+	}
+	if got := strings.Join(report.preAuditLines, "\n"); !strings.Contains(got, "Restored: lease.json from managed policy") {
+		t.Fatalf("repair report missing lease restore line:\n%s", got)
+	}
+}
+
+func TestRunDoctorRepairs_LeasePromptPrintsContextBeforeConfirmation(t *testing.T) {
+	env := newTestEnv(t)
+	env.writeDefaultLease()
+
+	state := session.NewState(env.projectRoot)
+	state.SetDenyAll("test reason")
+	state.LeaseHash = "stale-lease-hash"
+
+	origStdin := os.Stdin
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.WriteString("n\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	os.Stdin = r
+	t.Cleanup(func() {
+		os.Stdin = origStdin
+		r.Close()
+	})
+
+	out := captureStdout(t, func() {
+		if _, _, err := runDoctorRepairs(env.projectRoot, nil, lease.DefaultLease(), state); err != nil {
+			t.Fatalf("runDoctorRepairs: %v", err)
+		}
+	})
+
+	requireOrderedSubstrings(t, out,
+		"Cleared: session deny-all (test reason)",
+		"WARNING: The lease has changed while deny-all was active.",
+		"Current approved_hosts:",
+		"Current approved_remotes:",
+		"Accept this as the new baseline? [y/N]",
+		"Skipped: lease.json hash NOT refreshed.",
+	)
 }
 
 func TestCmdDoctor_ReportsDegradedRuntimeContainment(t *testing.T) {
