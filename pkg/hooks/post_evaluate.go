@@ -136,34 +136,7 @@ func postEvaluatePayload(payload *PostHookPayload, l *lease.Lease, state *sessio
 		recordSensitiveReadEvidence(state, sensitiveTarget)
 	}
 
-	// Scan tool output for structured credentials in Read/Edit/Bash results.
-	// MCP tool output is already scanned for injection further below — don't double-scan.
-	// On match, escalate the IFC label by marking the session as secret (same effect as
-	// approving a .env read). The consequence is restriction, not block.
-	if payload.ToolOutput != "" && !isToolMCP(payload.ToolName) {
-		switch payload.ToolName {
-		case "Read", "Edit", "Bash":
-			credMatches := ScanOutputForCredentials(payload.ToolOutput)
-			if len(credMatches) > 0 {
-				recordCredentialOutputEvidence(state, lineageSourceRef(payload, extractPostEvaluateTarget(payload)), credMatches)
-				patternNames := make([]string, 0, len(credMatches))
-				for _, m := range credMatches {
-					patternNames = append(patternNames, m.PatternName)
-				}
-				if !state.SecretSession {
-					state.MarkSecretSession()
-					fmt.Fprintf(os.Stderr, "sir: structured credentials detected in %s output: %v\n", payload.ToolName, patternNames)
-					fmt.Fprintf(os.Stderr, "sir: session marked secret — external network requests are now restricted.\n")
-					fmt.Fprintf(os.Stderr, "sir: to lift: sir unlock\n")
-				}
-				entry := credentialOutputEntry(payload, extractPostEvaluateTarget(payload), patternNames, redactToolOutputEvidenceIfEnabled(payload.ToolOutput))
-				if err := ledger.Append(projectRoot, entry); err != nil {
-					fmt.Fprintf(os.Stderr, "sir: ledger append error: %v\n", err)
-				}
-				emitTelemetryEvent(entry, state, ag)
-			}
-		}
-	}
+	applyPostEvaluateOutputCredentialAnalysis(payload, state, projectRoot, ag)
 
 	// Check 1: If we had a pending install, compare sentinel hashes
 	if state.PendingInstall != nil && payload.ToolName == "Bash" {
@@ -182,77 +155,7 @@ func postEvaluatePayload(payload *PostHookPayload, l *lease.Lease, state *sessio
 		return resp, nil
 	}
 
-	// Scan MCP tool responses for prompt injection signals.
-	// Only scan mcp__* tools with non-empty output.
-	if isToolMCP(payload.ToolName) && payload.ToolOutput != "" {
-		serverName := extractMCPServerName(payload.ToolName)
-		mcpCredMatches := ScanOutputForCredentials(payload.ToolOutput)
-		if len(mcpCredMatches) > 0 {
-			recordMCPCredentialEvidence(state, lineageSourceRef(payload, serverName), mcpCredMatches)
-			patternNames := make([]string, 0, len(mcpCredMatches))
-			for _, m := range mcpCredMatches {
-				patternNames = append(patternNames, m.PatternName)
-			}
-			if !state.SecretSession {
-				state.MarkSecretSession()
-				fmt.Fprintf(os.Stderr, "sir: structured credentials detected in %s output.\n", payload.ToolName)
-				fmt.Fprintf(os.Stderr, "sir: session marked secret — external network requests are now restricted.\n")
-				fmt.Fprintf(os.Stderr, "sir: to lift: sir unlock\n")
-			}
-			entry := mcpCredentialOutputEntry(payload, serverName, patternNames, redactToolOutputEvidenceIfEnabled(payload.ToolOutput))
-			if err := ledger.Append(projectRoot, entry); err != nil {
-				fmt.Fprintf(os.Stderr, "sir: ledger append error: %v\n", err)
-			}
-			emitTelemetryEvent(entry, state, ag)
-		}
-
-		signals := ScanMCPResponseForInjection(payload.ToolOutput)
-		if len(signals) > 0 {
-			severity := HighestSeverity(signals)
-			recordMCPInjectionEvidence(state, lineageSourceRef(payload, serverName), severity)
-
-			// Record signals and tainted server in session state
-			for _, sig := range signals {
-				state.AddMCPInjectionSignal(sig.Pattern)
-			}
-			state.AddTaintedMCPServer(serverName)
-
-			// Raise posture based on severity
-			switch severity {
-			case "HIGH":
-				state.RaisePosture(policy.PostureStateCritical)
-			case "MEDIUM":
-				state.RaisePosture(policy.PostureStateElevated)
-			default:
-				state.RaisePosture(policy.PostureStateElevated)
-			}
-
-			// Mark untrusted read — the response content is untrusted
-			state.MarkUntrustedRead()
-
-			// Log to ledger (never log the actual output content)
-			var patternNames []string
-			for _, sig := range signals {
-				patternNames = append(patternNames, sig.Pattern)
-			}
-			entry := mcpInjectionEntry(payload, serverName, patternNames, severity, redactToolOutputEvidenceIfEnabled(payload.ToolOutput))
-			if err := ledger.Append(projectRoot, entry); err != nil {
-				fmt.Fprintf(os.Stderr, "sir: ledger append error: %v\n", err)
-			}
-			emitTelemetryEvent(entry, state, ag)
-
-			// Set pending injection alert so the next PreToolUse intercepts
-			// and asks the developer before processing the tool call.
-			// This closes the one-action window between detection and enforcement.
-			if severity == "HIGH" {
-				state.SetPendingInjectionAlert(fmt.Sprintf("MCP server %s returned prompt injection signals: %v", serverName, patternNames))
-			}
-
-			// Warn on stderr so the developer sees it in Claude Code context
-			fmt.Fprintf(os.Stderr, "\n")
-			fmt.Fprintln(os.Stderr, FormatMCPInjectionWarning(serverName, severity, patternNames))
-		}
-	}
+	applyPostEvaluateMCPOutputAnalysis(payload, state, projectRoot, ag)
 
 	if payload.ToolName == "Write" || payload.ToolName == "Edit" {
 		attachLineageToWriteTarget(projectRoot, state, payload)
