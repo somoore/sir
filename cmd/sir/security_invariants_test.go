@@ -64,6 +64,8 @@ func TestSecurityInvariantSuiteV1(t *testing.T) {
 				runInvariantCodexBashOnlyBoundary(t, fixture)
 			case "exact_destination_policy":
 				runInvariantExactDestinationPolicy(t, fixture)
+			case "runtime_dns_rebinding_authority":
+				runInvariantRuntimeDnsRebindingAuthority(t, fixture)
 			case "cross_version_state_compatibility":
 				runInvariantCrossVersionStateCompatibility(t, fixture)
 			case "cross_version_runtime_compatibility":
