@@ -23,6 +23,10 @@ We don't think sandboxes are *wrong* — we think they're incomplete for AI codi
 
 sir is defense in depth for the layer where AI coding agents actually operate. The information flow control lattice in [`mister-core/src/ifc.rs`](mister-core/src/ifc.rs) is the load-bearing piece: read `.env`, and that taint propagates to any file the agent writes, any commit it makes, any push it attempts. That's real IFC, not a blocklist.
 
+### The observability gap
+
+Every major AI coding agent provider today stops at **governance** — prompts and tool names — and calls it observability. The tool response content, MCP arguments, and execution evidence a defender needs for **investigation** ("reconstruct what happened") or **detection** ("catch it in real time") are simply not captured. Frontier labs are shipping the execution engines and the API bridges. They are leaving the seatbelts, the isolation boundaries, and the flight data recorders for someone else to build — which is a gaping hole for any security team trying to defend an organization. sir records redacted evidence at all three tiers, at the tool boundary, on your machine, under your control. See [docs/research/observability-design.md](docs/research/observability-design.md).
+
 ## What it is
 
 - **Go CLI (`sir`)** — collects facts on every tool call, manages session state, writes the ledger.
