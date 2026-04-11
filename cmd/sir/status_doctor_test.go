@@ -572,6 +572,46 @@ func TestRunDoctorRepairs_PreservesPartialOutputOnHookRepairError(t *testing.T) 
 	}
 }
 
+func TestRunDoctorRepairs_LeasePromptPrintsContextBeforeConfirmation(t *testing.T) {
+	env := newTestEnv(t)
+	env.writeDefaultLease()
+
+	state := session.NewState(env.projectRoot)
+	state.SetDenyAll("test reason")
+	state.LeaseHash = "stale-lease-hash"
+
+	origStdin := os.Stdin
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.WriteString("n\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	os.Stdin = r
+	t.Cleanup(func() {
+		os.Stdin = origStdin
+		r.Close()
+	})
+
+	out := captureStdout(t, func() {
+		if _, _, err := runDoctorRepairs(env.projectRoot, nil, lease.DefaultLease(), state); err != nil {
+			t.Fatalf("runDoctorRepairs: %v", err)
+		}
+	})
+
+	requireOrderedSubstrings(t, out,
+		"WARNING: The lease has changed while deny-all was active.",
+		"Current approved_hosts:",
+		"Current approved_remotes:",
+		"Accept this as the new baseline? [y/N]",
+		"Skipped: lease.json hash NOT refreshed.",
+	)
+}
+
 func TestCmdDoctor_ReportsDegradedRuntimeContainment(t *testing.T) {
 	env := newTestEnv(t)
 	env.writeDefaultLease()
