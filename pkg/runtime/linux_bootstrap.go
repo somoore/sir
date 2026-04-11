@@ -148,9 +148,14 @@ func ensureLinuxContainmentBinary(name string) error {
 	return nil
 }
 
-func waitForLinuxNamespacePID(path string, timeout time.Duration) (int, error) {
+func waitForLinuxNamespacePID(path string, wrapperPID int, timeout time.Duration) (int, error) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
+		if pid, ok, err := linuxWrappedChildPID(wrapperPID); err != nil {
+			return 0, err
+		} else if ok {
+			return pid, nil
+		}
 		data, err := os.ReadFile(path)
 		if err == nil {
 			pid, convErr := strconv.Atoi(strings.TrimSpace(string(data)))
@@ -166,6 +171,32 @@ func waitForLinuxNamespacePID(path string, timeout time.Duration) (int, error) {
 		time.Sleep(25 * time.Millisecond)
 	}
 	return 0, fmt.Errorf("timed out waiting for linux containment child pid")
+}
+
+func linuxWrappedChildPID(wrapperPID int) (int, bool, error) {
+	if wrapperPID <= 0 {
+		return 0, false, nil
+	}
+	childrenPath := fmt.Sprintf("/proc/%d/task/%d/children", wrapperPID, wrapperPID)
+	data, err := os.ReadFile(childrenPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, false, nil
+		}
+		return 0, false, err
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) == 0 {
+		return 0, false, nil
+	}
+	pid, err := strconv.Atoi(fields[0])
+	if err != nil {
+		return 0, false, fmt.Errorf("parse wrapped child pid: %w", err)
+	}
+	if pid <= 0 {
+		return 0, false, nil
+	}
+	return pid, true, nil
 }
 
 func linuxMissingGuardTargets(guards runWriteGuards) []string {

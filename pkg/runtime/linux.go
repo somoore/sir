@@ -66,7 +66,7 @@ func runAgentLinuxOffline(projectRoot, bin string, opts Options) (int, error) {
 			fmt.Fprintln(os.Stderr, "sir: run: write-deny list protects the current agent's real hook config, canonical backups, durable sir state, and shared posture files; general workspace writes remain allowed once those guarded paths exist")
 		},
 		buildRuntimeInfo: func(projectRoot string, opts Options, stateHome string, cmd *exec.Cmd, scrubbedEnv []string) (*session.RuntimeContainment, func(), error) {
-			childPID, err := waitForLinuxNamespacePID(pidFile, 2*time.Second)
+			childPID, err := waitForLinuxNamespacePID(pidFile, cmd.Process.Pid, 2*time.Second)
 			if err != nil {
 				terminateLinuxContainment(cmd, 0)
 				return nil, nil, fmt.Errorf("discover linux containment child pid: %w", err)
@@ -148,7 +148,7 @@ func runAgentLinuxAllowlist(projectRoot, bin string, opts Options) (int, error) 
 			fmt.Fprintln(os.Stderr, "sir: run: write-deny list protects the current agent's real hook config, canonical backups, durable sir state, and shared posture files; general workspace writes remain allowed once those guarded paths exist")
 		},
 		buildRuntimeInfo: func(projectRoot string, opts Options, stateHome string, cmd *exec.Cmd, scrubbedEnv []string) (runtimeInfo *session.RuntimeContainment, cleanup func(), err error) {
-			childPID, err := waitForLinuxNamespacePID(pidFile, 2*time.Second)
+			childPID, err := waitForLinuxNamespacePID(pidFile, cmd.Process.Pid, 2*time.Second)
 			if err != nil {
 				terminateLinuxContainment(cmd, 0)
 				return nil, nil, fmt.Errorf("discover linux containment child pid: %w", err)

@@ -810,7 +810,7 @@ func TestTerminateLinuxContainment_KillsForkedChild(t *testing.T) {
 		t.Fatalf("start helper process group: %v", err)
 	}
 
-	childPID, err := waitForLinuxNamespacePID(pidFile, time.Second)
+	childPID, err := waitForLinuxNamespacePID(pidFile, cmd.Process.Pid, time.Second)
 	if err != nil {
 		terminateLinuxContainment(cmd, 0)
 		t.Fatalf("discover forked child pid: %v", err)
