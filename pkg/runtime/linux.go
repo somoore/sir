@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/somoore/sir/pkg/session"
@@ -67,11 +68,10 @@ func runAgentLinuxOffline(projectRoot, bin string, opts Options) (int, error) {
 		buildRuntimeInfo: func(projectRoot string, opts Options, stateHome string, cmd *exec.Cmd, scrubbedEnv []string) (*session.RuntimeContainment, func(), error) {
 			childPID, err := waitForLinuxNamespacePID(pidFile, 2*time.Second)
 			if err != nil {
-				_ = cmd.Process.Kill()
-				_, _ = cmd.Process.Wait()
+				terminateLinuxContainment(cmd, 0)
 				return nil, nil, fmt.Errorf("discover linux containment child pid: %w", err)
 			}
-			if err := signalLinuxContainmentReady(cmd, readyFile, nil); err != nil {
+			if err := signalLinuxContainmentReady(cmd, readyFile, nil, childPID); err != nil {
 				return nil, nil, err
 			}
 
@@ -150,8 +150,7 @@ func runAgentLinuxAllowlist(projectRoot, bin string, opts Options) (int, error) 
 		buildRuntimeInfo: func(projectRoot string, opts Options, stateHome string, cmd *exec.Cmd, scrubbedEnv []string) (runtimeInfo *session.RuntimeContainment, cleanup func(), err error) {
 			childPID, err := waitForLinuxNamespacePID(pidFile, 2*time.Second)
 			if err != nil {
-				_ = cmd.Process.Kill()
-				_, _ = cmd.Process.Wait()
+				terminateLinuxContainment(cmd, 0)
 				return nil, nil, fmt.Errorf("discover linux containment child pid: %w", err)
 			}
 
@@ -159,8 +158,7 @@ func runAgentLinuxAllowlist(projectRoot, bin string, opts Options) (int, error) 
 			slirp.Stdout = os.Stderr
 			slirp.Stderr = os.Stderr
 			if err := slirp.Start(); err != nil {
-				_ = cmd.Process.Kill()
-				_, _ = cmd.Process.Wait()
+				terminateLinuxContainment(cmd, childPID)
 				return nil, nil, fmt.Errorf("start linux user-mode network: %w", err)
 			}
 
@@ -170,7 +168,7 @@ func runAgentLinuxAllowlist(projectRoot, bin string, opts Options) (int, error) 
 					_, _ = slirp.Process.Wait()
 				}
 			}
-			if err := signalLinuxContainmentReady(cmd, readyFile, cleanup); err != nil {
+			if err := signalLinuxContainmentReady(cmd, readyFile, cleanup, childPID); err != nil {
 				return nil, nil, err
 			}
 
@@ -221,6 +219,7 @@ func runAgentLinuxLifecycle(projectRoot, bin string, opts Options, plan linuxLau
 	unshareArgs = append(unshareArgs, opts.Passthrough...)
 
 	cmd := exec.Command("unshare", unshareArgs...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	baseEnv, scrubbedEnv := sanitizeContainmentEnv(os.Environ())
 	cmd.Env = WithEnvOverride(baseEnv, session.StateHomeEnvVar, stateHome)
 	cmd.Stdin = os.Stdin
@@ -237,8 +236,7 @@ func runAgentLinuxLifecycle(projectRoot, bin string, opts Options, plan linuxLau
 
 	runtimeInfo, cleanup, err := plan.buildRuntimeInfo(projectRoot, opts, stateHome, cmd, scrubbedEnv)
 	if err != nil {
-		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
+		terminateLinuxContainment(cmd, 0)
 		return 0, err
 	}
 	if cleanup != nil {
@@ -246,6 +244,7 @@ func runAgentLinuxLifecycle(projectRoot, bin string, opts Options, plan linuxLau
 	}
 
 	if err := persistRuntimeContainment(projectRoot, runtimeInfo, cmd); err != nil {
+		terminateLinuxContainment(cmd, runtimeInfo.AgentPID)
 		return 0, err
 	}
 
@@ -262,14 +261,27 @@ func runAgentLinuxLifecycle(projectRoot, bin string, opts Options, plan linuxLau
 	return exitCode, nil
 }
 
-func signalLinuxContainmentReady(cmd *exec.Cmd, readyFile string, cleanup func()) error {
+func signalLinuxContainmentReady(cmd *exec.Cmd, readyFile string, cleanup func(), childPID int) error {
 	if err := os.WriteFile(readyFile, []byte("ready\n"), 0o600); err != nil {
 		if cleanup != nil {
 			cleanup()
 		}
-		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
+		terminateLinuxContainment(cmd, childPID)
 		return fmt.Errorf("signal linux containment readiness: %w", err)
 	}
 	return nil
+}
+
+func terminateLinuxContainment(cmd *exec.Cmd, childPID int) {
+	if childPID > 0 {
+		_ = syscall.Kill(childPID, syscall.SIGKILL)
+	}
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	if cmd.Process.Pid > 0 {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+	_ = cmd.Process.Kill()
+	_, _ = cmd.Process.Wait()
 }

@@ -262,7 +262,11 @@ set -eu
 output_path="$1"
 netns="$(readlink /proc/self/ns/net)"
 mntns="$(readlink /proc/self/ns/mnt)"
-printf '{"netns":"%s","mntns":"%s"}\n' "$netns" "$mntns" > "$output_path"
+hostpid="$(awk '/^NSpid:/ {print $2; exit}' /proc/self/status 2>/dev/null || true)"
+nspid="$(awk '/^NSpid:/ {print $NF; exit}' /proc/self/status 2>/dev/null || true)"
+if [ -z "$nspid" ]; then nspid="$$"; fi
+if [ -z "$hostpid" ]; then hostpid="$nspid"; fi
+printf '{"netns":"%s","mntns":"%s","pid":%s,"hostpid":%s}\n' "$netns" "$mntns" "$nspid" "$hostpid" > "$output_path"
 `), 0o755); err != nil {
 		t.Fatalf("write runtime-test launcher: %v", err)
 	}
@@ -283,6 +287,8 @@ printf '{"netns":"%s","mntns":"%s"}\n' "$netns" "$mntns" > "$output_path"
 	var proof struct {
 		NetNS string `json:"netns"`
 		MntNS string `json:"mntns"`
+		PID   int    `json:"pid"`
+		Host  int    `json:"hostpid"`
 	}
 	rawProof, err := os.ReadFile(outputPath)
 	if err != nil {
@@ -291,7 +297,7 @@ printf '{"netns":"%s","mntns":"%s"}\n' "$netns" "$mntns" > "$output_path"
 	if err := json.Unmarshal(rawProof, &proof); err != nil {
 		t.Fatalf("unmarshal linux namespace proof: %v\n%s", err, string(rawProof))
 	}
-	if proof.NetNS == "" || proof.MntNS == "" {
+	if proof.NetNS == "" || proof.MntNS == "" || proof.PID <= 0 || proof.Host <= 0 {
 		t.Fatalf("linux namespace proof missing namespace ids: %+v", proof)
 	}
 	if proof.NetNS == hostNetNS {
@@ -300,6 +306,9 @@ printf '{"netns":"%s","mntns":"%s"}\n' "$netns" "$mntns" > "$output_path"
 	if proof.MntNS == hostMntNS {
 		t.Fatalf("child mount namespace = %q, want distinct from host %q", proof.MntNS, hostMntNS)
 	}
+	if proof.PID == proof.Host {
+		t.Fatalf("child namespace pid = %d, want distinct from host pid %d", proof.PID, proof.Host)
+	}
 
 	receipt, err := session.LoadLastRuntimeContainment(projectRoot)
 	if err != nil {
@@ -307,6 +316,9 @@ printf '{"netns":"%s","mntns":"%s"}\n' "$netns" "$mntns" > "$output_path"
 	}
 	if receipt.Mode != ContainmentModeLinuxNamespace {
 		t.Fatalf("runtime mode = %q, want %q", receipt.Mode, ContainmentModeLinuxNamespace)
+	}
+	if receipt.AgentPID != proof.Host {
+		t.Fatalf("runtime AgentPID = %d, want host pid %d", receipt.AgentPID, proof.Host)
 	}
 }
 
@@ -326,9 +338,6 @@ func requireLinuxLaunchProofBinary(t *testing.T, name string) string {
 
 func requireLinuxLaunchNamespaces(t *testing.T) {
 	t.Helper()
-	if reason := os.Getenv("SIR_LINUX_NAMESPACE_PROOF_REASON"); reason != "" && os.Getenv("SIR_LINUX_NAMESPACE_PROOF_AVAILABLE") != "true" {
-		t.Skip(reason)
-	}
 	cmd := exec.Command("unshare", "--fork", "--pid", "--user", "--map-root-user", "--net", "--mount", "--mount-proc", "/bin/sh", "-c", "readlink /proc/self/ns/net >/dev/null && readlink /proc/self/ns/mnt >/dev/null")
 	output, err := cmd.CombinedOutput()
 	if err == nil {
@@ -537,6 +546,7 @@ func TestLinuxContainmentAllowlistScriptIncludesHostsAndFirewallRules(t *testing
 		t.Fatalf("linuxContainmentAllowlistScript: %v", err)
 	}
 	for _, fragment := range []string{
+		"# Capture the host-visible PID even when the child becomes pid 1 inside a nested pid namespace.",
 		"ns_host_pid=$(awk '/^NSpid:/ {print $2; exit}' /proc/self/status 2>/dev/null || true)",
 		"if [ -z \"$ns_host_pid\" ]; then ns_host_pid=$$; fi",
 		"echo \"$ns_host_pid\" >",
@@ -776,6 +786,7 @@ func TestSignalLinuxContainmentReady_CleansUpOnWriteError(t *testing.T) {
 		cmd,
 		filepath.Join(t.TempDir(), "missing", "ready"),
 		func() { cleanupCalls++ },
+		0,
 	)
 	if err == nil {
 		t.Fatal("expected ready-file error")
@@ -788,6 +799,34 @@ func TestSignalLinuxContainmentReady_CleansUpOnWriteError(t *testing.T) {
 	}
 	if err := cmd.Process.Signal(syscall.Signal(0)); err == nil {
 		t.Fatal("expected helper process to be gone after readiness failure")
+	}
+}
+
+func TestTerminateLinuxContainment_KillsForkedChild(t *testing.T) {
+	pidFile := filepath.Join(t.TempDir(), "child.pid")
+	cmd := exec.Command("sh", "-c", fmt.Sprintf("sleep 30 & echo $! > %s; wait", shellQuote(pidFile)))
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start helper process group: %v", err)
+	}
+
+	childPID, err := waitForLinuxNamespacePID(pidFile, time.Second)
+	if err != nil {
+		terminateLinuxContainment(cmd, 0)
+		t.Fatalf("discover forked child pid: %v", err)
+	}
+
+	terminateLinuxContainment(cmd, childPID)
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		if err := syscall.Kill(childPID, syscall.Signal(0)); err != nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("forked child pid %d survived containment cleanup", childPID)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

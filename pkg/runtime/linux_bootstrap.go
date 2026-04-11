@@ -32,6 +32,7 @@ func linuxContainmentAllowlistScript(projectRoot string, ag agent.Agent, setup l
 	lines := []string{"set -eu"}
 	if setup.PIDFile != "" {
 		lines = append(lines,
+			"# Capture the host-visible PID even when the child becomes pid 1 inside a nested pid namespace.",
 			"ns_host_pid=$(awk '/^NSpid:/ {print $2; exit}' /proc/self/status 2>/dev/null || true)",
 			"if [ -z \"$ns_host_pid\" ]; then ns_host_pid=$$; fi",
 			fmt.Sprintf("echo \"$ns_host_pid\" > %s", shellQuote(setup.PIDFile)),
