@@ -1,6 +1,7 @@
 package session
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -352,5 +353,113 @@ func TestRuntimeContainmentEffectiveDegradedReasons(t *testing.T) {
 	got := info.EffectiveDegradedReasons()
 	if len(got) != 3 {
 		t.Fatalf("EffectiveDegradedReasons() = %v, want 3 reasons", got)
+	}
+}
+
+func TestLoadStateForRuntimeInspectionUsesShadowState(t *testing.T) {
+	projectRoot := t.TempDir()
+
+	ambient := NewState(projectRoot)
+	ambient.SessionID = "ambient-session"
+	if err := ambient.Save(); err != nil {
+		t.Fatalf("ambient Save: %v", err)
+	}
+
+	shadowHome := t.TempDir()
+	shadow := NewState(projectRoot)
+	shadow.SessionID = "shadow-session"
+	data, err := json.MarshalIndent(shadow, "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(StatePathUnder(shadowHome, projectRoot)), 0o700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(StatePathUnder(shadowHome, projectRoot), data, 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	inspection := &RuntimeContainmentInspection{
+		Health: RuntimeContainmentActive,
+		Info: &RuntimeContainment{
+			ShadowStateHome: shadowHome,
+		},
+	}
+
+	state, stateDir, err := LoadStateForRuntimeInspection(projectRoot, inspection)
+	if err != nil {
+		t.Fatalf("LoadStateForRuntimeInspection: %v", err)
+	}
+	if state.SessionID != "shadow-session" {
+		t.Fatalf("session id = %q, want shadow-session", state.SessionID)
+	}
+	if stateDir != StateDirUnder(shadowHome, projectRoot) {
+		t.Fatalf("state dir = %q, want %q", stateDir, StateDirUnder(shadowHome, projectRoot))
+	}
+}
+
+func TestLoadStateForRuntimeInspectionFallsBackToAmbientState(t *testing.T) {
+	projectRoot := t.TempDir()
+	state := NewState(projectRoot)
+	state.SessionID = "ambient-session"
+	if err := state.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	inspection := &RuntimeContainmentInspection{
+		Health: RuntimeContainmentStale,
+		Info: &RuntimeContainment{
+			ShadowStateHome: t.TempDir(),
+		},
+	}
+
+	loaded, stateDir, err := LoadStateForRuntimeInspection(projectRoot, inspection)
+	if err != nil {
+		t.Fatalf("LoadStateForRuntimeInspection: %v", err)
+	}
+	if loaded.SessionID != "ambient-session" {
+		t.Fatalf("session id = %q, want ambient-session", loaded.SessionID)
+	}
+	if stateDir != StateDir(projectRoot) {
+		t.Fatalf("state dir = %q, want %q", stateDir, StateDir(projectRoot))
+	}
+}
+
+func TestRuntimeContainmentInspectionFixesForMaskedHostControl(t *testing.T) {
+	inspection := &RuntimeContainmentInspection{
+		Health: RuntimeContainmentDegraded,
+		Info: &RuntimeContainment{
+			AgentID:           "claude",
+			Mode:              "linux_network_namespace_allowlist",
+			ScrubbedEnvVars:   []string{"B_VAR", "A_VAR"},
+			MaskedHostSockets: []string{"/tmp/ssh-agent.sock", "/private/tmp/ssh-agent.sock"},
+		},
+	}
+
+	if got, want := inspection.Warning(), "launch inherited host-control bridges that sir had to mask or scrub"; got != want {
+		t.Fatalf("Warning() = %q, want %q", got, want)
+	}
+	if got, want := inspection.Impact(), "host control channels were present at launch; relaunch from a cleaner environment for the strongest boundary"; got != want {
+		t.Fatalf("Impact() = %q, want %q", got, want)
+	}
+
+	fixes := inspection.Fixes()
+	if len(fixes) != 2 {
+		t.Fatalf("Fixes() = %v, want 2 fixes", fixes)
+	}
+	if fixes[0] != "relaunch from a minimal env, for example: env -u A_VAR -u B_VAR sir run claude" {
+		t.Fatalf("first fix = %q", fixes[0])
+	}
+	if fixes[1] != "close or avoid forwarding host-control bridges before launch: ssh-agent.sock" {
+		t.Fatalf("second fix = %q", fixes[1])
+	}
+}
+
+func TestRuntimeContainmentMinimalEnvCommandDefaults(t *testing.T) {
+	if got := (*RuntimeContainment)(nil).MinimalEnvCommand(); got != "sir run <agent>" {
+		t.Fatalf("nil MinimalEnvCommand() = %q", got)
+	}
+	if got := (&RuntimeContainment{}).MinimalEnvCommand(); got != "sir run <agent>" {
+		t.Fatalf("empty MinimalEnvCommand() = %q", got)
 	}
 }
