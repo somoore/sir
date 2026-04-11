@@ -137,6 +137,7 @@ func postEvaluatePayload(payload *PostHookPayload, l *lease.Lease, state *sessio
 	}
 
 	applyPostEvaluateOutputCredentialAnalysis(payload, state, projectRoot, ag)
+	propagateBashLineageMutation(projectRoot, state, payload)
 
 	// Check 1: If we had a pending install, compare sentinel hashes
 	if state.PendingInstall != nil && payload.ToolName == "Bash" {
