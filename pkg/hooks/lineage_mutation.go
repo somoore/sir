@@ -7,6 +7,7 @@ import (
 	"time"
 	"unicode"
 
+	hookclassify "github.com/somoore/sir/pkg/hooks/classify"
 	"github.com/somoore/sir/pkg/session"
 )
 
@@ -43,7 +44,7 @@ func propagateBashLineageMutationSegment(projectRoot string, state *session.Stat
 		}
 		return
 	}
-	command = normalizeCommand(command)
+	command = hookclassify.NormalizeCommand(command)
 	if command == "" {
 		return
 	}

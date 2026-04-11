@@ -1,10 +1,5 @@
 package hooks
 
-import (
-	"os"
-	"path/filepath"
-)
-
 // extractFilePath gets the file_path from tool input.
 func extractFilePath(toolInput map[string]interface{}) string {
 	if p, ok := toolInput["file_path"].(string); ok {
@@ -33,15 +28,4 @@ func extractTarget(toolInput map[string]interface{}) string {
 		}
 	}
 	return ""
-}
-
-// globalSirDir returns the absolute path to ~/.sir so we can protect it from
-// deletion or hardlinking by isPostureDeleteOrLink. Returns empty string if
-// the home directory cannot be determined.
-func globalSirDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, ".sir")
 }
