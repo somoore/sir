@@ -51,6 +51,23 @@ func MCPCredentialOutputEntry(toolName, serverName string, patternNames []string
 	return entry
 }
 
+// ToolTraceEntry records opt-in, redacted evidence for an allow-path tool
+// call. This sits in the investigation tier of the three-tier observability
+// model: operators who set SIR_LOG_TOOL_CONTENT=1 can reconstruct what a
+// clean tool call actually returned, not just that it was allowed. Raw
+// secrets are never persisted — evidence is always the output of
+// ledger.RedactContent.
+func ToolTraceEntry(toolName, target, evidence string) *ledger.Entry {
+	return &ledger.Entry{
+		ToolName: toolName,
+		Verb:     "tool_trace",
+		Target:   target,
+		Decision: string(policy.VerdictAllow),
+		Reason:   "tool_content_logged",
+		Evidence: evidence,
+	}
+}
+
 func MCPInjectionEntry(toolName, serverName string, patternNames []string, severity, evidence string) *ledger.Entry {
 	entry := &ledger.Entry{
 		ToolName:  toolName,

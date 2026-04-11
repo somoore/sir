@@ -232,7 +232,6 @@ on:
 			"docs/user/README.md",
 			"docs/user/quickstart.md",
 			"docs/user/credential-scanning.md",
-			"docs/user/siem-integration.md",
 			"docs/contributor/README.md",
 			"docs/contributor/branch-protection.md",
 			"docs/contributor/architecture-reference.md",
@@ -242,7 +241,6 @@ on:
 			"docs/contributor/runtime-containment-design.md",
 			"docs/contributor/secret-lineage-design.md",
 			"docs/research/README.md",
-			"docs/research/observability-design.md",
 			"docs/research/security-architecture-review.md",
 		} {
 			requireNotExists(t, root, rel)
@@ -284,6 +282,7 @@ func activeDocAllowlist() []string {
 		"docs/contributor/first-30-minutes.md",
 		"docs/contributor/security-engineering-core.md",
 		"docs/contributor/supply-chain-policy.md",
+		"docs/research/observability-design.md",
 		"docs/research/security-verification-guide.md",
 		"docs/research/sir-threat-model.md",
 		"docs/research/validation-summary.md",
@@ -292,6 +291,7 @@ func activeDocAllowlist() []string {
 		"docs/user/faq.md",
 		"docs/user/gemini-support.md",
 		"docs/user/runtime-security-overview.md",
+		"docs/user/siem-integration.md",
 	}
 }
 

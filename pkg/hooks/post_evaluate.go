@@ -136,7 +136,7 @@ func postEvaluatePayload(payload *PostHookPayload, l *lease.Lease, state *sessio
 		recordSensitiveReadEvidence(state, sensitiveTarget)
 	}
 
-	applyPostEvaluateOutputCredentialAnalysis(payload, state, projectRoot, ag)
+	alertFired := applyPostEvaluateOutputCredentialAnalysis(payload, state, projectRoot, ag)
 	propagateBashLineageMutation(projectRoot, state, payload)
 
 	// Check 1: If we had a pending install, compare sentinel hashes
@@ -146,6 +146,8 @@ func postEvaluatePayload(payload *PostHookPayload, l *lease.Lease, state *sessio
 			entry := sentinelMutationEntry(payload, state.PendingInstall.Command, changed)
 			if err := ledger.Append(projectRoot, entry); err != nil {
 				fmt.Fprintf(os.Stderr, "sir: ledger append error: %v\n", err)
+			} else {
+				alertFired = true
 			}
 			emitTelemetryEvent(entry, state, ag)
 		}
@@ -156,10 +158,16 @@ func postEvaluatePayload(payload *PostHookPayload, l *lease.Lease, state *sessio
 		return resp, nil
 	}
 
-	applyPostEvaluateMCPOutputAnalysis(payload, state, projectRoot, ag)
+	if applyPostEvaluateMCPOutputAnalysis(payload, state, projectRoot, ag) {
+		alertFired = true
+	}
 
 	if payload.ToolName == "Write" || payload.ToolName == "Edit" {
 		attachLineageToWriteTarget(projectRoot, state, payload)
+	}
+
+	if !alertFired {
+		applyPostEvaluateAllowTrace(payload, state, projectRoot, ag, sensitiveTarget != "")
 	}
 
 	return &HookResponse{Decision: policy.VerdictAllow}, nil
