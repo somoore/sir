@@ -103,6 +103,10 @@ func evaluatePayload(payload *HookPayload, l *lease.Lease, state *session.State,
 		return resp, nil
 	}
 
+	if resp, handled := evaluateDelegationHardDeny(intent, l, state, ag); handled {
+		return resp, nil
+	}
+
 	if intent.Verb == policy.VerbDelegate && (pendingInjectionDetail != "" || delegationRequiresApproval(state)) {
 		resp := &HookResponse{
 			Decision: policy.VerdictAsk,

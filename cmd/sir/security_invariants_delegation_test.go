@@ -74,6 +74,35 @@ func runInvariantDelegationAfterRiskyState(t *testing.T, fixture securityInvaria
 	}
 }
 
+func TestSecurityInvariantDelegationHardDenyPreemptsRiskyAsk(t *testing.T) {
+	forceLocalPolicyFallbackForCLI(t)
+
+	env := newTestEnv(t)
+	l := env.writeDefaultLease()
+	l.AllowDelegation = false
+	if err := l.Save(env.leasePath); err != nil {
+		t.Fatalf("save lease: %v", err)
+	}
+
+	state := session.NewState(env.projectRoot)
+	env.writeSession(state)
+	state.AddTaintedMCPServer("jira")
+	state.RaisePosture(policy.PostureStateCritical)
+	env.writeSession(state)
+
+	resp, err := hooks.ExportEvaluatePayload(&hooks.HookPayload{
+		ToolName:  "Agent",
+		ToolInput: map[string]interface{}{"task": "delegate work to a sub-agent"},
+		CWD:       env.projectRoot,
+	}, l, state, env.projectRoot)
+	if err != nil {
+		t.Fatalf("evaluate Agent delegation: %v", err)
+	}
+	if got, want := string(resp.Decision), string(policy.VerdictDeny); got != want {
+		t.Fatalf("Agent delegation with allow_delegation=false and risky state = %q, want %q (reason=%s)", got, want, resp.Reason)
+	}
+}
+
 func runSubagentStartDecision(projectRoot string, state *session.State) (string, error) {
 	payloadJSON, err := json.Marshal(hooks.SubagentPayload{
 		HookEventName: "SubagentStart",

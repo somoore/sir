@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/somoore/sir/pkg/agent"
+	"github.com/somoore/sir/pkg/lease"
 	"github.com/somoore/sir/pkg/policy"
 	"github.com/somoore/sir/pkg/session"
 )
@@ -52,6 +54,36 @@ func delegationRequiresApproval(state *session.State) bool {
 		return true
 	}
 	return len(state.TaintedMCPServers) > 0
+}
+
+func evaluateDelegationHardDeny(intent Intent, l *lease.Lease, state *session.State, ag agent.Agent) (*HookResponse, bool) {
+	if intent.Verb != policy.VerbDelegate {
+		return nil, false
+	}
+
+	if state.SecretSession {
+		agentName := "Claude"
+		if ag != nil {
+			agentName = AgentDisplayName(string(ag.ID()))
+		}
+		return &HookResponse{
+			Decision: policy.VerdictDeny,
+			Reason:   FormatBlockDelegation(agentName),
+		}, true
+	}
+
+	if !l.AllowDelegation {
+		return &HookResponse{
+			Decision: policy.VerdictDeny,
+			Reason: FormatBlock(
+				"sub-agent delegation",
+				"Lease does not allow agent delegation (allow_delegation = false).",
+				"Update lease to allow delegation: sir install",
+			),
+		}, true
+	}
+
+	return nil, false
 }
 
 func evaluateLeaseIntegrityGuard(projectRoot string, state *session.State) (*HookResponse, bool) {

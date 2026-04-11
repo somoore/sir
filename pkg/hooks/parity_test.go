@@ -234,6 +234,42 @@ func TestDelegationParity_PreToolUse_RiskySessionStates(t *testing.T) {
 	}
 }
 
+func TestDelegationParity_PreToolUse_LeaseDisallowsDelegationPreemptsRiskyAsk(t *testing.T) {
+	projectRoot := t.TempDir()
+	l := lease.DefaultLease()
+	l.AllowDelegation = false
+
+	stateDir := session.StateDir(projectRoot)
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatalf("mkdir state: %v", err)
+	}
+	if err := l.Save(stateDir + "/lease.json"); err != nil {
+		t.Fatalf("save lease: %v", err)
+	}
+
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatalf("save initial session: %v", err)
+	}
+	state.AddTaintedMCPServer("jira")
+	state.RaisePosture(policy.PostureStateCritical)
+	if err := state.Save(); err != nil {
+		t.Fatalf("save risky session: %v", err)
+	}
+
+	resp, err := evaluatePayload(&HookPayload{
+		ToolName:  "Agent",
+		ToolInput: map[string]interface{}{"task": "delegate work to a sub-agent"},
+		CWD:       projectRoot,
+	}, l, state, projectRoot)
+	if err != nil {
+		t.Fatalf("evaluatePayload: %v", err)
+	}
+	if resp.Decision != policy.VerdictDeny {
+		t.Fatalf("Agent delegation with allow_delegation=false and risky state = %q, want %q (reason=%s)", resp.Decision, policy.VerdictDeny, resp.Reason)
+	}
+}
+
 func TestDelegationParity_PreToolUse_RiskyStatePreservesSessionIntegrity(t *testing.T) {
 	projectRoot := t.TempDir()
 	l := lease.DefaultLease()
