@@ -168,53 +168,15 @@ func TestEvaluateSubagentStart_DelegationAskLogsLedgerAndTelemetry(t *testing.T)
 	defer srv.Close()
 	t.Setenv("SIR_OTLP_ENDPOINT", srv.URL)
 
-	payloadJSON, err := json.Marshal(SubagentPayload{
+	buf, err := runSubagentStartForTest(t, projectRoot, SubagentPayload{
 		HookEventName: "SubagentStart",
 		AgentName:     "general-purpose",
 		Tools:         []string{"Read"},
 	})
 	if err != nil {
-		t.Fatalf("marshal payload: %v", err)
-	}
-
-	origStdin, origStdout := os.Stdin, os.Stdout
-	defer func() {
-		os.Stdin = origStdin
-		os.Stdout = origStdout
-	}()
-
-	inR, inW, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("pipe in: %v", err)
-	}
-	outR, outW, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("pipe out: %v", err)
-	}
-	os.Stdin = inR
-	os.Stdout = outW
-
-	if _, err := inW.Write(payloadJSON); err != nil {
-		t.Fatalf("write payload: %v", err)
-	}
-	inW.Close()
-
-	done := make(chan error, 1)
-	go func() {
-		done <- EvaluateSubagentStart(projectRoot, &agent.ClaudeAgent{})
-	}()
-
-	if err := <-done; err != nil {
-		outW.Close()
 		t.Fatalf("EvaluateSubagentStart: %v", err)
 	}
-	outW.Close()
-
-	var buf strings.Builder
-	if _, err := io.Copy(&buf, outR); err != nil {
-		t.Fatalf("read stdout: %v", err)
-	}
-	if buf.Len() == 0 {
+	if len(buf) == 0 {
 		t.Fatal("expected ask response from subagent delegation")
 	}
 
@@ -223,8 +185,8 @@ func TestEvaluateSubagentStart_DelegationAskLogsLedgerAndTelemetry(t *testing.T)
 			PermissionDecision string `json:"permissionDecision"`
 		} `json:"hookSpecificOutput"`
 	}
-	if err := json.Unmarshal([]byte(buf.String()), &resp); err != nil {
-		t.Fatalf("unmarshal response: %v\nraw: %s", err, buf.String())
+	if err := json.Unmarshal(buf, &resp); err != nil {
+		t.Fatalf("unmarshal response: %v\nraw: %s", err, string(buf))
 	}
 	if resp.HookSpecificOutput.PermissionDecision != "ask" {
 		t.Fatalf("permissionDecision = %q, want ask", resp.HookSpecificOutput.PermissionDecision)

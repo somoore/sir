@@ -114,7 +114,11 @@ func EvaluateSessionEnd(projectRoot string, ag agent.Agent) error {
 	if err != nil {
 		entries = nil // Proceed without stats if ledger can't be read
 	}
-	stats := computeSessionStats(entries, sessionStartFloor(projectRoot))
+	startedAt, err := sessionStartFloor(projectRoot, "session-end")
+	if err != nil {
+		return err
+	}
+	stats := computeSessionStats(entries, startedAt)
 
 	// Write closing ledger entry
 	closingReason := fmt.Sprintf(
@@ -151,8 +155,7 @@ func EvaluateSessionEnd(projectRoot string, ag agent.Agent) error {
 		return state.Save()
 	})
 	if lockErr != nil {
-		// Log but don't fail — the session is ending anyway
-		fmt.Fprintf(os.Stderr, "sir: session-end cleanup error: %v\n", lockErr)
+		return fmt.Errorf("session-end cleanup: %w", lockErr)
 	}
 
 	return nil

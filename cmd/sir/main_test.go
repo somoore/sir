@@ -116,16 +116,30 @@ func captureStdout(t *testing.T, fn func()) string {
 	}
 	os.Stdout = w
 	t.Cleanup(func() { os.Stdout = orig })
+
+	readDone := make(chan []byte, 1)
+	readErr := make(chan error, 1)
+	go func() {
+		out, err := io.ReadAll(r)
+		if err != nil {
+			readErr <- err
+			return
+		}
+		readDone <- out
+	}()
+
 	fn()
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
 	os.Stdout = orig
-	out, err := io.ReadAll(r)
-	if err != nil {
+	select {
+	case out := <-readDone:
+		return string(out)
+	case err := <-readErr:
 		t.Fatal(err)
 	}
-	return string(out)
+	return ""
 }
 
 func runCmdGuardHelper(t *testing.T, env *testEnv, stdin string, args ...string) (string, string) {

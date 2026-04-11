@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -11,14 +12,13 @@ import (
 	"github.com/somoore/sir/pkg/session"
 )
 
+var afterLeaseSaveForTest func()
+
 func cmdAllowHost(projectRoot, host string) {
 	if err := ensureManagedCommandAllowed("allow-host"); err != nil {
 		fatal("%v", err)
 	}
-	stateDir := session.StateDir(projectRoot)
-	leasePath := filepath.Join(stateDir, "lease.json")
-
-	l, err := lease.Load(leasePath)
+	l, err := loadProjectLease(projectRoot)
 	if err != nil {
 		fatal("load lease: %v", err)
 	}
@@ -49,23 +49,12 @@ func cmdAllowHost(projectRoot, host string) {
 		return
 	}
 
-	l.ApprovedHosts = append(l.ApprovedHosts, host)
-	if err := l.Save(leasePath); err != nil {
-		fatal("save lease: %v", err)
-	}
-
-	// Update LeaseHash in active session to prevent false-positive
-	// integrity failures. session.Update holds the file lock across
-	// the Load→mutate→Save sequence so concurrent CLI invocations
-	// don't race — see CLAUDE.md rule 6.
-	_ = session.Update(projectRoot, func(state *session.State) error {
-		newHash, err := posture.HashLease(projectRoot)
-		if err != nil {
-			return err
-		}
-		state.LeaseHash = newHash
+	if err := updateProjectLeaseAndSessionBaseline(projectRoot, func(l *lease.Lease) error {
+		l.ApprovedHosts = append(l.ApprovedHosts, host)
 		return nil
-	})
+	}); err != nil {
+		fatal("update lease/session baseline: %v", err)
+	}
 
 	// Log to ledger
 	ledger.Append(projectRoot, &ledger.Entry{
@@ -82,10 +71,7 @@ func cmdAllowRemote(projectRoot, remote string) {
 	if err := ensureManagedCommandAllowed("allow-remote"); err != nil {
 		fatal("%v", err)
 	}
-	stateDir := session.StateDir(projectRoot)
-	leasePath := filepath.Join(stateDir, "lease.json")
-
-	l, err := lease.Load(leasePath)
+	l, err := loadProjectLease(projectRoot)
 	if err != nil {
 		fatal("load lease: %v", err)
 	}
@@ -115,23 +101,12 @@ func cmdAllowRemote(projectRoot, remote string) {
 		return
 	}
 
-	l.ApprovedRemotes = append(l.ApprovedRemotes, remote)
-	if err := l.Save(leasePath); err != nil {
-		fatal("save lease: %v", err)
-	}
-
-	// Update LeaseHash in active session to prevent false-positive
-	// integrity failures. session.Update holds the file lock across
-	// the Load→mutate→Save sequence so concurrent CLI invocations
-	// don't race — see CLAUDE.md rule 6.
-	_ = session.Update(projectRoot, func(state *session.State) error {
-		newHash, err := posture.HashLease(projectRoot)
-		if err != nil {
-			return err
-		}
-		state.LeaseHash = newHash
+	if err := updateProjectLeaseAndSessionBaseline(projectRoot, func(l *lease.Lease) error {
+		l.ApprovedRemotes = append(l.ApprovedRemotes, remote)
 		return nil
-	})
+	}); err != nil {
+		fatal("update lease/session baseline: %v", err)
+	}
 
 	// Log to ledger
 	ledger.Append(projectRoot, &ledger.Entry{
@@ -150,10 +125,7 @@ func cmdTrustMCP(projectRoot, serverName string) {
 	if err := ensureManagedCommandAllowed("trust"); err != nil {
 		fatal("%v", err)
 	}
-	stateDir := session.StateDir(projectRoot)
-	leasePath := filepath.Join(stateDir, "lease.json")
-
-	l, err := lease.Load(leasePath)
+	l, err := loadProjectLease(projectRoot)
 	if err != nil {
 		fatal("load lease: %v", err)
 	}
@@ -184,23 +156,12 @@ func cmdTrustMCP(projectRoot, serverName string) {
 		return
 	}
 
-	l.TrustedMCPServers = append(l.TrustedMCPServers, serverName)
-	if err := l.Save(leasePath); err != nil {
-		fatal("save lease: %v", err)
-	}
-
-	// Update LeaseHash in active session to prevent false-positive
-	// integrity failures. session.Update holds the file lock across
-	// the Load→mutate→Save sequence so concurrent CLI invocations
-	// don't race — see CLAUDE.md rule 6.
-	_ = session.Update(projectRoot, func(state *session.State) error {
-		newHash, err := posture.HashLease(projectRoot)
-		if err != nil {
-			return err
-		}
-		state.LeaseHash = newHash
+	if err := updateProjectLeaseAndSessionBaseline(projectRoot, func(l *lease.Lease) error {
+		l.TrustedMCPServers = append(l.TrustedMCPServers, serverName)
 		return nil
-	})
+	}); err != nil {
+		fatal("update lease/session baseline: %v", err)
+	}
 
 	// Log to ledger
 	ledger.Append(projectRoot, &ledger.Entry{
@@ -211,4 +172,55 @@ func cmdTrustMCP(projectRoot, serverName string) {
 	})
 
 	fmt.Printf("Added %q to trusted_mcp_servers. Credential scanning exempted for this server.\n", serverName)
+}
+
+func loadProjectLease(projectRoot string) (*lease.Lease, error) {
+	leasePath := filepath.Join(session.StateDir(projectRoot), "lease.json")
+	return lease.Load(leasePath)
+}
+
+func updateProjectLeaseAndSessionBaseline(projectRoot string, mutate func(*lease.Lease) error) error {
+	leasePath := filepath.Join(session.StateDir(projectRoot), "lease.json")
+
+	return session.WithSessionLock(projectRoot, func() error {
+		state, err := session.Load(projectRoot)
+		missingSession := os.IsNotExist(err)
+		if err != nil && !missingSession {
+			return fmt.Errorf("load session for lease update: %w", err)
+		}
+
+		originalLease, err := lease.Load(leasePath)
+		if err != nil {
+			return fmt.Errorf("load lease: %w", err)
+		}
+		l, err := lease.Load(leasePath)
+		if err != nil {
+			return fmt.Errorf("load lease: %w", err)
+		}
+		if err := mutate(l); err != nil {
+			return err
+		}
+		if err := l.Save(leasePath); err != nil {
+			return fmt.Errorf("save lease: %w", err)
+		}
+		if afterLeaseSaveForTest != nil {
+			afterLeaseSaveForTest()
+		}
+		if missingSession {
+			return nil
+		}
+
+		newHash, err := posture.HashLease(projectRoot)
+		if err != nil {
+			return fmt.Errorf("hash updated lease: %w", err)
+		}
+		state.LeaseHash = newHash
+		if err := state.Save(); err != nil {
+			if rollbackErr := originalLease.Save(leasePath); rollbackErr != nil {
+				return fmt.Errorf("save session after lease update: %w (rollback lease: %v)", err, rollbackErr)
+			}
+			return fmt.Errorf("save session after lease update: %w", err)
+		}
+		return nil
+	})
 }

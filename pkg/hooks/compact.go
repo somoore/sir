@@ -59,20 +59,19 @@ func EvaluateCompactReinject(projectRoot string, ag agent.Agent) error {
 	// Load session (read-only, no lock needed for reading)
 	state, err := session.Load(projectRoot)
 	if err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("load session for compact-reinject: %w", err)
+		}
+
 		// No session yet — this is the first hook handler to run in
 		// this project. Bootstrap a baseline session.json with the
 		// current posture-file hashes so the session-terminal sweep
 		// (runSessionTerminalPostureSweep in session_summary.go +
 		// session_end.go) has something to compare against. Without
 		// this, a single-turn `codex exec` that uses only apply_patch
-		// gets no session baseline and the sweep no-ops. Bootstrap
-		// failures are non-fatal (compact-reinject is best-effort),
-		// so we log to stderr and return success: skipping a baseline
-		// is a documented degraded-mode path, not a fail-closed
-		// trigger, because the alternative is to break every first-run
-		// session on a permission error.
+		// gets no session baseline and the sweep no-ops.
 		if bootErr := bootstrapSessionBaseline(projectRoot); bootErr != nil {
-			fmt.Fprintf(os.Stderr, "sir: compact-reinject baseline bootstrap skipped: %v\n", bootErr)
+			return fmt.Errorf("bootstrap session baseline for compact-reinject: %w", bootErr)
 		}
 		return nil
 	}
