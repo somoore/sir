@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/somoore/sir/pkg/lease"
@@ -407,6 +408,101 @@ func TestCmdInstall_ReinstallDeduplicates(t *testing.T) {
 	}
 	if sirCount != 1 {
 		t.Errorf("expected exactly 1 sir guard evaluate hook after reinstall, got %d", sirCount)
+	}
+}
+
+func TestCmdInstall_DefaultDetectsGeminiOnly(t *testing.T) {
+	env := newTestEnv(t)
+
+	if err := os.RemoveAll(filepath.Join(env.home, ".claude")); err != nil {
+		t.Fatal(err)
+	}
+	geminiPath := filepath.Join(env.home, ".gemini", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(geminiPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(geminiPath, []byte(`{}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeProjectInstallFixtures(t, env.projectRoot, "GEMINI.md", ".mcp.json")
+
+	origArgs := os.Args
+	os.Args = []string{"sir", "install", "--yes"}
+	defer func() { os.Args = origArgs }()
+
+	cmdInstall(env.projectRoot, "guard")
+
+	geminiDoc, err := readJSONFileMap(geminiPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hooks, ok := geminiDoc["hooks"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected hooks key in Gemini settings, got %#v", geminiDoc)
+	}
+	if _, ok := hooks["BeforeTool"]; !ok {
+		t.Fatalf("expected Gemini hooks to contain BeforeTool, got %#v", hooks)
+	}
+	if _, err := os.Stat(filepath.Join(env.home, ".claude", "settings.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected Claude settings to stay absent, got err=%v", err)
+	}
+}
+
+func TestCmdInstall_DefaultDetectsCodexOnlyAndEnablesFeatureFlag(t *testing.T) {
+	env := newTestEnv(t)
+
+	if err := os.RemoveAll(filepath.Join(env.home, ".claude")); err != nil {
+		t.Fatal(err)
+	}
+	codexDir := filepath.Join(env.home, ".codex")
+	if err := os.MkdirAll(codexDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	hooksPath := filepath.Join(codexDir, "hooks.json")
+	if err := os.WriteFile(hooksPath, []byte(`{}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeProjectInstallFixtures(t, env.projectRoot, "AGENTS.md", ".mcp.json")
+
+	origArgs := os.Args
+	os.Args = []string{"sir", "install", "--yes"}
+	defer func() { os.Args = origArgs }()
+
+	cmdInstall(env.projectRoot, "guard")
+
+	codexDoc, err := readJSONFileMap(hooksPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hooks, ok := codexDoc["hooks"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected hooks key in Codex hooks.json, got %#v", codexDoc)
+	}
+	if _, ok := hooks["PreToolUse"]; !ok {
+		t.Fatalf("expected Codex hooks to contain PreToolUse, got %#v", hooks)
+	}
+	configToml, err := os.ReadFile(filepath.Join(codexDir, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(configToml) == "" || !strings.Contains(string(configToml), "codex_hooks = true") {
+		t.Fatalf("expected Codex config.toml to enable codex_hooks, got %q", string(configToml))
+	}
+	if _, err := os.Stat(filepath.Join(env.home, ".claude", "settings.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected Claude settings to stay absent, got err=%v", err)
+	}
+}
+
+func writeProjectInstallFixtures(t *testing.T, projectRoot string, relPaths ...string) {
+	t.Helper()
+	for _, rel := range relPaths {
+		path := filepath.Join(projectRoot, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", rel, err)
+		}
+		if err := os.WriteFile(path, []byte("{}"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", rel, err)
+		}
 	}
 }
 

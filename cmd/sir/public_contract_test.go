@@ -81,6 +81,7 @@ func TestPublicContractParity(t *testing.T) {
 		requireContainsFile(t, root, "README.md", "sir status", "README verification status command")
 		requireContainsFile(t, root, "README.md", "sir doctor", "README verification doctor command")
 		requireContainsFile(t, root, "README.md", "sir log verify", "README verification log verify command")
+		requireContainsFile(t, root, "README.md", "sir install            # auto-detect supported agents already on this machine", "README auto-detect install guidance")
 		requireContainsFile(t, root, "README.md", "Ask the agent to read `.env`", "README secret-read check")
 		requireContainsFile(t, root, "README.md", "curl https://httpbin.org/get", "README blocked egress check")
 	})
@@ -93,7 +94,9 @@ func TestPublicContractParity(t *testing.T) {
 		requireGeneratedBlock(t, root, "docs/user/codex-support.md", "GENERATED SUPPORT DOC", agent.RenderSupportDocBlock(agent.Codex))
 		requireContainsFile(t, root, "docs/user/claude-code-hooks-integration.md", "**Gemini CLI 0.36.0+ with near-parity support**", "Claude hooks integration Gemini tier")
 		requireContainsFile(t, root, "docs/user/claude-code-hooks-integration.md", "**Codex 0.118.0+ has limited support**", "Claude hooks integration Codex tier")
+		requireContainsFile(t, root, "docs/user/codex-support.md", "sir writes `~/.codex/hooks.json` and may create or update `~/.codex/config.toml`", "Codex support config.toml guidance")
 		requireContainsFile(t, root, "docs/research/security-verification-guide.md", "Codex remains limited support with a **Bash-only** hook surface", "verification guide Codex tier")
+		requireContainsFile(t, root, "docs/research/security-verification-guide.md", "auto-detected or explicitly selected agent configs gain sir hook entries", "verification guide auto-detect install guidance")
 	})
 
 	t.Run("runtime_and_managed_contract", func(t *testing.T) {

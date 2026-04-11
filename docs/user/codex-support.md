@@ -32,7 +32,9 @@ sir install --agent codex
 sir doctor
 ```
 
-sir writes `~/.codex/hooks.json`, but it does not edit `~/.codex/config.toml` for you.
+Plain `sir install` also auto-detects Codex when it is already present on this machine.
+
+sir writes `~/.codex/hooks.json` and may create or update `~/.codex/config.toml` to enable `codex_hooks` for you. In interactive mode it asks first; under `--yes` it enables the feature flag automatically.
 
 ## What works today
 

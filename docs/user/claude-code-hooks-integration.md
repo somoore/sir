@@ -28,6 +28,8 @@ That gives sir native interactive approval, full tool-path mediation, lifecycle-
 
 Claude hooks are configured in `~/.claude/settings.json`. `sir install` merges sir-managed hook entries into that file and uses the absolute path to the `sir` binary so PATH hijacking cannot replace the hook command.
 
+If Claude, Gemini, and Codex coexist on the same machine, plain `sir install` auto-detects all supported agent surfaces that are already present. Use `sir install --agent claude` when you want to pin the install to Claude only.
+
 The two primary enforcement hooks are:
 
 - `sir guard evaluate` on `PreToolUse`
