@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "mcp-middle-window-injection",
+  "scenario": "mcp_response_middle_window_injection",
+  "description": "MCP response injection centered inside a >200KB payload must be detected so the session is tainted instead of slipping through the middle-window blind spot.",
+  "tool_name": "mcp__jira__get_issue",
+  "tool_input": {
+    "issue_id": "JIRA-4242"
+  },
+  "tool_output_fixture": "../../hook-payloads/deny-mcp-middle-window-injection.json",
+  "expected": {
+    "decision": "allow",
+    "posture": "critical",
+    "server": "jira"
+  }
+}

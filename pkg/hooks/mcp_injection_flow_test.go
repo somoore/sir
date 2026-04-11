@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,29 @@ import (
 	"github.com/somoore/sir/pkg/ledger"
 	"github.com/somoore/sir/pkg/policy"
 )
+
+type mcpInjectionFixture struct {
+	ToolName   string                 `json:"tool_name"`
+	ToolInput  map[string]interface{} `json:"tool_input"`
+	ToolOutput string                 `json:"tool_output"`
+}
+
+func loadMCPInjectionFixture(t *testing.T, rel string) mcpInjectionFixture {
+	t.Helper()
+	path := filepath.Join("..", "..", rel)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fixture %s: %v", path, err)
+	}
+	var fixture mcpInjectionFixture
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatalf("unmarshal fixture %s: %v", path, err)
+	}
+	if fixture.ToolName == "" || fixture.ToolOutput == "" {
+		t.Fatalf("fixture %s missing tool_name or tool_output", path)
+	}
+	return fixture
+}
 
 // --- MCP Injection End-to-End Flow Tests ---
 // These tests verify the full flow through evaluatePayload and postEvaluatePayload:
@@ -289,6 +313,46 @@ Priority: Medium`,
 	}
 	if state.RecentlyReadUntrusted {
 		t.Error("RecentlyReadUntrusted should be false for clean MCP response")
+	}
+}
+
+func TestMCPInjection_MiddleWindowResponseTaintsSession(t *testing.T) {
+	projectRoot := t.TempDir()
+	l := lease.DefaultLease()
+	state := newTestSession(t, projectRoot)
+
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	fixture := loadMCPInjectionFixture(t, "testdata/hook-payloads/deny-mcp-middle-window-injection.json")
+	payload := &PostHookPayload{
+		ToolName:   fixture.ToolName,
+		ToolInput:  fixture.ToolInput,
+		ToolOutput: fixture.ToolOutput,
+	}
+
+	resp, err := postEvaluatePayload(payload, l, state, projectRoot)
+	if err != nil {
+		t.Fatalf("postEvaluatePayload: %v", err)
+	}
+	if resp.Decision != "allow" {
+		t.Fatalf("expected allow from PostToolUse, got %s: %s", resp.Decision, resp.Reason)
+	}
+	if state.Posture != "critical" {
+		t.Fatalf("expected critical posture for middle-window injection, got %q", state.Posture)
+	}
+	if !state.PendingInjectionAlert {
+		t.Fatal("expected pending injection alert for middle-window injection")
+	}
+	if !state.IsMCPServerTainted("jira") {
+		t.Fatal("expected jira server to be tainted by middle-window injection")
+	}
+	if len(state.MCPInjectionSignals) == 0 {
+		t.Fatal("expected MCP injection signals to be recorded for middle-window injection")
+	}
+	if !state.RecentlyReadUntrusted {
+		t.Fatal("expected RecentlyReadUntrusted to be true for middle-window injection")
 	}
 }
 

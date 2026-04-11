@@ -89,46 +89,30 @@ func ScanMCPResponseForInjection(output string) []InjectionSignal {
 		return nil
 	}
 	const maxScanBytes = 100_000
-	scanTarget := output
-	if len(output) > maxScanBytes*2 {
-		scanTarget = output[:maxScanBytes] + output[len(output)-maxScanBytes:]
+	if len(output) <= maxScanBytes*2 {
+		return scanMCPResponseWindow(output, nil)
 	}
 
-	lower := strings.ToLower(scanTarget)
+	middleStart := len(output)/2 - maxScanBytes/2
+	if middleStart < maxScanBytes {
+		middleStart = maxScanBytes
+	}
+	if middleStart+maxScanBytes > len(output)-maxScanBytes {
+		middleStart = len(output) - maxScanBytes - maxScanBytes/2
+		if middleStart < maxScanBytes {
+			middleStart = maxScanBytes
+		}
+	}
+
+	windows := []string{
+		output[:maxScanBytes],
+		output[middleStart : middleStart+maxScanBytes],
+		output[len(output)-maxScanBytes:],
+	}
+	seen := make(map[string]struct{}, len(injectionPatterns)+2)
 	var signals []InjectionSignal
-	for _, zeroWidth := range []string{"\u200b", "\u200c", "\u200d", "\ufeff"} {
-		if strings.Contains(scanTarget, zeroWidth) {
-			signals = append(signals, InjectionSignal{
-				Pattern:  "zero-width character",
-				Severity: "MEDIUM",
-				Context:  "hidden text via zero-width Unicode characters",
-			})
-			break
-		}
-	}
-
-	for _, pattern := range injectionPatterns {
-		needle := strings.ToLower(pattern.needle)
-		index := strings.Index(lower, needle)
-		if index < 0 {
-			continue
-		}
-		if pattern.contextAware && !hasContextKeyword(lower, index, len(needle)) {
-			continue
-		}
-		signals = append(signals, InjectionSignal{
-			Pattern:  pattern.needle,
-			Severity: pattern.severity,
-			Context:  extractContext(lower, index, 60),
-		})
-	}
-
-	if found, pattern := checkSafetyNegationPhrase(lower); found {
-		signals = append(signals, InjectionSignal{
-			Pattern:  pattern,
-			Severity: "MEDIUM",
-			Context:  "attempt to negate safety controls",
-		})
+	for _, window := range windows {
+		signals = append(signals, scanMCPResponseWindow(window, seen)...)
 	}
 	return signals
 }
@@ -223,4 +207,54 @@ func checkSafetyNegationPhrase(lower string) (bool, string) {
 		}
 	}
 	return false, ""
+}
+
+func scanMCPResponseWindow(scanText string, seen map[string]struct{}) []InjectionSignal {
+	lower := strings.ToLower(scanText)
+	var signals []InjectionSignal
+	addSignal := func(signal InjectionSignal) {
+		if seen != nil {
+			if _, ok := seen[signal.Pattern]; ok {
+				return
+			}
+			seen[signal.Pattern] = struct{}{}
+		}
+		signals = append(signals, signal)
+	}
+
+	for _, zeroWidth := range []string{"\u200b", "\u200c", "\u200d", "\ufeff"} {
+		if strings.Contains(scanText, zeroWidth) {
+			addSignal(InjectionSignal{
+				Pattern:  "zero-width character",
+				Severity: "MEDIUM",
+				Context:  "hidden text via zero-width Unicode characters",
+			})
+			break
+		}
+	}
+
+	for _, pattern := range injectionPatterns {
+		needle := strings.ToLower(pattern.needle)
+		index := strings.Index(lower, needle)
+		if index < 0 {
+			continue
+		}
+		if pattern.contextAware && !hasContextKeyword(lower, index, len(needle)) {
+			continue
+		}
+		addSignal(InjectionSignal{
+			Pattern:  pattern.needle,
+			Severity: pattern.severity,
+			Context:  extractContext(lower, index, 60),
+		})
+	}
+
+	if found, pattern := checkSafetyNegationPhrase(lower); found {
+		addSignal(InjectionSignal{
+			Pattern:  pattern,
+			Severity: "MEDIUM",
+			Context:  "attempt to negate safety controls",
+		})
+	}
+	return signals
 }

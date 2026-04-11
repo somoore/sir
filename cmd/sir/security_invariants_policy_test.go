@@ -92,6 +92,67 @@ func runInvariantMCPCredentialLeak(t *testing.T, fixture securityInvariantFixtur
 	}
 }
 
+func loadInvariantToolOutputFixture(t *testing.T, fixture securityInvariantFixture) string {
+	t.Helper()
+	if fixture.ToolOutput != "" {
+		return fixture.ToolOutput
+	}
+	if fixture.ToolOutputFixture == "" {
+		t.Fatal("fixture is missing tool_output or tool_output_fixture")
+	}
+
+	root := repoRoot(t)
+	path := filepath.Clean(filepath.Join(root, "testdata", "security-invariants", "v1", fixture.ToolOutputFixture))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read tool output fixture %s: %v", path, err)
+	}
+	var payload struct {
+		ToolOutput string `json:"tool_output"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("unmarshal tool output fixture %s: %v", path, err)
+	}
+	if payload.ToolOutput == "" {
+		t.Fatalf("tool output fixture %s missing tool_output", path)
+	}
+	return payload.ToolOutput
+}
+
+func runInvariantMCPResponseMiddleWindowInjection(t *testing.T, fixture securityInvariantFixture) {
+	t.Helper()
+	forceLocalPolicyFallbackForCLI(t)
+
+	env := newTestEnv(t)
+	l := env.writeDefaultLease()
+	state := session.NewState(env.projectRoot)
+	env.writeSession(state)
+
+	payload := &hooks.PostHookPayload{
+		ToolName:   fixture.ToolName,
+		ToolInput:  fixture.ToolInput,
+		ToolOutput: loadInvariantToolOutputFixture(t, fixture),
+	}
+
+	resp, err := hooks.ExportPostEvaluatePayload(payload, l, state, env.projectRoot)
+	if err != nil {
+		t.Fatalf("post-evaluate middle-window injection: %v", err)
+	}
+	if got, want := string(resp.Decision), fixture.Expected["decision"]; got != want {
+		t.Fatalf("middle-window injection decision = %q, want %q (reason=%s)", got, want, resp.Reason)
+	}
+
+	if got, want := string(state.Posture), fixture.Expected["posture"]; got != want {
+		t.Fatalf("posture = %q, want %q", got, want)
+	}
+	if !state.PendingInjectionAlert {
+		t.Fatal("expected PendingInjectionAlert after middle-window injection")
+	}
+	if !state.IsMCPServerTainted(fixture.Expected["server"]) {
+		t.Fatalf("expected %q to be tainted", fixture.Expected["server"])
+	}
+}
+
 func runInvariantHookTamperRestore(t *testing.T, fixture securityInvariantFixture) {
 	t.Helper()
 
