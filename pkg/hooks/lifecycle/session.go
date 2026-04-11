@@ -53,6 +53,8 @@ func BootstrapSessionBaseline(projectRoot string, loadLease func(string) (*lease
 	return session.WithSessionLock(projectRoot, func() error {
 		if existing, loadErr := session.Load(projectRoot); loadErr == nil && existing != nil {
 			return nil
+		} else if loadErr != nil && !os.IsNotExist(loadErr) {
+			return fmt.Errorf("load existing session for baseline: %w", loadErr)
 		}
 		st := session.NewState(projectRoot)
 		st.PostureHashes = posture.HashSentinelFiles(projectRoot, l.PostureFiles)
@@ -103,7 +105,7 @@ func protectStateDirectory(projectRoot string) error {
 
 	entries, err := os.ReadDir(stateDir)
 	if err != nil {
-		return nil
+		return err
 	}
 	for _, e := range entries {
 		if e.IsDir() {
