@@ -52,6 +52,8 @@ func TestSecurityInvariantSuiteV1(t *testing.T) {
 				runInvariantMCPCredentialLeak(t, fixture)
 			case "mcp_response_middle_window_injection":
 				runInvariantMCPResponseMiddleWindowInjection(t, fixture)
+			case "mcp_tainted_sink_gate":
+				runInvariantMCPTaintedSinkGate(t, fixture)
 			case "hook_tamper_restore":
 				runInvariantHookTamperRestore(t, fixture)
 			case "managed_mode_refusal":

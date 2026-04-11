@@ -263,6 +263,102 @@ func TestTaintedMCPLineageAttachesToLaterWrite(t *testing.T) {
 	}
 }
 
+func TestTaintedMCPInputGatesOnGenericPathLikeKeys(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	l := lease.DefaultLease()
+	l.ApprovedMCPServers = []string{"jira"}
+	state := session.NewState(projectRoot)
+	derivedPath := ResolveTarget(projectRoot, "report.txt")
+	state.DerivedFileLineage[derivedPath] = session.DerivedPathRecord{
+		Labels: []session.LineageLabel{{
+			Sensitivity: "secret",
+			Trust:       "trusted",
+			Provenance:  "user",
+		}},
+	}
+
+	cases := []struct {
+		name string
+		key  string
+	}{
+		{name: "snake_case source_path", key: "source_path"},
+		{name: "camelCase outputPath", key: "outputPath"},
+		{name: "camelCase localFilePath", key: "localFilePath"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := evaluateTaintedMCPInput(&HookPayload{
+				ToolName:  "mcp__jira__write",
+				ToolInput: map[string]interface{}{tc.key: "report.txt"},
+			}, state, projectRoot)
+			if err != nil {
+				t.Fatalf("evaluateTaintedMCPInput: %v", err)
+			}
+			if resp == nil || resp.Decision != "ask" {
+				t.Fatalf("evaluateTaintedMCPInput(%q) = %+v, want ask", tc.key, resp)
+			}
+		})
+	}
+}
+
+func TestDerivedSecretLineageTargetsIgnoreNestedMetadataUnderArtifactAndAttachmentObjects(t *testing.T) {
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	derivedPath := ResolveTarget(projectRoot, "report.txt")
+	state.DerivedFileLineage[derivedPath] = session.DerivedPathRecord{
+		Labels: []session.LineageLabel{{
+			Sensitivity: "secret",
+			Trust:       "trusted",
+			Provenance:  "user",
+		}},
+	}
+
+	cases := []struct {
+		name  string
+		input map[string]any
+	}{
+		{
+			name: "artifact metadata string",
+			input: map[string]any{
+				"artifact": map[string]any{
+					"metadata": "report.txt",
+				},
+			},
+		},
+		{
+			name: "attachment nested metadata string",
+			input: map[string]any{
+				"attachment": map[string]any{
+					"details": map[string]any{
+						"summary": "report.txt",
+					},
+				},
+			},
+		},
+		{
+			name: "artifact list of metadata objects",
+			input: map[string]any{
+				"artifacts": []interface{}{
+					map[string]any{
+						"note": "report.txt",
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			targets := derivedSecretLineageTargets(tc.input, projectRoot, state)
+			if len(targets) != 0 {
+				t.Fatalf("derivedSecretLineageTargets(%q) = %v, want no targets", tc.name, targets)
+			}
+		})
+	}
+}
+
 func initGitRepo(t *testing.T, dir string) {
 	t.Helper()
 	runGit(t, dir, "init")
