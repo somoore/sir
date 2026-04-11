@@ -684,7 +684,7 @@ func TestCmdGuard_MissingSubcommandFallsBackToClaudeEnvelope(t *testing.T) {
 func TestCmdGuard_UnknownSubcommandUsesResolvedAgentFormat(t *testing.T) {
 	env := newTestEnv(t)
 
-	stdout, stderr := runCmdGuardHelper(t, env, "", "not-a-hook", "--agent", "codex")
+	stdout, stderr := runCmdGuardHelper(t, env, "", "not-a-hook", "payload.json", "--agent", "codex")
 
 	var resp map[string]interface{}
 	if err := json.Unmarshal([]byte(stdout), &resp); err != nil {
@@ -692,6 +692,26 @@ func TestCmdGuard_UnknownSubcommandUsesResolvedAgentFormat(t *testing.T) {
 	}
 	if resp["decision"] != "block" {
 		t.Fatalf("decision = %v, want block", resp["decision"])
+	}
+	if reason, _ := resp["reason"].(string); !strings.Contains(reason, "unknown subcommand: not-a-hook") {
+		t.Fatalf("reason = %q, want unknown-subcommand text", reason)
+	}
+	if !strings.Contains(stderr, "unknown subcommand: not-a-hook") {
+		t.Fatalf("stderr = %q, want unknown-subcommand text", stderr)
+	}
+}
+
+func TestCmdGuard_InlineAgentFlagUsesResolvedAgentFormat(t *testing.T) {
+	env := newTestEnv(t)
+
+	stdout, stderr := runCmdGuardHelper(t, env, "", "not-a-hook", "payload.json", "--agent=gemini")
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout), &resp); err != nil {
+		t.Fatalf("unmarshal stdout: %v\nstdout=%q", err, stdout)
+	}
+	if resp["decision"] != "deny" {
+		t.Fatalf("decision = %v, want deny", resp["decision"])
 	}
 	if reason, _ := resp["reason"].(string); !strings.Contains(reason, "unknown subcommand: not-a-hook") {
 		t.Fatalf("reason = %q, want unknown-subcommand text", reason)
