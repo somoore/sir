@@ -47,6 +47,15 @@ func supportDocLink(m SupportManifest) string {
 	return fmt.Sprintf("[%s](%s)", filepath.Base(path), path)
 }
 
+func supportDocLinkForFAQ(m SupportManifest) string {
+	path := supportDocPath(m)
+	if path == "" {
+		return ""
+	}
+	base := filepath.Base(path)
+	return fmt.Sprintf("[%s](%s)", base, base)
+}
+
 func supportLifecycleMitigationDescription(event string) string {
 	switch event {
 	case "SubagentStart":
@@ -282,12 +291,12 @@ func (m SupportManifest) faqLine() string {
 		}
 		return fmt.Sprintf("- **%s:** %d hook events — reference support with %s.", m.Name, m.HookEventCount, formatJoinedItems(parts))
 	case SupportTierNearParity:
-		if docLink := supportDocLink(m); docLink != "" {
+		if docLink := supportDocLinkForFAQ(m); docLink != "" {
 			return fmt.Sprintf("- **%s %s+:** %d hook events — near-parity support for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: %s. See %s.", m.Name, m.MinimumVersion, m.HookEventCount, missingLifecycleHooks(m), docLink)
 		}
 		return fmt.Sprintf("- **%s %s+:** %d hook events — near-parity support for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: %s.", m.Name, m.MinimumVersion, m.HookEventCount, missingLifecycleHooks(m))
 	case SupportTierLimited:
-		if docLink := supportDocLink(m); docLink != "" {
+		if docLink := supportDocLinkForFAQ(m); docLink != "" {
 			return fmt.Sprintf("- **%s %s+:** %d hook events — limited support with a **Bash-only** upstream hook surface. Requires enabling `%s` (`%s`). Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools still bypass PreToolUse; sir relies on PostToolUse sentinel hashing plus a final `Stop` sweep as the backstop. See %s.", m.Name, m.MinimumVersion, m.HookEventCount, m.RequiredFeatureFlag, m.FeatureFlagEnableCommand, docLink)
 		}
 		return fmt.Sprintf("- **%s %s+:** %d hook events — limited support with a **Bash-only** upstream hook surface. Requires enabling `%s` (`%s`). Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools still bypass PreToolUse; sir relies on PostToolUse sentinel hashing plus a final `Stop` sweep as the backstop.", m.Name, m.MinimumVersion, m.HookEventCount, m.RequiredFeatureFlag, m.FeatureFlagEnableCommand)

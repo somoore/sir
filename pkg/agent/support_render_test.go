@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -53,8 +54,12 @@ func TestSupportNarrativeBlocksUseDocPathsAndStayWellFormedWithoutOne(t *testing
 	for _, manifest := range orderedPublicSupportManifests() {
 		if manifest.SupportTier != SupportTierReference {
 			path := supportDocPath(manifest)
-			if got := renderFAQLine(manifest); !strings.Contains(got, path) {
-				t.Fatalf("FAQ line for %s missing manifest doc path %q: %s", manifest.Name, path, got)
+			got := renderFAQLine(manifest)
+			if !strings.Contains(got, filepath.Base(path)) {
+				t.Fatalf("FAQ line for %s missing manifest doc basename %q: %s", manifest.Name, filepath.Base(path), got)
+			}
+			if strings.Contains(got, path) {
+				t.Fatalf("FAQ line for %s still used README-relative doc path %q: %s", manifest.Name, path, got)
 			}
 		}
 	}
