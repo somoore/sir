@@ -34,7 +34,7 @@ Report vulnerabilities via email:
 
 | Version | Supported |
 | --- | --- |
-| 0.1.x (current) | Yes |
+| 0.0.x (current) | Yes |
 
 We will backport critical fixes to the latest release only. Earlier versions are not supported.
 
