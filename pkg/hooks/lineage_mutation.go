@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -43,7 +44,7 @@ func propagateBashLineageMutation(projectRoot string, state *session.State, payl
 			continue
 		}
 		sourcePath := ResolveTarget(projectRoot, source)
-		destPath := ResolveTarget(projectRoot, dest)
+		destPath := resolveLineageMutationDestination(projectRoot, sourcePath, dest)
 		mirrorDerivedLineage(state, sourcePath, destPath)
 	}
 }
@@ -73,6 +74,31 @@ func parseBashLineageMutation(cmd string) (source, dest string, ok bool) {
 	return operands[0], operands[len(operands)-1], true
 }
 
+func resolveLineageMutationDestination(projectRoot, sourcePath, dest string) string {
+	destPath := ResolveTarget(projectRoot, dest)
+	if destPath == "" {
+		return ""
+	}
+	if !isLineageMutationDirectoryDestination(dest, destPath) {
+		return destPath
+	}
+	base := filepath.Base(sourcePath)
+	if base == "" || base == "." || base == string(filepath.Separator) {
+		return destPath
+	}
+	return ResolveTarget(projectRoot, filepath.Join(dest, base))
+}
+
+func isLineageMutationDirectoryDestination(dest, resolvedDest string) bool {
+	if strings.HasSuffix(dest, string(os.PathSeparator)) {
+		return true
+	}
+	if info, err := os.Stat(resolvedDest); err == nil && info.IsDir() {
+		return true
+	}
+	return false
+}
+
 func mirrorDerivedLineage(state *session.State, sourcePath, destPath string) {
 	if sourcePath == "" || destPath == "" || sourcePath == destPath {
 		return
@@ -80,10 +106,49 @@ func mirrorDerivedLineage(state *session.State, sourcePath, destPath string) {
 	if state.DerivedFileLineage == nil {
 		state.DerivedFileLineage = make(map[string]session.DerivedPathRecord)
 	}
-	record, ok := state.DerivedFileLineage[sourcePath]
-	if !ok || len(record.Labels) == 0 {
+	sourceRecord, ok := state.DerivedFileLineage[sourcePath]
+	if !ok || len(sourceRecord.Labels) == 0 {
 		return
 	}
-	record.UpdatedAt = time.Now()
-	state.DerivedFileLineage[destPath] = record
+	if destRecord, ok := state.DerivedFileLineage[destPath]; ok {
+		sourceRecord.EvidenceIDs = appendMissingStrings(destRecord.EvidenceIDs, sourceRecord.EvidenceIDs)
+		sourceRecord.Labels = mergeHookLineageLabels(destRecord.Labels, sourceRecord.Labels)
+	}
+	sourceRecord.UpdatedAt = time.Now()
+	state.DerivedFileLineage[destPath] = sourceRecord
+}
+
+func appendMissingStrings(dst, src []string) []string {
+	out := append([]string(nil), dst...)
+	for _, value := range src {
+		if !containsString(out, value) {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func mergeHookLineageLabels(dst, src []session.LineageLabel) []session.LineageLabel {
+	out := make([]session.LineageLabel, 0, len(dst)+len(src))
+	out = append(out, dst...)
+	out = append(out, src...)
+	seen := make(map[session.LineageLabel]struct{}, len(out))
+	merged := make([]session.LineageLabel, 0, len(out))
+	for _, label := range out {
+		if _, ok := seen[label]; ok {
+			continue
+		}
+		seen[label] = struct{}{}
+		merged = append(merged, label)
+	}
+	return merged
 }

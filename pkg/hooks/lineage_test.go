@@ -177,6 +177,93 @@ func TestDerivedLineageSurvivesArchiveRenameAndLinkLaundering(t *testing.T) {
 	}
 }
 
+func TestBashLineageMutationUsesBasenameForDirectoryDestinations(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(projectRoot, "archive"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seedLineageRecord(t, state, projectRoot, "report.txt", session.LineageLabel{
+		Sensitivity: "secret",
+		Trust:       "trusted",
+		Provenance:  "user",
+	})
+	if got := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "report.txt")); len(got) != 1 {
+		t.Fatalf("seeded report.txt labels = %+v, want 1", got)
+	}
+
+	propagateBashLineageMutation(projectRoot, state, &PostHookPayload{
+		ToolName:  "Bash",
+		ToolInput: map[string]interface{}{"command": "cp report.txt archive/"},
+	})
+
+	labels := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "archive/report.txt"))
+	if len(labels) != 1 {
+		t.Fatalf("archive/report.txt labels = %+v, want 1 copied label", labels)
+	}
+	if labels[0].Sensitivity != "secret" || labels[0].Trust != "trusted" || labels[0].Provenance != "user" {
+		t.Fatalf("archive/report.txt labels = %+v, want copied source lineage", labels)
+	}
+	if got := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "archive")); len(got) != 0 {
+		t.Fatalf("directory path itself should not carry lineage, got %+v", got)
+	}
+}
+
+func TestBashLineageMutationMergesExistingDestinationLineage(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(projectRoot, "archive"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seedLineageRecord(t, state, projectRoot, "report.txt", session.LineageLabel{
+		Sensitivity: "secret",
+		Trust:       "trusted",
+		Provenance:  "user",
+	})
+	state.IncrementTurn()
+	seedLineageRecord(t, state, projectRoot, "archive/report.txt", session.LineageLabel{
+		Sensitivity: "internal",
+		Trust:       "verified_internal",
+		Provenance:  "agent",
+	})
+	if got := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "report.txt")); len(got) != 1 {
+		t.Fatalf("seeded report.txt labels = %+v, want 1", got)
+	}
+	if got := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "archive/report.txt")); len(got) != 1 {
+		t.Fatalf("seeded archive/report.txt labels = %+v, want 1", got)
+	}
+
+	propagateBashLineageMutation(projectRoot, state, &PostHookPayload{
+		ToolName:  "Bash",
+		ToolInput: map[string]interface{}{"command": "cp report.txt archive/"},
+	})
+
+	labels := state.DerivedLabelsForPath(ResolveTarget(projectRoot, "archive/report.txt"))
+	if len(labels) != 2 {
+		t.Fatalf("archive/report.txt labels = %+v, want merged source and destination lineage", labels)
+	}
+	if !hasLineageLabel(labels, session.LineageLabel{Sensitivity: "secret", Trust: "trusted", Provenance: "user"}) {
+		t.Fatalf("archive/report.txt missing source lineage after merge: %+v", labels)
+	}
+	if !hasLineageLabel(labels, session.LineageLabel{Sensitivity: "internal", Trust: "verified_internal", Provenance: "agent"}) {
+		t.Fatalf("archive/report.txt missing destination lineage after merge: %+v", labels)
+	}
+	record := state.DerivedFileLineage[ResolveTarget(projectRoot, "archive/report.txt")]
+	if len(record.EvidenceIDs) != 2 {
+		t.Fatalf("archive/report.txt evidence IDs = %v, want merged evidence IDs", record.EvidenceIDs)
+	}
+}
+
 func TestGitOutgoingPathsWithoutUpstreamIncludesAllUnpushedCommits(t *testing.T) {
 	projectRoot := t.TempDir()
 	initGitRepo(t, projectRoot)
@@ -541,6 +628,21 @@ func forceLocalPolicyFallback(t *testing.T) {
 func containsPath(paths []string, want string) bool {
 	for _, path := range paths {
 		if path == want {
+			return true
+		}
+	}
+	return false
+}
+
+func seedLineageRecord(t *testing.T, state *session.State, projectRoot, path string, label session.LineageLabel) {
+	t.Helper()
+	state.RecordLineageEvidence("test", path, "high", []session.LineageLabel{label})
+	state.AttachActiveEvidenceToPath(ResolveTarget(projectRoot, path))
+}
+
+func hasLineageLabel(labels []session.LineageLabel, want session.LineageLabel) bool {
+	for _, label := range labels {
+		if label == want {
 			return true
 		}
 	}
