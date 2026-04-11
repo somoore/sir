@@ -74,8 +74,8 @@ checksums, validates provenance, and checks the signed `aibom.json`.
 Claude Code has **reference support**, Gemini CLI has **near-parity support**, and Codex has **limited support** today. `sir install` auto-detects the supported agents already present on this machine, or you can pin one with `sir install --agent <id>`:
 
 - **Claude Code:** 10 hook events — reference support with native interactive approval, MCP scanning, delegation gating, config change detection, and elicitation coverage.
-- **Gemini CLI 0.36.0+:** 6 hook events — near-parity support for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: SubagentStart, ConfigChange, InstructionsLoaded, and Elicitation. See [gemini-support.md](gemini-support.md).
-- **Codex 0.118.0+:** 5 hook events — limited support with a **Bash-only** upstream hook surface. Requires enabling `codex_hooks` (`codex features enable codex_hooks`). Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools still bypass PreToolUse; sir relies on PostToolUse sentinel hashing plus a final `Stop` sweep as the backstop. See [codex-support.md](codex-support.md).
+- **Gemini CLI 0.36.0+:** 6 hook events — near-parity support for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: SubagentStart, ConfigChange, InstructionsLoaded, and Elicitation. See [gemini-support.md](docs/user/gemini-support.md).
+- **Codex 0.118.0+:** 5 hook events — limited support with a **Bash-only** upstream hook surface. Requires enabling `codex_hooks` (`codex features enable codex_hooks`). Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools still bypass PreToolUse; sir relies on PostToolUse sentinel hashing plus a final `Stop` sweep as the backstop. See [codex-support.md](docs/user/codex-support.md).
 <!-- END GENERATED SUPPORT FAQ -->
 
 ## Honest limits

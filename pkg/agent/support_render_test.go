@@ -49,6 +49,35 @@ func TestSupportNarrativeBlocksUseManifestData(t *testing.T) {
 	}
 }
 
+func TestSupportNarrativeBlocksUseDocPathsAndStayWellFormedWithoutOne(t *testing.T) {
+	for _, manifest := range orderedPublicSupportManifests() {
+		if manifest.SupportTier != SupportTierReference {
+			path := supportDocPath(manifest)
+			if got := renderFAQLine(manifest); !strings.Contains(got, path) {
+				t.Fatalf("FAQ line for %s missing manifest doc path %q: %s", manifest.Name, path, got)
+			}
+		}
+	}
+
+	custom := SupportManifest{
+		ID:             AgentID("future"),
+		Name:           "Future CLI",
+		MinimumVersion: "9.9.9",
+		SupportTier:    SupportTierNearParity,
+		HookEventCount: 7,
+	}
+
+	readmeLine := custom.supportOverviewLine()
+	if strings.Contains(readmeLine, "[]()") || strings.Contains(readmeLine, "See []") {
+		t.Fatalf("README overview line used broken markdown without a doc path: %s", readmeLine)
+	}
+
+	faqLine := custom.faqLine()
+	if strings.Contains(faqLine, "[]()") || strings.Contains(faqLine, "See []") {
+		t.Fatalf("FAQ line used broken markdown without a doc path: %s", faqLine)
+	}
+}
+
 func TestValidateSupportContractRequiresGeneratedProseInputs(t *testing.T) {
 	limited := codexSpec
 	limited.MinVersion = ""

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 )
 
@@ -36,6 +37,14 @@ func supportRuntimeName(m SupportManifest) string {
 		return "codex-cli"
 	}
 	return m.Name
+}
+
+func supportDocLink(m SupportManifest) string {
+	path := supportDocPath(m)
+	if path == "" {
+		return ""
+	}
+	return fmt.Sprintf("[%s](%s)", filepath.Base(path), path)
 }
 
 func supportLifecycleMitigationDescription(event string) string {
@@ -234,11 +243,19 @@ func (m SupportManifest) supportOverviewLine() string {
 		return fmt.Sprintf("- **%s** — **Reference support.** Full %d-hook lifecycle with native interactive approval and complete tool-path coverage.",
 			m.Name, m.HookEventCount)
 	case SupportTierNearParity:
-		return fmt.Sprintf("- **%s** — **Near-parity support.** %d hook events fire on %s %s+, with full tool-path coverage for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: %s. See [%s](%s).",
-			m.Name, m.HookEventCount, m.Name, m.MinimumVersion, missingLifecycleHooks(m), supportDocPath(m), supportDocPath(m))
+		if docLink := supportDocLink(m); docLink != "" {
+			return fmt.Sprintf("- **%s** — **Near-parity support.** %d hook events fire on %s %s+, with full tool-path coverage for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: %s. See %s.",
+				m.Name, m.HookEventCount, m.Name, m.MinimumVersion, missingLifecycleHooks(m), docLink)
+		}
+		return fmt.Sprintf("- **%s** — **Near-parity support.** %d hook events fire on %s %s+, with full tool-path coverage for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: %s.",
+			m.Name, m.HookEventCount, m.Name, m.MinimumVersion, missingLifecycleHooks(m))
 	case SupportTierLimited:
-		return fmt.Sprintf("- **%s** — **Limited support.** %d hook events fire on `%s` %s+ after enabling the `%s` feature flag (`%s`), and the upstream hook surface is Bash-only. Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools stay outside PreToolUse; sir relies on sentinel hashing plus a final `Stop` sweep as the backstop. See [%s](%s).",
-			m.Name, m.HookEventCount, supportRuntimeName(m), m.MinimumVersion, m.RequiredFeatureFlag, m.FeatureFlagEnableCommand, supportDocPath(m), supportDocPath(m))
+		if docLink := supportDocLink(m); docLink != "" {
+			return fmt.Sprintf("- **%s** — **Limited support.** %d hook events fire on `%s` %s+ after enabling the `%s` feature flag (`%s`), and the upstream hook surface is Bash-only. Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools stay outside PreToolUse; sir relies on sentinel hashing plus a final `Stop` sweep as the backstop. See %s.",
+				m.Name, m.HookEventCount, supportRuntimeName(m), m.MinimumVersion, m.RequiredFeatureFlag, m.FeatureFlagEnableCommand, docLink)
+		}
+		return fmt.Sprintf("- **%s** — **Limited support.** %d hook events fire on `%s` %s+ after enabling the `%s` feature flag (`%s`), and the upstream hook surface is Bash-only. Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools stay outside PreToolUse; sir relies on sentinel hashing plus a final `Stop` sweep as the backstop.",
+			m.Name, m.HookEventCount, supportRuntimeName(m), m.MinimumVersion, m.RequiredFeatureFlag, m.FeatureFlagEnableCommand)
 	default:
 		return fmt.Sprintf("- **%s** — **%s.** %d hook events fire.", m.Name, strings.Title(m.TierLabel()), m.HookEventCount)
 	}
@@ -265,9 +282,15 @@ func (m SupportManifest) faqLine() string {
 		}
 		return fmt.Sprintf("- **%s:** %d hook events — reference support with %s.", m.Name, m.HookEventCount, formatJoinedItems(parts))
 	case SupportTierNearParity:
-		return fmt.Sprintf("- **%s %s+:** %d hook events — near-parity support for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: %s. See [gemini-support.md](gemini-support.md).", m.Name, m.MinimumVersion, m.HookEventCount, missingLifecycleHooks(m))
+		if docLink := supportDocLink(m); docLink != "" {
+			return fmt.Sprintf("- **%s %s+:** %d hook events — near-parity support for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: %s. See %s.", m.Name, m.MinimumVersion, m.HookEventCount, missingLifecycleHooks(m), docLink)
+		}
+		return fmt.Sprintf("- **%s %s+:** %d hook events — near-parity support for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: %s.", m.Name, m.MinimumVersion, m.HookEventCount, missingLifecycleHooks(m))
 	case SupportTierLimited:
-		return fmt.Sprintf("- **%s %s+:** %d hook events — limited support with a **Bash-only** upstream hook surface. Requires enabling `%s` (`%s`). Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools still bypass PreToolUse; sir relies on PostToolUse sentinel hashing plus a final `Stop` sweep as the backstop. See [codex-support.md](codex-support.md).", m.Name, m.MinimumVersion, m.HookEventCount, m.RequiredFeatureFlag, m.FeatureFlagEnableCommand)
+		if docLink := supportDocLink(m); docLink != "" {
+			return fmt.Sprintf("- **%s %s+:** %d hook events — limited support with a **Bash-only** upstream hook surface. Requires enabling `%s` (`%s`). Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools still bypass PreToolUse; sir relies on PostToolUse sentinel hashing plus a final `Stop` sweep as the backstop. See %s.", m.Name, m.MinimumVersion, m.HookEventCount, m.RequiredFeatureFlag, m.FeatureFlagEnableCommand, docLink)
+		}
+		return fmt.Sprintf("- **%s %s+:** %d hook events — limited support with a **Bash-only** upstream hook surface. Requires enabling `%s` (`%s`). Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools still bypass PreToolUse; sir relies on PostToolUse sentinel hashing plus a final `Stop` sweep as the backstop.", m.Name, m.MinimumVersion, m.HookEventCount, m.RequiredFeatureFlag, m.FeatureFlagEnableCommand)
 	default:
 		return fmt.Sprintf("- **%s:** %d hook events — %s.", m.Name, m.HookEventCount, m.TierLabel())
 	}
