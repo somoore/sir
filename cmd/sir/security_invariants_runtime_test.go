@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
@@ -136,5 +137,60 @@ func runInvariantRuntimeDnsRebindingAuthority(t *testing.T, fixture securityInva
 	}
 	if strings.Contains(out, driftedLease.ApprovedHosts[0]) {
 		t.Fatalf("status output unexpectedly reflected post-launch drift:\n%s", out)
+	}
+}
+
+func runInvariantRuntimeHostControlSocketPivotPrevention(t *testing.T, fixture securityInvariantFixture) {
+	t.Helper()
+
+	env := newTestEnv(t)
+	env.writeDefaultLease()
+	env.writeSettingsJSON(mustHooksConfigMap(t, agent.NewClaudeAgent(), "sir", "guard"))
+	env.writeSession(session.NewState(env.projectRoot))
+
+	shadowHome := t.TempDir()
+	shadowState := session.NewState(env.projectRoot)
+	shadowData, err := json.MarshalIndent(shadowState, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal shadow session: %v", err)
+	}
+	shadowPath := session.StatePathUnder(shadowHome, env.projectRoot)
+	if err := os.MkdirAll(filepath.Dir(shadowPath), 0o700); err != nil {
+		t.Fatalf("mkdir shadow state dir: %v", err)
+	}
+	if err := os.WriteFile(shadowPath, shadowData, 0o600); err != nil {
+		t.Fatalf("write shadow session: %v", err)
+	}
+
+	if err := session.SaveRuntimeContainment(env.projectRoot, &session.RuntimeContainment{
+		AgentID:           string(agent.Claude),
+		Mode:              "linux_namespace",
+		MaskedHostSockets: []string{"/run/user/1000/bus", "/run/user/1000/docker.sock", "/run/user/1000/podman/podman.sock", "/home/test/.gnupg/S.gpg-agent"},
+		ScrubbedEnvVars:   []string{"DOCKER_HOST", "SSH_AUTH_SOCK"},
+		ShadowStateHome:   shadowHome,
+		StartedAt:         time.Now().Add(-time.Minute),
+		HeartbeatAt:       time.Now(),
+	}); err != nil {
+		t.Fatalf("save runtime containment: %v", err)
+	}
+
+	statusOut := captureStdout(t, func() {
+		cmdStatus(env.projectRoot)
+	})
+	for _, key := range []string{"status_contains", "status_reason", "status_impact", "status_fix"} {
+		want := fixture.Expected[key]
+		if want != "" && !strings.Contains(statusOut, want) {
+			t.Fatalf("status output missing %q:\n%s", want, statusOut)
+		}
+	}
+
+	doctorOut := captureStdout(t, func() {
+		cmdDoctor(env.projectRoot)
+	})
+	for _, key := range []string{"doctor_contains", "doctor_fix"} {
+		want := fixture.Expected[key]
+		if want != "" && !strings.Contains(doctorOut, want) {
+			t.Fatalf("doctor output missing %q:\n%s", want, doctorOut)
+		}
 	}
 }

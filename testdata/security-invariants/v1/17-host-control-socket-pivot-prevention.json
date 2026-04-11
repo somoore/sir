@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "name": "host-control-socket-pivot-prevention",
+  "scenario": "runtime_host_control_socket_pivot_prevention",
+  "description": "Contained children must still mask guessed host-control Unix socket paths after env vars are scrubbed so they cannot pivot through the host boundary.",
+  "expected": {
+    "status_contains": "Masked host sockets: /run/user/1000/bus, /run/user/1000/docker.sock, /run/user/1000/podman/podman.sock, /home/test/.gnupg/S.gpg-agent",
+    "status_reason": "Reason: launch inherited host-control sockets that had to be masked inside containment; launch inherited host-control env that had to be scrubbed before containment",
+    "status_impact": "Impact: host control channels were present at launch; relaunch from a cleaner environment for the strongest boundary",
+    "status_fix": "close or avoid forwarding host-control bridges before launch:",
+    "doctor_contains": "WARNING: runtime containment is degraded",
+    "doctor_fix": "Fix: relaunch from a minimal env, for example: env -u DOCKER_HOST -u SSH_AUTH_SOCK sir run claude"
+  }
+}

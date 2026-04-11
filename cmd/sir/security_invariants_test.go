@@ -60,6 +60,8 @@ func TestSecurityInvariantSuiteV1(t *testing.T) {
 				runInvariantRuntimeContainmentFailclosed(t, fixture)
 			case "runtime_degradation_guidance":
 				runInvariantRuntimeDegradationGuidance(t, fixture)
+			case "runtime_host_control_socket_pivot_prevention":
+				runInvariantRuntimeHostControlSocketPivotPrevention(t, fixture)
 			case "codex_bash_only_boundary":
 				runInvariantCodexBashOnlyBoundary(t, fixture)
 			case "exact_destination_policy":
