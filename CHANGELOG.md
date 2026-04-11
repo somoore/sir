@@ -1,6 +1,8 @@
 # Changelog
 
-This file tracks shipped releases only. Historical planning notes, launch copy, and exploratory findings live in git history rather than the production repo surface.
+sir is experimental. Each release listed here is a snapshot of the "sandbox in reverse" model as it shipped, and entries are scoped to behavior users and contributors can actually observe.
+
+This file tracks shipped releases only. Historical planning notes, launch copy, and exploratory findings live in git history rather than on the production repo surface.
 
 ## v0.1.2 — 2026-04-08
 

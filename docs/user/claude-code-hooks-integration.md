@@ -1,6 +1,8 @@
 # sir and Claude Code Hooks Integration
 
-This page explains the reference-support path: how sir hooks into Claude Code, where the decisions are made, and how to debug the installation.
+sir — Sandbox in Reverse — constrains AI coding agents at the intent layer by mediating their tool calls through host-agent hooks. Claude Code is the reference target: it exposes the richest hook surface sir supports today, so every core protection (file IFC labeling, shell classification, MCP argument and response scanning, delegation gating, credential output scanning) runs end to end.
+
+This page explains how sir hooks into Claude Code, where the decisions are made, and how to debug the installation.
 
 Other agents are narrower:
 
@@ -45,11 +47,13 @@ The remaining handlers manage session initialization, turn boundaries, instructi
 
 ## Decision flow
 
+This is the core "sandbox in reverse" path — sir sees the intent before Claude executes it, adds facts Claude does not have, and asks the Rust policy oracle for a verdict.
+
 1. Claude fires a hook with JSON on stdin.
-2. `sir guard evaluate` normalizes the tool call into an intent.
-3. `sir` adds session facts such as secret-session posture, pending install state, and trust labels.
-4. `mister-core` returns `allow`, `deny`, or `ask`.
-5. `sir` logs the decision and formats the result back into Claude's hook response shape.
+2. `sir guard evaluate` normalizes the tool call into an intent (a verb plus target).
+3. `sir` adds session facts such as secret-session posture (IFC taint), pending install state, injection alerts, and trust labels.
+4. `mister-core` returns `allow`, `deny`, or `ask`. Go may upgrade an allow to ask based on session facts Rust cannot see, but never widens a Rust deny.
+5. `sir` logs the decision to the hash-chained ledger and formats the result back into Claude's hook response shape.
 
 `sir guard post-evaluate` then handles the after-the-fact checks:
 
@@ -92,11 +96,11 @@ That returns the JSON verdict sir would send back to Claude Code.
 - `sir doctor` reports hook drift: doctor restores the sir-owned hook subtree from the canonical copy.
 - A block looks wrong: inspect `sir explain --last` before changing policy. The usual cause is an earlier sensitive read or posture elevation, not a broken install.
 
-**"sir: command not found" in hook execution**
+### `sir: command not found` in hook execution
 
-Claude Code invokes the hook command in a shell. If `sir` is not on the PATH in that shell environment, the hook fails silently (fail-open). Ensure `~/.local/bin` is on your PATH in your shell profile, not just the current session.
+Claude Code invokes the hook command in a shell. If `sir` is not on the `PATH` in that shell environment, the hook fails silently (fail-open). Ensure `~/.local/bin` is on your `PATH` in your shell profile, not just the current session.
 
-**Hooks not firing**
+### Hooks not firing
 
 Check that `~/.claude/settings.json` contains the sir entries:
 
@@ -106,17 +110,15 @@ cat ~/.claude/settings.json
 
 If the file is missing or does not contain `sir guard`, re-run `sir install`.
 
-**Everything is denied (deny-all)**
+### Everything is denied (deny-all)
 
-sir detected posture file tampering and locked the session. Run `sir doctor` to investigate and restore:
+sir detected posture-file tampering and locked the session. Run `sir doctor` to investigate and restore:
 
 ```bash
 sir doctor
 ```
 
 Then start a new Claude session.
-
----
 
 ## Coexistence with other hooks
 
@@ -152,9 +154,7 @@ Example `~/.claude/settings.json` with sir and a custom hook:
 }
 ```
 
-**Important:** If another hook modifies `~/.claude/settings.json`, sir's PostToolUse handler will detect the hash mismatch and may trigger deny-all. Coordinate with other tools that modify hook configuration to avoid false positives. The safest approach is to install sir last, after all other hooks are configured.
-
----
+> **Warning:** If another hook modifies `~/.claude/settings.json`, sir's `PostToolUse` handler will detect the hash mismatch and may trigger deny-all. Coordinate with other tools that modify hook configuration to avoid false positives. The safest approach is to install sir last, after all other hooks are configured.
 
 ## How sir returns verdicts to Claude Code
 
@@ -180,8 +180,12 @@ Claude Code expects a JSON object on stdout with at minimum a `decision` field. 
 }
 ```
 
-The `reason` field contains the human-readable message that Claude shows to the developer. As of v1.3, all messages follow the WHAT/WHY/HOW format: what happened (plain English), why (causal chain with timestamps), and how to fix it (specific commands). Every non-trivial message includes `sir explain --last` for full details.
+The `reason` field contains the human-readable message that Claude shows to the developer. As of v1.3, all messages follow the WHAT / WHY / HOW format:
+
+- **what** happened, in plain English
+- **why**, as a causal chain tracing back to the original secret read with timestamps
+- **how** to fix it, with specific commands
+
+Every non-trivial message includes `sir explain --last` for full details, including IFC labels and recovery options.
 
 For `ask` verdicts on sensitive file reads, sir includes a note in the reason explaining that approving will gate external network access for the current turn (by default), with instructions to run `sir unlock` if immediate clearance is needed.
-
-All non-trivial messages follow the WHAT/WHY/HOW format: what happened (plain English), why (causal chain tracing back to the original secret read with timestamp), and how to fix it (specific commands). Every block and ask message includes `sir explain --last` for full details including IFC labels and recovery options.

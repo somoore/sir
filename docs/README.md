@@ -1,8 +1,8 @@
 # Documentation Hub
 
-This repo keeps one small active docs surface. Start with the shortest path that matches your job:
+sir — Sandbox in Reverse — is an experimental security runtime for AI coding agents. It mediates agent tool calls at the hook layer, tracks secret taint through IFC, and writes every decision to a hash-chained ledger. This repo keeps one small active docs surface. Start with the shortest path that matches your job:
 
-- Product and install: [README.md](../README.md)
+- Thesis, install, and first-run walkthrough: [README.md](../README.md)
 - Runtime behavior: [docs/user/runtime-security-overview.md](user/runtime-security-overview.md)
 - Claude / Gemini / Codex details: [docs/user/claude-code-hooks-integration.md](user/claude-code-hooks-integration.md), [docs/user/gemini-support.md](user/gemini-support.md), [docs/user/codex-support.md](user/codex-support.md)
 - Troubleshooting and daily commands: [docs/user/faq.md](user/faq.md)

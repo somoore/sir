@@ -1,6 +1,8 @@
 # Runtime Security Overview
 
-This is the short operator-facing explanation of what sir catches, what it intentionally leaves alone, and how to verify the boundary on a fresh install.
+sir — Sandbox in Reverse — is an experimental security runtime for AI coding agents. Rather than jailing a process from below, it constrains the agent from above: intercepting tool calls at the hook layer, classifying intent, and deciding allow / ask / deny against a local policy oracle. Secret taint propagates through operations via information flow control (IFC), so reading `.env` in one step gates risky sinks in the next.
+
+This page is the short operator-facing explanation of what sir catches, what it intentionally leaves alone, and how to verify the boundary on a fresh install. For the threat model and limitations, see [../research/sir-threat-model.md](../research/sir-threat-model.md).
 
 ## What sir catches
 
@@ -13,14 +15,14 @@ This is the short operator-facing explanation of what sir catches, what it inten
 
 ## What sir intentionally leaves quiet
 
-Normal development should stay silent:
+sir's design rule is "quiet on normal coding, loud on dangerous transitions." Normal development should stay silent:
 
-- reading source files
-- editing normal code
-- running tests
-- `git commit`
-- loopback requests such as `127.0.0.1` and `::1`
-- glob, grep, list, and code search operations
+- Reading source files.
+- Editing normal code.
+- Running tests.
+- `git commit`.
+- Loopback requests such as `127.0.0.1` and `::1`.
+- Glob, grep, list, and code-search operations.
 
 ## How the boundary is layered
 
@@ -35,7 +37,18 @@ The optional below-hook layer is `sir run <agent>`:
 - On macOS, host-only allowlist entries expand to exact destinations on `22`, `80`, and `443`; use `host:port` for non-standard ports. Loopback entries stay wildcarded.
 - Linux uses `unshare --net` namespace mode with exact-destination egress allowlisting, durable-state protection, and fail-closed startup if the current-agent policy roots it must guard are missing.
 
-That path is a measured preview. Hook mediation remains the primary shipped boundary, and `sir status` now reports the last contained launch mode, the host/destination policy size, and the blocked/allowed egress counts recorded by the runtime layer.
+That path is a measured preview, not the primary shipped boundary. Hook mediation is where sir is strongest today; `sir run` is experimental and exists to show the below-hook layer is plausible. `sir status` reports the last contained launch mode, the host/destination policy size, and the blocked/allowed egress counts recorded by the runtime layer.
+
+## Known limitations
+
+sir is v1 and experimental. Be aware of the tradeoffs before you rely on it:
+
+- Hook-layer enforcement depends on the host agent honoring the hook response. If a tool executor ignores it, the operation proceeds.
+- MCP injection detection is heuristic (~50 regex patterns). Tainted servers require re-approval as the mitigation; the detection itself is an arms race.
+- Turn boundaries are detected via a 30-second gap heuristic and are gameable in theory.
+- Shell classification is wrapper-aware and prefix-aware but not a full POSIX parser.
+- The default lease is permissive (allows push_origin, commit, loopback, delegate) to reduce developer friction. Tighten with managed policy if you need more.
+- If `mister-core` is absent from PATH, Go falls back to a deliberately restrictive subset of the policy, enforced by parity tests to never be more permissive than Rust.
 
 ## Fast verification
 

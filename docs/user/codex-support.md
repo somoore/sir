@@ -1,9 +1,11 @@
 # Codex Support
 
-**Minimum supported version: 0.118.0** (`sir doctor` warns on older versions).
+sir — Sandbox in Reverse — is an experimental security runtime for AI coding agents. Codex has **limited support** today because the upstream `codex-cli` hook surface is Bash-only: sir can mediate shell, but native tools (notably `apply_patch` writes and MCP calls) stay outside `PreToolUse`. If your Codex workflow is mostly shell, build, test, and git, you still get meaningful enforcement. If it leans heavily on native file writes or MCP tools, prefer Claude Code or Gemini CLI.
+
+> **Note:** Minimum supported version is `0.118.0`. `sir doctor` warns on older versions.
 
 <!-- BEGIN GENERATED SUPPORT DOC -->
-## Status: limited support on codex-cli 0.118.0+ (Bash-only)
+## Status: limited support on `codex-cli` 0.118.0+ (Bash-only)
 
 | Surface | Status | Notes |
 |---|---|---|
@@ -40,11 +42,11 @@ sir writes `~/.codex/hooks.json` and may create or update `~/.codex/config.toml`
 
 Codex is useful with sir when the workflow stays on the Bash path:
 
-- external egress blocking
-- DNS and `sudo` classification
-- package-install and posture sentinel checks
-- Bash-mediated sensitive reads such as `cat .env` or `sed -n ... .env`
-- credential output scanning
+- External egress blocking.
+- DNS and `sudo` classification.
+- Package-install and posture sentinel checks.
+- Bash-mediated sensitive reads such as `cat .env` or `sed -n ... .env`.
+- Credential output scanning.
 
 If your Codex session is mostly shell, build, test, and git, you still get meaningful enforcement.
 
@@ -54,22 +56,22 @@ Codex does not currently expose a full-tool hook surface. Native non-Bash tools 
 
 The biggest consequence is the `apply_patch` gap:
 
-- sir cannot pre-gate native `apply_patch` writes
-- posture drift is caught after the fact by sentinel hashing
-- the final posture sweep runs on `Stop` because Codex has no `SessionEnd`
+- sir cannot pre-gate native `apply_patch` writes.
+- Posture drift is caught after the fact by sentinel hashing.
+- The final posture sweep runs on `Stop` because Codex has no `SessionEnd`.
 
 That is why Codex is documented as limited support, not near-parity.
 
 ## Other gaps
 
-- no MCP argument or response hooks
-- no sub-agent delegation hook
-- no config-change hook
-- no instructions-loaded hook
-- no elicitation hook
+- No MCP argument or response hooks.
+- No sub-agent delegation hook.
+- No config-change hook.
+- No instructions-loaded hook.
+- No elicitation hook.
 
 ## Troubleshooting
 
-- `sir doctor` warns about `codex_hooks`: run `codex features enable codex_hooks`.
-- `sir status` shows missing Codex hooks: rerun `sir install --agent codex`.
-- A file write was not pre-gated: confirm whether Codex used native `apply_patch` instead of a Bash write path.
+- **`sir doctor` warns about `codex_hooks`:** run `codex features enable codex_hooks`.
+- **`sir status` shows missing Codex hooks:** rerun `sir install --agent codex`.
+- **A file write was not pre-gated:** confirm whether Codex used native `apply_patch` instead of a Bash write path.

@@ -1,6 +1,6 @@
 # sir Troubleshooting
 
-Use this page when sir is blocking something and you want the shortest path to the cause and the fix.
+sir — Sandbox in Reverse — is an experimental security runtime for AI coding agents. It mediates tool calls at the hook layer and tracks secret taint via IFC, so a lot of its "blocks" are the intended design: you read a secret, and a later external sink is denied because the session is tainted. Use this page when sir is blocking something and you want the shortest path to the cause and the fix.
 
 ## First checks
 
@@ -15,13 +15,13 @@ If those are healthy, sir itself is usually fine and the block is a real policy 
 
 ## Why is sir blocking `curl`?
 
-The current turn probably approved a sensitive read such as `.env`. sir does not block the read; it blocks the later external request.
+This is the most common "false alarm" and it is actually sir working as intended. The current turn probably approved a sensitive read such as `.env`. sir asks on the read, then tracks the taint forward — the external `curl` in the same turn is blocked because the session is carrying secret data. That is IFC taint propagation, not a bug.
 
 Typical fixes:
 
-- wait for the next turn boundary
-- run `sir unlock`
-- add the host with `sir allow-host <host>` if it is intentionally trusted
+- Wait for the next turn boundary.
+- Run `sir unlock`.
+- Add the host with `sir allow-host <host>` if it is intentionally trusted.
 
 ## How do I clear the secret-session lock immediately?
 
@@ -65,8 +65,7 @@ Run:
 make verify-release RELEASE_TAG=vX.Y.Z
 ```
 
-That wrapper downloads the tagged release assets, verifies the signed
-checksums, validates provenance, and checks the signed `aibom.json`.
+That wrapper downloads the tagged release assets, verifies the signed checksums, validates provenance, and checks the signed `aibom.json`.
 
 ## Which agents are supported?
 
@@ -80,6 +79,12 @@ Claude Code has **reference support**, Gemini CLI has **near-parity support**, a
 
 ## Honest limits
 
-- sir is strongest at the hook and tool boundary, not as a full host firewall
-- Codex remains limited by the current Bash-only upstream hook surface
-- model-internal paraphrase and arbitrary child-process behavior are out of scope
+sir is v1 and experimental. Be transparent with yourself about what it does and does not cover:
+
+- sir is strongest at the hook and tool boundary. It is not a full host firewall and it cannot stop a tool executor that ignores the hook response.
+- MCP injection detection is heuristic (~50 regex patterns). It is an arms race by nature; tainted servers require re-approval as the mitigation.
+- Turn boundaries use a 30-second gap heuristic and are gameable in theory.
+- Shell classification covers the common bypass patterns (wrappers, combined flags, compound commands) but is not a full POSIX parser.
+- Codex remains limited by the current Bash-only upstream hook surface. Native `apply_patch` writes bypass `PreToolUse`.
+- Model-internal paraphrase and arbitrary child-process behavior are out of scope.
+- The default lease is intentionally permissive for developer friction; lock it down with managed policy if you need stricter defaults.
