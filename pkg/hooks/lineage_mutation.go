@@ -26,18 +26,13 @@ func propagateBashLineageMutation(projectRoot string, state *session.State, payl
 		return
 	}
 
-	normalized := normalizeCommand(command)
-	if normalized == "" {
-		normalized = command
-	}
-	if inner, ok := extractShellWrapperInner(normalized); ok {
-		normalized = inner
-	}
-
-	for _, segment := range splitCompoundCommand(normalized) {
+	for _, segment := range splitBashScriptSegments(command) {
 		segment = normalizeCommand(strings.TrimSpace(segment))
 		if segment == "" {
 			continue
+		}
+		if inner, ok := extractShellWrapperInner(segment); ok {
+			segment = inner
 		}
 		sources, dest, ok := parseBashLineageMutation(segment)
 		if !ok {
@@ -51,9 +46,78 @@ func propagateBashLineageMutation(projectRoot string, state *session.State, payl
 	}
 }
 
+func splitBashScriptSegments(cmd string) []string {
+	var segments []string
+	var current strings.Builder
+	runes := []rune(cmd)
+	i := 0
+	inSingle := false
+	inDouble := false
+
+	flush := func() {
+		segment := strings.TrimSpace(current.String())
+		if segment != "" {
+			segments = append(segments, segment)
+		}
+		current.Reset()
+	}
+
+	for i < len(runes) {
+		ch := runes[i]
+
+		if ch == '\'' && !inDouble {
+			inSingle = !inSingle
+			current.WriteRune(ch)
+			i++
+			continue
+		}
+		if ch == '"' && !inSingle {
+			inDouble = !inDouble
+			current.WriteRune(ch)
+			i++
+			continue
+		}
+		if inSingle || inDouble {
+			current.WriteRune(ch)
+			i++
+			continue
+		}
+
+		switch ch {
+		case '|':
+			flush()
+			if i+1 < len(runes) && runes[i+1] == '|' {
+				i += 2
+			} else {
+				i++
+			}
+		case '&':
+			flush()
+			if i+1 < len(runes) && runes[i+1] == '&' {
+				i += 2
+			} else {
+				i++
+			}
+		case ';', '\n', '\r':
+			flush()
+			if ch == '\r' && i+1 < len(runes) && runes[i+1] == '\n' {
+				i += 2
+			} else {
+				i++
+			}
+		default:
+			current.WriteRune(ch)
+			i++
+		}
+	}
+
+	flush()
+	return segments
+}
+
 func parseBashLineageMutation(cmd string) (sources []string, dest string, ok bool) {
 	parts := strings.Fields(strings.TrimSpace(cmd))
-	if len(parts) < 3 {
+	if len(parts) < 2 {
 		return nil, "", false
 	}
 
@@ -64,13 +128,23 @@ func parseBashLineageMutation(cmd string) (sources []string, dest string, ok boo
 	}
 
 	operands := make([]string, 0, len(parts)-1)
+	targetDir := ""
 	skipNext := false
-	for _, part := range parts[1:] {
+	for i := 1; i < len(parts); i++ {
+		part := parts[i]
 		if skipNext {
 			skipNext = false
 			continue
 		}
 		if part == "" || strings.HasPrefix(part, "-") {
+			if dir, consumed, ok := consumeTargetDirectoryFlag(parts[i:]); ok {
+				targetDir = strings.Trim(strings.TrimSpace(dir), "\"'`")
+				if targetDir == "" {
+					return nil, "", false
+				}
+				i += consumed - 1
+				continue
+			}
 			continue
 		}
 		if isShellRedirectionToken(part) {
@@ -85,10 +159,50 @@ func parseBashLineageMutation(cmd string) (sources []string, dest string, ok boo
 		}
 		operands = append(operands, operand)
 	}
+	if targetDir != "" {
+		if len(operands) == 0 {
+			return nil, "", false
+		}
+		return operands, targetDir, true
+	}
 	if len(operands) < 2 {
 		return nil, "", false
 	}
 	return operands[:len(operands)-1], operands[len(operands)-1], true
+}
+
+func consumeTargetDirectoryFlag(parts []string) (targetDir string, consumed int, ok bool) {
+	if len(parts) == 0 {
+		return "", 0, false
+	}
+	part := parts[0]
+	if part == "-t" || part == "--target-directory" {
+		if len(parts) < 2 {
+			return "", 0, false
+		}
+		return parts[1], 2, true
+	}
+	if strings.HasPrefix(part, "--target-directory=") {
+		return strings.TrimPrefix(part, "--target-directory="), 1, true
+	}
+	if strings.HasPrefix(part, "-t") && len(part) > 2 && !strings.HasPrefix(part, "--") {
+		return strings.TrimLeft(part[2:], "="), 1, true
+	}
+	if strings.HasPrefix(part, "-") && !strings.HasPrefix(part, "--") {
+		for i := 1; i < len(part); i++ {
+			if part[i] != 't' {
+				continue
+			}
+			if i+1 < len(part) {
+				return strings.TrimLeft(part[i+1:], "="), 1, true
+			}
+			if len(parts) < 2 {
+				return "", 0, false
+			}
+			return parts[1], 2, true
+		}
+	}
+	return "", 0, false
 }
 
 func resolveLineageMutationDestination(projectRoot, sourcePath, dest string) string {

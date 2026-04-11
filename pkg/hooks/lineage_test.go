@@ -214,6 +214,81 @@ func TestBashLineageMutationUsesBasenameForDirectoryDestinations(t *testing.T) {
 	}
 }
 
+func TestBashLineageMutationParsesTargetDirectoryFlags(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, dir := range []string{"archive", "renamed", "linked"} {
+		if err := os.MkdirAll(filepath.Join(projectRoot, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	seedLineageRecord(t, state, projectRoot, "report.txt", session.LineageLabel{
+		Sensitivity: "secret",
+		Trust:       "trusted",
+		Provenance:  "user",
+	})
+
+	cases := []struct {
+		name     string
+		command  string
+		destPath string
+	}{
+		{
+			name:     "cp short target-directory",
+			command:  "cp -t archive report.txt",
+			destPath: "archive/report.txt",
+		},
+		{
+			name:     "cp long target-directory equals",
+			command:  "cp --target-directory=renamed report.txt",
+			destPath: "renamed/report.txt",
+		},
+		{
+			name:     "mv long target-directory space",
+			command:  "mv --target-directory linked report.txt",
+			destPath: "linked/report.txt",
+		},
+		{
+			name:     "ln combined target-directory",
+			command:  "ln -s -t linked report.txt",
+			destPath: "linked/report.txt",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			localState := session.NewState(projectRoot)
+			if err := localState.Save(); err != nil {
+				t.Fatal(err)
+			}
+			seedLineageRecord(t, localState, projectRoot, "report.txt", session.LineageLabel{
+				Sensitivity: "secret",
+				Trust:       "trusted",
+				Provenance:  "user",
+			})
+
+			propagateBashLineageMutation(projectRoot, localState, &PostHookPayload{
+				ToolName:  "Bash",
+				ToolInput: map[string]interface{}{"command": tc.command},
+			})
+
+			labels := localState.DerivedLabelsForPath(ResolveTarget(projectRoot, tc.destPath))
+			if len(labels) != 1 {
+				t.Fatalf("%s labels = %+v, want copied source lineage", tc.destPath, labels)
+			}
+			if labels[0].Sensitivity != "secret" || labels[0].Trust != "trusted" || labels[0].Provenance != "user" {
+				t.Fatalf("%s labels = %+v, want copied source lineage", tc.destPath, labels)
+			}
+		})
+	}
+}
+
 func TestBashLineageMutationMergesExistingDestinationLineage(t *testing.T) {
 	forceLocalPolicyFallback(t)
 	projectRoot := t.TempDir()
@@ -261,6 +336,43 @@ func TestBashLineageMutationMergesExistingDestinationLineage(t *testing.T) {
 	record := state.DerivedFileLineage[ResolveTarget(projectRoot, "archive/report.txt")]
 	if len(record.EvidenceIDs) != 2 {
 		t.Fatalf("archive/report.txt evidence IDs = %v, want merged evidence IDs", record.EvidenceIDs)
+	}
+}
+
+func TestBashLineageMutationSplitsMultilineScripts(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, dir := range []string{"archive", "renamed", "linked"} {
+		if err := os.MkdirAll(filepath.Join(projectRoot, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	seedLineageRecord(t, state, projectRoot, "report.txt", session.LineageLabel{
+		Sensitivity: "secret",
+		Trust:       "trusted",
+		Provenance:  "user",
+	})
+
+	script := "cp report.txt archive/report.txt\nmv archive/report.txt renamed/report.txt\nln -s renamed/report.txt linked/report.txt"
+	propagateBashLineageMutation(projectRoot, state, &PostHookPayload{
+		ToolName:  "Bash",
+		ToolInput: map[string]interface{}{"command": script},
+	})
+
+	for _, path := range []string{"archive/report.txt", "renamed/report.txt", "linked/report.txt"} {
+		labels := state.DerivedLabelsForPath(ResolveTarget(projectRoot, path))
+		if len(labels) != 1 {
+			t.Fatalf("%s labels = %+v, want copied lineage from multiline script", path, labels)
+		}
+		if labels[0].Sensitivity != "secret" || labels[0].Trust != "trusted" || labels[0].Provenance != "user" {
+			t.Fatalf("%s labels = %+v, want copied lineage from multiline script", path, labels)
+		}
 	}
 }
 
