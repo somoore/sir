@@ -70,8 +70,9 @@ type mcpProxyOpts struct {
 // restrict file writes. Stderr is intercepted and scanned for credentials.
 func runMCPProxyDarwin(opts mcpProxyOpts) {
 	// Build sandbox profile dynamically.
-	// macOS sandbox-exec only supports "localhost" or "*" for network host filters.
-	// Per-host granularity is not possible. Two modes:
+	// macOS sandbox-exec cannot express per-host allowlists, so this profile
+	// either allows only literal loopback endpoints or broad outbound access
+	// when the developer has explicitly granted network. Two modes:
 	//   - No --allow-host: deny all outbound except localhost
 	//   - With --allow-host: allow all outbound (developer explicitly grants network)
 	var profile strings.Builder
@@ -81,7 +82,7 @@ func runMCPProxyDarwin(opts mcpProxyOpts) {
 		// Developer explicitly granted network access — allow outbound
 		// (sandbox still restricts file writes and monitors stderr)
 	} else {
-		// Strict mode: deny all outbound except localhost
+		// Strict mode: deny all outbound except localhost loopback endpoints.
 		profile.WriteString("(deny network-outbound)\n")
 		profile.WriteString("(allow network-outbound (remote unix-socket))\n")
 		profile.WriteString("(allow network-outbound (remote ip \"localhost:*\"))\n")

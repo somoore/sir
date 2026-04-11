@@ -458,6 +458,8 @@ func TestCmdStatusReportsDegradedRuntimeContainment(t *testing.T) {
 	})
 	for _, want := range []string{
 		"runtime   degraded (claude via darwin_local_proxy)",
+		"Reason: proxy-shaped enforcement: direct non-proxy sockets remain outside the exact-destination boundary on macOS",
+		"Impact: direct non-proxy sockets remain outside the exact-destination boundary on this platform",
 		"Scrubbed host-control env: SSH_AUTH_SOCK",
 		"Fix: prefer Linux exact-destination containment for the strongest below-hook boundary",
 		"Fix: relaunch from a minimal env, for example: env -u SSH_AUTH_SOCK sir run claude",
@@ -496,11 +498,14 @@ func TestCmdStatusReportsLastRuntimeReceipt(t *testing.T) {
 		AllowedHostCount:        2,
 		AllowedDestinations:     []string{"api.anthropic.com:443", "localhost:*"},
 		AllowedDestinationCount: 2,
-		AllowedEgressCount:      3,
-		BlockedEgressCount:      1,
-		LastBlockedDestination:  "api.anthropic.com:8443",
-		EndedAt:                 time.Date(2026, time.April, 10, 20, 0, 0, 0, time.UTC),
-		ExitCode:                0,
+		DegradedReasons: []string{
+			"proxy-shaped enforcement: direct non-proxy sockets remain outside the exact-destination boundary on macOS",
+		},
+		AllowedEgressCount:     3,
+		BlockedEgressCount:     1,
+		LastBlockedDestination: "api.anthropic.com:8443",
+		EndedAt:                time.Date(2026, time.April, 10, 20, 0, 0, 0, time.UTC),
+		ExitCode:               0,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -514,6 +519,7 @@ func TestCmdStatusReportsLastRuntimeReceipt(t *testing.T) {
 		"Egress events: 3 allowed, 1 blocked",
 		"Last blocked destination: api.anthropic.com:8443",
 		"Last exit: 0 at 2026-04-10T20:00:00Z",
+		"Last launch degraded: proxy-shaped enforcement: direct non-proxy sockets remain outside the exact-destination boundary on macOS",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("status output missing %q:\n%s", want, out)
