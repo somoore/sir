@@ -3,20 +3,21 @@
 > [!WARNING]
 > **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
 
-Security researcher Zack Korman published a public critique of AI coding agent observability that separates three tiers of value: **governance** (checkbox compliance — "we have logs"), **investigation** (backward-looking — "we can reconstruct what happened"), and **detection** (real-time — "we catch bad things as they happen"). His core finding is that every major AI coding agent provider stops at tier 1. Provider audit logs capture the user prompt and which tools ran, but not tool response content, not MCP arguments, and not the reasoning chain — so an investigator cannot reconstruct why an agent introduced a vulnerability, and a detector cannot catch a malicious MCP response because the response text was never logged.
+Security researcher Zack Korman has published a public critique of AI coding agent observability that separates three tiers of value: **governance** (checkbox compliance — "we have logs"), **investigation** (backward-looking — "we can reconstruct what happened"), and **detection** (real-time — "we catch bad things as they happen"). His core finding is that every major AI coding agent provider stops at tier 1. Provider audit logs capture the user prompt and which tools ran, but not tool response content, not MCP arguments, and not the reasoning chain — so an investigator cannot reconstruct why an agent introduced a vulnerability, and a detector cannot catch a malicious MCP response because the response text was never logged. See Korman's writing under [github.com/zkorman](https://github.com/zkorman) for the source of the three-tier framing used here.
 
 sir is architected for all three tiers at the tool-call boundary. This document lays out how each tier is wired, which code paths are load-bearing, and where sir intentionally does *not* try to help.
 
 ## Tier 3 — detection
 
-sir blocks or asks on every dangerous transition in the tool-call critical path. The decision is made before the tool runs, not after.
+sir enforces at two distinct moments. PreToolUse decisions run *before* the tool executes and can block or ask for approval. PostToolUse and lifecycle checks run *immediately after* the tool returns, before the agent processes the output, and can raise posture, taint the session, or deny the next call. Both moments feed the same ledger and the same alert taxonomy.
 
-- **IFC taint propagation.** A credential read in one tool call contaminates every downstream write, commit, or push attempt in the same session. The lattice that carries this is [`mister-core/src/ifc.rs`](../../mister-core/src/ifc.rs); the Go side labels targets at the tool boundary via `pkg/hooks/classify` and related helpers. A read of `.env` is not a single event — it is a session label that persists until the turn boundary or `sir unlock`.
-- **MCP argument scanning.** Before an MCP tool call ships, sir walks the arguments for credential patterns and denies the call when a match fires. The active helper is [`pkg/hooks/evaluate_preflight.go`](../../pkg/hooks/evaluate_preflight.go) and the scanner lives in [`pkg/secretscan`](../../pkg/secretscan).
-- **MCP response scanning.** Injection markers in MCP responses trigger a posture raise, a tainted-server flag, and a pending injection alert — all before the agent processes the response. See [`pkg/hooks/post_evaluate_analysis.go`](../../pkg/hooks/post_evaluate_analysis.go) for the ordering.
-- **Posture tamper.** Changes to the hook config, `CLAUDE.md`, or `.mcp.json` are detected on PostToolUse and on lifecycle events. The detection path writes a `hook_tamper` alert with an explicit `AlertType` so downstream SIEM filters do not have to parse reason strings. See [`pkg/hooks/config_change.go`](../../pkg/hooks/config_change.go) and [`pkg/hooks/post_evaluate_checks.go`](../../pkg/hooks/post_evaluate_checks.go).
+- **Per-path lineage for writes and commits.** A credential read attaches a derived-lineage label to the specific paths the agent writes, commits, or pushes from. The lattice that carries the labels is [`mister-core/src/ifc.rs`](../../mister-core/src/ifc.rs); the Go side tracks lineage in [`pkg/session/lineage.go`](../../pkg/session/lineage.go) and feeds it into policy at [`pkg/hooks/lineage.go`](../../pkg/hooks/lineage.go). A write from a secret-derived file is gated at `stage_write`, `commit`, and `push_*` — not every later write in the session.
+- **Turn-scoped secret-session egress gating.** Separately from per-path lineage, reading a credential file raises a turn-scoped `secret_session` flag that gates external network egress and push verbs for the rest of the turn. The Rust side enforces it in [`mister-core/src/policy_guards.rs`](../../mister-core/src/policy_guards.rs); the flag is cleared on the next turn boundary or by `sir unlock` (see [`pkg/session/session_turns.go`](../../pkg/session/session_turns.go)). The two mechanisms are orthogonal: lineage gates "did the data *derive* from a secret", session gates "is this turn *carrying* secret context at all".
+- **MCP argument scanning (pre-tool).** Before an MCP tool call ships, sir walks the arguments for credential patterns and denies the call when a match fires *on untrusted servers*. Servers explicitly approved via `sir trust` are exempted from the scan. The preflight helper is [`pkg/hooks/evaluate_preflight.go`](../../pkg/hooks/evaluate_preflight.go); the scanner lives in [`pkg/secretscan`](../../pkg/secretscan).
+- **MCP response scanning (post-tool, pre-processing).** Injection markers in MCP responses trigger a posture raise, a tainted-server flag, and a pending injection alert in [`pkg/hooks/post_evaluate_analysis.go`](../../pkg/hooks/post_evaluate_analysis.go). This runs after the tool returned output but before the agent acts on it — the next PreToolUse intercepts and requires developer re-approval.
+- **Posture tamper (post-tool + lifecycle).** Changes to the hook config, `CLAUDE.md`, or `.mcp.json` are detected on PostToolUse and on `ConfigChange` / lifecycle events. The detection paths write a `hook_tamper` alert with an explicit `AlertType` so downstream SIEM filters do not have to parse reason strings. See [`pkg/hooks/config_change.go`](../../pkg/hooks/config_change.go) and [`pkg/hooks/post_evaluate_checks.go`](../../pkg/hooks/post_evaluate_checks.go).
 
-All four paths fire before the action completes. A traditional sandbox cannot express any of them because the interesting condition is the agent's *intent*, not a syscall.
+A traditional sandbox cannot express any of these because the interesting condition is the agent's *intent* across a sequence of tool calls, not a single syscall.
 
 ## Tier 2 — investigation
 
@@ -32,14 +33,14 @@ Evidence logging is opt-in by design. Setting `SIR_LOG_TOOL_CONTENT=1` is a deli
 
 ## Tier 1 — governance
 
-sir emits every ledger entry to an operator-controlled SIEM collector via OTLP/HTTP JSON when `SIR_OTLP_ENDPOINT` is set. The exporter uses only the Go standard library, never calls home, and redacts every attribute before serialization. The full attribute taxonomy and the query examples live in [`docs/user/siem-integration.md`](../user/siem-integration.md). The short version:
+When `SIR_OTLP_ENDPOINT` is set, the policy-decision code paths emit their ledger entries to an operator-controlled SIEM collector via OTLP/HTTP JSON. The exporter uses only the Go standard library, never calls home, and redacts every attribute before serialization. The full attribute taxonomy and the query examples live in [`docs/user/siem-integration.md`](../user/siem-integration.md). The short version:
 
 - `sir.ledger.index` and `sir.ledger.hash` give the SIEM a chain-of-custody signal without shipping the raw ledger file.
 - `sir.alert.type` carries the alert taxonomy (`credential_in_output`, `mcp_credential`, `mcp_injection`, `hook_tamper`, `sentinel_mutation`, `config_change_posture`, `posture_change`, `posture_change_session_end`, `elicitation_harvesting`) so a governance query can count alerts by class without parsing reason strings.
 - `sir.evidence` is populated only when `SIR_LOG_TOOL_CONTENT=1` is set, and carries the double-redacted content.
 - `sir.session.secret`, `sir.posture.state`, `sir.posture.mcp_taint`, and `sir.posture.injection_alert` give the SIEM enough context to distinguish "routine allow" from "allow under tainted posture" without re-deriving state.
 
-Governance is the easy tier. sir is loud enough for any compliance dashboard without operator configuration beyond the endpoint variable.
+Not every ledger append site is wired into the exporter. Hook-lifecycle telemetry (PreToolUse / PostToolUse / hook-tamper / credential / injection / sentinel-mutation) is emitted; a few non-hook append sites — session-summary rollups, CLI allowlist changes, and some config-change bookkeeping — are recorded in the local ledger but not in the OTLP stream. When a compliance dashboard needs 100% coverage, the authoritative source is the local hash-chained ledger file, with OTLP as the live-tailing fan-out.
 
 ## Why evidence is opt-in
 
@@ -51,7 +52,7 @@ Three reasons:
 
 ## Out of scope: model-internal reasoning
 
-sir is a **boundary runtime** by design. It does not capture the agent's chain-of-thought, internal scratchpad, or reasoning tokens. The [AIBOM](../../aibom.json) is explicit about this: sir contains zero AI/ML components and never forwards tool arguments, tool results, session state, or ledger contents to any LLM or remote service.
+sir is a **boundary runtime** by design. It does not capture the agent's chain-of-thought, internal scratchpad, or reasoning tokens. The [AIBOM](../../aibom.json) declares sir as zero-AI/ML: no models, no weights, no training data, no prompts, no inference, and no data flow *into* an LLM. The optional OTLP exporter may ship redacted ledger-derived telemetry to an operator-controlled SIEM collector, but never to a model provider — that separation is what "zero-ML boundary runtime" means in the AIBOM, and the redaction guarantees in Tier 2 are what make it safe.
 
 Korman's critique covers model-internal observability separately, and the answer there is not a local runtime — it is provider telemetry, model-card transparency, and constitutional auditing. sir is orthogonal to that layer and stays that way intentionally.
 
