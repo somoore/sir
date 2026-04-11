@@ -1,0 +1,79 @@
+# GoReleaser config for sir.
+#
+# This config is a PACKAGING SANITY CHECK, not the primary release path.
+# The production release pipeline lives in .github/workflows/release.yml
+# (cosign-signed archives, CycloneDX + SPDX SBOMs, AIBOM, in-toto
+# attestations, reproducible-build verification). That pipeline is
+# explicit by design and will stay the source of truth for published
+# sir releases.
+#
+# This file + .github/workflows/packaging.yml exist so the repo has a
+# working goreleaser path that can:
+#
+#   1. Lint the packaging layout on every PR in snapshot mode
+#      (goreleaser check + goreleaser release --snapshot --skip=publish).
+#   2. Satisfy OpenSSF Scorecard's Packaging check, which specifically
+#      credits projects using goreleaser-action in a workflow.
+#   3. Act as a secondary/alternative packaging path if the primary
+#      release.yml needs to be rolled back or restructured.
+#
+# Keep this config minimal: enough to produce linux/macos archives for
+# the same targets release.yml ships, but without re-implementing the
+# signing or SBOM layers that release.yml owns.
+
+version: 2
+
+project_name: sir
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: sir
+    main: ./cmd/sir
+    binary: sir
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    # darwin/amd64 intentionally skipped — release.yml only ships
+    # darwin_arm64 binaries (and that stays the source of truth).
+    ignore:
+      - goos: darwin
+        goarch: amd64
+
+archives:
+  - id: default
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    formats:
+      - tar.gz
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+# Intentionally NOT configured here:
+#   - signs / docker_signs  — release.yml owns cosign signing
+#   - sboms                 — release.yml owns syft + in-toto attestations
+#   - release.github        — release.yml owns the published release
+#   - changelog             — sir's CHANGELOG.md is hand-maintained
+#
+# If this file ever becomes the primary release path, those sections
+# need to be filled in and the parallel machinery in release.yml
+# retired in lockstep.
