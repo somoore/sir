@@ -1,5 +1,8 @@
 # Security Engineering Core
 
+> [!WARNING]
+> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+
 This is the short version of the engineering guide. Use it when you need the rules quickly and do not want to start from the full architecture reference.
 
 sir is a "sandbox in reverse": `mister-core` (Rust) is a pure, zero-dependency policy oracle that sets the upper bound on what is allowed, and Go collects facts, classifies tool calls, and enforces session-level gates — always stricter than Rust, never looser. Everything below is in service of that split.

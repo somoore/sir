@@ -1,5 +1,8 @@
 # First 30 Minutes
 
+> [!WARNING]
+> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+
 Use this path when you are new to the repo and want the shortest safe route to a useful change.
 
 > **Note:** sir is a "sandbox in reverse" — it constrains AI coding agents from above at the hook layer rather than from below at the syscall layer, with a pure Rust policy oracle (`mister-core`) as the upper bound on what is ever allowed, and a Go layer that may only be stricter. sir is experimental. Your first change should fit that boundary: small, test-backed, and never widening what Rust denies.

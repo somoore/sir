@@ -1,5 +1,8 @@
 # Contributor Covenant Code of Conduct
 
+> [!WARNING]
+> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+
 sir is a small, experimental security project. We expect technical rigor, transparent disagreement about tradeoffs, and the same fail-closed humility we apply to the code: when in doubt, assume good faith and ask.
 
 ## Our Pledge

@@ -1,5 +1,8 @@
 # Security Policy
 
+> [!WARNING]
+> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+
 sir is an experimental security runtime for AI coding agents. It constrains agents from above at the hook layer rather than from below at the syscall layer, and its v1 tradeoffs — heuristic MCP injection detection, lexical shell classification, a 30-second turn heuristic, and a deliberately permissive default lease — are documented in [ARCHITECTURE.md](ARCHITECTURE.md) and the contributor docs. Treat sir as a defense-in-depth layer, not an absolute boundary.
 
 That said, we take vulnerabilities in sir extremely seriously. A compromised security tool is worse than no security tool, and any path that lets an attacker widen a Rust `deny` or exfiltrate state from the ledger is a hard bug, not a tradeoff.

@@ -1,5 +1,8 @@
 # Extending sir with a New Agent Adapter
 
+> [!WARNING]
+> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+
 This guide is for contributors adding a new host-agent adapter under `pkg/agent/` or extending an existing one.
 
 sir's core thesis — constrain the agent from above via hook mediation and a pure Rust policy oracle — only works if every supported host agent funnels its tool calls into the same normalized shape. Adapters are the translation layer that makes that possible.

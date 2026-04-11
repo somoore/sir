@@ -1,5 +1,8 @@
 # Documentation Hub
 
+> [!WARNING]
+> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+
 sir — Sandbox in Reverse — is an experimental security runtime for AI coding agents. It mediates agent tool calls at the hook layer, tracks secret taint through IFC, and writes every decision to a hash-chained ledger. This repo keeps one small active docs surface. Start with the shortest path that matches your job:
 
 - Thesis, install, and first-run walkthrough: [README.md](../README.md)

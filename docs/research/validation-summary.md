@@ -1,5 +1,8 @@
 # Validation Summary
 
+> [!WARNING]
+> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+
 This is the short production-facing summary of the evidence behind sir's current claims. sir is an experimental security runtime for AI coding agents: it intercepts tool calls at the hook layer, routes them through a Rust policy oracle, and tracks information flow across a session so that a secret read in turn N can gate an egress attempt in turn N+1.
 
 This page is the evidence view behind those claims. The detailed exploratory writeups and historical findings packs were intentionally removed from the active repo surface to keep the release docs tight; they remain recoverable in git history when needed.

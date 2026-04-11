@@ -1,5 +1,8 @@
 # Codex Support
 
+> [!WARNING]
+> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+
 sir — Sandbox in Reverse — is an experimental security runtime for AI coding agents. Codex has **limited support** today because the upstream `codex-cli` hook surface is Bash-only: sir can mediate shell, but native tools (notably `apply_patch` writes and MCP calls) stay outside `PreToolUse`. If your Codex workflow is mostly shell, build, test, and git, you still get meaningful enforcement. If it leans heavily on native file writes or MCP tools, prefer Claude Code or Gemini CLI.
 
 > **Note:** Minimum supported version is `0.118.0`. `sir doctor` warns on older versions.

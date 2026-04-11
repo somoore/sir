@@ -1,5 +1,8 @@
 # sir — Sandbox in Reverse
 
+> [!WARNING]
+> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+
 > A local, hook-mediated security runtime for AI coding agents. Quiet on normal coding. Loud on dangerous transitions.
 
 [![CI](https://github.com/somoore/sir/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/somoore/sir/actions/workflows/ci.yml)
