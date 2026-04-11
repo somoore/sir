@@ -3,6 +3,7 @@ package hooks
 import (
 	"testing"
 
+	hookclassify "github.com/somoore/sir/pkg/hooks/classify"
 	"github.com/somoore/sir/pkg/lease"
 )
 
@@ -131,7 +132,7 @@ func TestExtractNetworkDest(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.cmd, func(t *testing.T) {
-			dest := extractNetworkDest(tc.cmd)
+			dest := hookclassify.ExtractNetworkDest(tc.cmd)
 			if dest != tc.expected {
 				t.Errorf("extractNetworkDest(%q) = %q, want %q", tc.cmd, dest, tc.expected)
 			}
@@ -261,7 +262,7 @@ func TestIsInterpreterNetworkCommand(t *testing.T) {
 
 	for _, tc := range should {
 		t.Run("blocks: "+tc.name, func(t *testing.T) {
-			if !isInterpreterNetworkCommand(tc.cmd) {
+			if !hookclassify.IsInterpreterNetworkCommand(tc.cmd) {
 				t.Errorf("expected detection for: %s", tc.cmd)
 			}
 		})
@@ -269,7 +270,7 @@ func TestIsInterpreterNetworkCommand(t *testing.T) {
 
 	for _, tc := range shouldNot {
 		t.Run("allows: "+tc.name, func(t *testing.T) {
-			if isInterpreterNetworkCommand(tc.cmd) {
+			if hookclassify.IsInterpreterNetworkCommand(tc.cmd) {
 				t.Errorf("unexpected detection for: %s", tc.cmd)
 			}
 		})
@@ -330,7 +331,7 @@ func TestNormalizeCommand(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.input, func(t *testing.T) {
-			got := normalizeCommand(tc.input)
+			got := hookclassify.NormalizeCommand(tc.input)
 			if got != tc.expected {
 				t.Errorf("normalizeCommand(%q) = %q, want %q", tc.input, got, tc.expected)
 			}
@@ -434,7 +435,7 @@ func TestNormalizeCommandInlineVars(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.input, func(t *testing.T) {
-			got := normalizeCommand(tc.input)
+			got := hookclassify.NormalizeCommand(tc.input)
 			if got != tc.expected {
 				t.Errorf("normalizeCommand(%q) = %q, want %q", tc.input, got, tc.expected)
 			}

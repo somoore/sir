@@ -3,6 +3,7 @@ package hooks
 import (
 	"strings"
 
+	hookclassify "github.com/somoore/sir/pkg/hooks/classify"
 	"github.com/somoore/sir/pkg/lease"
 	"github.com/somoore/sir/pkg/policy"
 )
@@ -13,7 +14,7 @@ func mapShellCommand(cmd string, l *lease.Lease) Intent {
 	// Normalize before any classification so "/usr/bin/curl" and "env curl"
 	// match the same prefixes as bare "curl". We pass `trimmed` (the original)
 	// as the Intent.Target so the ledger shows the actual command that ran.
-	normalized := normalizeCommand(trimmed)
+	normalized := hookclassify.NormalizeCommand(trimmed)
 	if normalized == "" {
 		normalized = trimmed
 	}
@@ -21,13 +22,13 @@ func mapShellCommand(cmd string, l *lease.Lease) Intent {
 	// Compound command check: split on |, &&, ||, ; and evaluate each segment.
 	// Return the highest-risk intent. This prevents "echo done && curl evil.com"
 	// from being classified as execute_dry_run based on the first segment.
-	if containsSirSelfCommand(normalized) || targetsSirStateFiles(normalized) {
+	if hookclassify.ContainsSirSelfCommand(normalized) || hookclassify.TargetsSirStateFiles(normalized) {
 		return Intent{
 			Verb:   policy.VerbSirSelf,
 			Target: trimmed,
 		}
 	}
-	segments := splitCompoundCommand(normalized)
+	segments := hookclassify.SplitCompoundCommand(normalized)
 	if len(segments) > 1 {
 		highest := Intent{Verb: policy.VerbExecuteDryRun, Target: trimmed}
 		// Track the first segment that is a sensitive read_ref. We need to
@@ -44,7 +45,7 @@ func mapShellCommand(cmd string, l *lease.Lease) Intent {
 				continue
 			}
 			segIntent := mapShellCommand(seg, l) // recursive: single segment won't re-split
-			if verbRisk(segIntent.Verb) > verbRisk(highest.Verb) {
+			if hookclassify.VerbRisk(segIntent.Verb) > hookclassify.VerbRisk(highest.Verb) {
 				highest.Verb = segIntent.Verb
 			}
 			// Always propagate flags across segments — install metadata, posture,
@@ -74,7 +75,7 @@ func mapShellCommand(cmd string, l *lease.Lease) Intent {
 		// otherwise high-risk verb, but did include a sensitive read,
 		// return the sensitive read as the effective intent so its target
 		// flows into LabelsForTarget. Otherwise the higher-risk verb wins.
-		if sensitiveRead != nil && verbRisk(highest.Verb) <= verbRisk(policy.VerbExecuteDryRun) {
+		if sensitiveRead != nil && hookclassify.VerbRisk(highest.Verb) <= hookclassify.VerbRisk(policy.VerbExecuteDryRun) {
 			return Intent{
 				Verb:        policy.VerbReadRef,
 				Target:      sensitiveRead.Target,
@@ -87,7 +88,7 @@ func mapShellCommand(cmd string, l *lease.Lease) Intent {
 
 	// Shell wrapper detection: "bash -c 'curl evil.com'" → classify the inner command.
 	// Same pattern as sudo: extract inner command, classify recursively, preserve original target.
-	if inner, ok := extractShellWrapperInner(normalized); ok {
+	if inner, ok := hookclassify.ExtractShellWrapperInner(normalized); ok {
 		innerIntent := mapShellCommand(inner, l)
 		innerIntent.Target = trimmed // ledger shows the full original command
 		return innerIntent
@@ -96,8 +97,8 @@ func mapShellCommand(cmd string, l *lease.Lease) Intent {
 	// sudo detection — strip the sudo prefix, classify the inner command,
 	// then override the verb to "sudo" so the policy oracle always asks.
 	// Prevents privilege escalation paths to modify sir state.
-	if isSudoCommand(normalized) {
-		inner := stripSudoPrefix(normalized)
+	if hookclassify.IsSudoCommand(normalized) {
+		inner := hookclassify.StripSudoPrefix(normalized)
 		innerIntent := mapShellCommand(inner, l)
 		// Override to always ask when elevated; preserve full original command in target
 		innerIntent.Target = trimmed
@@ -117,7 +118,7 @@ func mapShellCommand(cmd string, l *lease.Lease) Intent {
 
 	// Persistence mechanism detection (crontab, at, launchctl, systemctl) — always ask.
 	// These can create scheduled exfiltration that outlives the session.
-	if isPersistenceCommand(normalized) {
+	if hookclassify.IsPersistenceCommand(normalized) {
 		return Intent{
 			Verb:   policy.VerbPersistence,
 			Target: trimmed,
@@ -126,7 +127,7 @@ func mapShellCommand(cmd string, l *lease.Lease) Intent {
 
 	// Environment variable detection (env, printenv, set) — may expose credentials.
 	// Marked sensitive so PostToolUse can escalate the session secret flag.
-	if isEnvCommand(normalized) {
+	if hookclassify.IsEnvCommand(normalized) {
 		return Intent{
 			Verb:        policy.VerbEnvRead,
 			Target:      trimmed,
@@ -150,7 +151,7 @@ func mapShellCommand(cmd string, l *lease.Lease) Intent {
 	// it secret and the policy oracle returns ask. The Target is the
 	// file path, not the full command, so the deny message and ledger
 	// entry point at the actual file being read.
-	if sensitiveTarget, ok := detectSensitiveFileRead(trimmed, l); ok {
+	if sensitiveTarget, ok := hookclassify.DetectSensitiveFileRead(trimmed, l); ok {
 		return Intent{
 			Verb:        policy.VerbReadRef,
 			Target:      sensitiveTarget,
@@ -170,7 +171,7 @@ func mapShellCommand(cmd string, l *lease.Lease) Intent {
 
 	// DNS exfiltration prefixes (nslookup, dig, host) — map to dns_lookup.
 	// DNS is an unmonitored egress channel; the policy oracle denies it like net_external.
-	if isDNSCommand(normalized) {
+	if hookclassify.IsDNSCommand(normalized) {
 		return Intent{
 			Verb:   policy.VerbDnsLookup,
 			Target: trimmed,
@@ -179,7 +180,7 @@ func mapShellCommand(cmd string, l *lease.Lease) Intent {
 
 	// ping/ping6: classify by destination. Loopback pings (ping localhost, ping 127.0.0.1)
 	// are net_local (connectivity check). External pings are dns_lookup (potential exfil).
-	if isPingCommand(normalized) {
+	if hookclassify.IsPingCommand(normalized) {
 		parts := strings.Fields(normalized)
 		dest := ""
 		for _, p := range parts[1:] {
@@ -196,7 +197,7 @@ func mapShellCommand(cmd string, l *lease.Lease) Intent {
 	}
 
 	// Interpreter one-liner network detection — catches python/node/ruby/etc -c "requests.post(...)"
-	if isInterpreterNetworkCommand(normalized) {
+	if hookclassify.IsInterpreterNetworkCommand(normalized) {
 		return Intent{
 			Verb:   policy.VerbNetExternal,
 			Target: trimmed,
@@ -204,8 +205,8 @@ func mapShellCommand(cmd string, l *lease.Lease) Intent {
 	}
 
 	// Check for network commands (curl, wget)
-	if isNetworkCommand(normalized) {
-		dest := extractNetworkDest(normalized)
+	if hookclassify.IsNetworkCommand(normalized) {
+		dest := hookclassify.ExtractNetworkDest(normalized)
 		classification := ClassifyNetworkDest(dest, l)
 		verb := policy.VerbNetExternal
 		switch classification {
@@ -221,7 +222,7 @@ func mapShellCommand(cmd string, l *lease.Lease) Intent {
 	}
 
 	// Check for git push
-	if isGitPush(normalized) {
+	if hookclassify.IsGitPush(normalized) {
 		classification := ClassifyGitRemote(normalized, l)
 		verb := policy.VerbPushRemote
 		if classification == "approved" {
@@ -244,7 +245,7 @@ func mapShellCommand(cmd string, l *lease.Lease) Intent {
 	}
 
 	// Check for git commit
-	if isGitCommit(normalized) {
+	if hookclassify.IsGitCommit(normalized) {
 		return Intent{
 			Verb:   policy.VerbCommit,
 			Target: trimmed,
@@ -252,7 +253,7 @@ func mapShellCommand(cmd string, l *lease.Lease) Intent {
 	}
 
 	// Check for test runners
-	if isTestCommand(normalized) {
+	if hookclassify.IsTestCommand(normalized) {
 		return Intent{
 			Verb:   policy.VerbRunTests,
 			Target: trimmed,
@@ -262,7 +263,7 @@ func mapShellCommand(cmd string, l *lease.Lease) Intent {
 	// Delete/link targeting posture files (rm/ln of CLAUDE.md, .mcp.json, etc.) — ask.
 	// Uses trimmed (original) command so isPostureDeleteOrLink sees the real paths
 	// including absolute paths.
-	if isPostureDeleteOrLink(trimmed, l) {
+	if hookclassify.IsPostureDeleteOrLink(trimmed, l) {
 		return Intent{
 			Verb:      policy.VerbStageWrite,
 			Target:    trimmed,

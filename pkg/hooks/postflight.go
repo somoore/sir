@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	hookclassify "github.com/somoore/sir/pkg/hooks/classify"
 	internalpostflight "github.com/somoore/sir/pkg/hooks/internal/postflight"
 	"github.com/somoore/sir/pkg/lease"
 	"github.com/somoore/sir/pkg/ledger"
@@ -14,7 +15,7 @@ func recordSensitiveTargetFromPostPayload(payload *PostHookPayload, l *lease.Lea
 	return internalpostflight.SensitiveTarget(
 		payload,
 		func(target string) bool { return IsSensitivePathResolvedIn(projectRoot, target, l) },
-		isEnvCommand,
+		hookclassify.IsEnvCommand,
 	)
 }
 
