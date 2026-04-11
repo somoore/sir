@@ -23,6 +23,19 @@ func ValidateSupportContract(spec *AgentSpec) error {
 		problems = append(problems, fmt.Sprintf("supported wire events drift: got %v want %v", spec.SupportedWireEvents, expectedWireEvents))
 	}
 
+	if spec.Capabilities.SupportTier != SupportTierReference && spec.MinVersion == "" {
+		problems = append(problems, "support tier requires a minimum version for generated prose")
+	}
+
+	if spec.Capabilities.ToolCoverage == ToolCoverageBashOnly {
+		if spec.RequiredFeatureFlag == "" {
+			problems = append(problems, "bash-only support requires a feature flag for generated prose")
+		}
+		if spec.FeatureFlagEnableCommand == "" {
+			problems = append(problems, "bash-only support requires a feature-flag enable command for generated prose")
+		}
+	}
+
 	for _, registration := range spec.HookRegistrations {
 		if !spec.Capabilities.SupportsEvent(registration.Event) {
 			problems = append(problems, fmt.Sprintf("hook registration %q is not declared supported in capabilities", registration.Event))
