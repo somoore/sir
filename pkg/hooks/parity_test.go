@@ -17,10 +17,13 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/somoore/sir/pkg/agent"
 	"github.com/somoore/sir/pkg/lease"
+	"github.com/somoore/sir/pkg/policy"
 	"github.com/somoore/sir/pkg/session"
 )
 
@@ -157,5 +160,467 @@ func TestDelegationParity_SubagentStart_SecretSession(t *testing.T) {
 		t.Errorf("SubagentStart + secret session: decision = %q, want %q (Rust returns deny; Go must never be more permissive). reason: %s",
 			resp.HookSpecificOutput.PermissionDecision, "deny",
 			resp.HookSpecificOutput.PermissionDecisionReason)
+	}
+}
+
+func TestDelegationParity_PreToolUse_RiskySessionStates(t *testing.T) {
+	cases := []struct {
+		name            string
+		mutate          func(*session.State)
+		wantWarningText bool
+	}{
+		{
+			name: "tainted mcp server",
+			mutate: func(state *session.State) {
+				state.AddTaintedMCPServer("jira")
+			},
+		},
+		{
+			name: "elevated posture",
+			mutate: func(state *session.State) {
+				state.RaisePosture(policy.PostureStateElevated)
+			},
+		},
+		{
+			name: "pending injection alert",
+			mutate: func(state *session.State) {
+				state.SetPendingInjectionAlert("pending injection alert")
+			},
+			wantWarningText: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			projectRoot := t.TempDir()
+			l := lease.DefaultLease()
+
+			stateDir := session.StateDir(projectRoot)
+			if err := os.MkdirAll(stateDir, 0o700); err != nil {
+				t.Fatalf("mkdir state: %v", err)
+			}
+			if err := l.Save(stateDir + "/lease.json"); err != nil {
+				t.Fatalf("save lease: %v", err)
+			}
+
+			state := session.NewState(projectRoot)
+			if err := state.Save(); err != nil {
+				t.Fatalf("save initial session: %v", err)
+			}
+			tc.mutate(state)
+			if err := state.Save(); err != nil {
+				t.Fatalf("save mutated session: %v", err)
+			}
+
+			resp, err := evaluatePayload(&HookPayload{
+				ToolName:  "Agent",
+				ToolInput: map[string]interface{}{"task": "investigate repository"},
+				CWD:       projectRoot,
+			}, l, state, projectRoot)
+			if err != nil {
+				t.Fatalf("evaluatePayload: %v", err)
+			}
+			if resp.Decision == "allow" {
+				t.Fatalf("Agent delegation after %s: expected blocked or gated decision, got allow (%s)", tc.name, resp.Reason)
+			}
+			if tc.wantWarningText {
+				if resp.Decision != policy.VerdictAsk {
+					t.Fatalf("Agent delegation after %s: expected ask with warning, got %q (%s)", tc.name, resp.Decision, resp.Reason)
+				}
+				if !strings.Contains(resp.Reason, "suspicious patterns") || !strings.Contains(resp.Reason, "pending injection alert") {
+					t.Fatalf("Agent delegation after %s: expected suspicious-output warning in reason, got %q", tc.name, resp.Reason)
+				}
+			}
+		})
+	}
+}
+
+func TestDelegationParity_PreToolUse_LeaseDisallowsDelegationPreemptsRiskyAsk(t *testing.T) {
+	projectRoot := t.TempDir()
+	l := lease.DefaultLease()
+	l.AllowDelegation = false
+
+	stateDir := session.StateDir(projectRoot)
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatalf("mkdir state: %v", err)
+	}
+	if err := l.Save(stateDir + "/lease.json"); err != nil {
+		t.Fatalf("save lease: %v", err)
+	}
+
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatalf("save initial session: %v", err)
+	}
+	state.AddTaintedMCPServer("jira")
+	state.RaisePosture(policy.PostureStateCritical)
+	if err := state.Save(); err != nil {
+		t.Fatalf("save risky session: %v", err)
+	}
+
+	resp, err := evaluatePayload(&HookPayload{
+		ToolName:  "Agent",
+		ToolInput: map[string]interface{}{"task": "delegate work to a sub-agent"},
+		CWD:       projectRoot,
+	}, l, state, projectRoot)
+	if err != nil {
+		t.Fatalf("evaluatePayload: %v", err)
+	}
+	if resp.Decision != policy.VerdictDeny {
+		t.Fatalf("Agent delegation with allow_delegation=false and risky state = %q, want %q (reason=%s)", resp.Decision, policy.VerdictDeny, resp.Reason)
+	}
+}
+
+func TestDelegationParity_PreToolUse_LeaseDisallowPersistsTurnAdvance(t *testing.T) {
+	projectRoot := t.TempDir()
+	l := lease.DefaultLease()
+	l.AllowDelegation = false
+
+	stateDir := session.StateDir(projectRoot)
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatalf("mkdir state: %v", err)
+	}
+	if err := l.Save(stateDir + "/lease.json"); err != nil {
+		t.Fatalf("save lease: %v", err)
+	}
+
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatalf("save initial session: %v", err)
+	}
+	before := time.Now().Add(-2 * session.TurnGapThreshold)
+	state.LastToolCallAt = before
+	if err := state.Save(); err != nil {
+		t.Fatalf("save stale session: %v", err)
+	}
+
+	resp, err := evaluatePayload(&HookPayload{
+		ToolName:  "Agent",
+		ToolInput: map[string]interface{}{"task": "delegate work to a sub-agent"},
+		CWD:       projectRoot,
+	}, l, state, projectRoot)
+	if err != nil {
+		t.Fatalf("evaluatePayload: %v", err)
+	}
+	if resp.Decision != policy.VerdictDeny {
+		t.Fatalf("Agent delegation with allow_delegation=false = %q, want %q (reason=%s)", resp.Decision, policy.VerdictDeny, resp.Reason)
+	}
+
+	loaded, err := session.Load(projectRoot)
+	if err != nil {
+		t.Fatalf("reload session: %v", err)
+	}
+	if loaded.TurnCounter != 1 {
+		t.Fatalf("TurnCounter = %d, want 1 after persisted turn advance", loaded.TurnCounter)
+	}
+	if !loaded.LastToolCallAt.After(before) {
+		t.Fatalf("LastToolCallAt = %v, want persisted update after %v", loaded.LastToolCallAt, before)
+	}
+}
+
+func TestDelegationParity_PreToolUse_RiskyStatePreservesSessionIntegrity(t *testing.T) {
+	projectRoot := t.TempDir()
+	l := lease.DefaultLease()
+
+	stateDir := session.StateDir(projectRoot)
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatalf("mkdir state: %v", err)
+	}
+	if err := l.Save(stateDir + "/lease.json"); err != nil {
+		t.Fatalf("save lease: %v", err)
+	}
+
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatalf("save initial session: %v", err)
+	}
+	state.AddTaintedMCPServer("jira")
+	if err := state.Save(); err != nil {
+		t.Fatalf("save tainted session: %v", err)
+	}
+
+	resp, err := evaluatePayload(&HookPayload{
+		ToolName:  "Agent",
+		ToolInput: map[string]interface{}{"task": "investigate repository"},
+		CWD:       projectRoot,
+	}, l, state, projectRoot)
+	if err != nil {
+		t.Fatalf("evaluatePayload risky delegation: %v", err)
+	}
+	if resp.Decision != policy.VerdictAsk {
+		t.Fatalf("delegation decision = %q, want ask (reason=%s)", resp.Decision, resp.Reason)
+	}
+	if !session.VerifySessionIntegrity(state) {
+		t.Fatal("delegation ask path should preserve session integrity for follow-up calls")
+	}
+}
+
+func TestDelegationParity_PreToolUse_PendingInjectionWarningSurvivesHardDeny(t *testing.T) {
+	projectRoot := t.TempDir()
+	l := lease.DefaultLease()
+	l.AllowDelegation = false
+
+	stateDir := session.StateDir(projectRoot)
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatalf("mkdir state: %v", err)
+	}
+	if err := l.Save(stateDir + "/lease.json"); err != nil {
+		t.Fatalf("save lease: %v", err)
+	}
+
+	state := session.NewState(projectRoot)
+	state.SetPendingInjectionAlert("pending injection alert")
+	if err := state.Save(); err != nil {
+		t.Fatalf("save initial session: %v", err)
+	}
+
+	resp, err := evaluatePayload(&HookPayload{
+		ToolName:  "Agent",
+		ToolInput: map[string]interface{}{"task": "investigate repository"},
+		CWD:       projectRoot,
+	}, l, state, projectRoot)
+	if err != nil {
+		t.Fatalf("evaluatePayload pending-alert deny: %v", err)
+	}
+	if resp.Decision != policy.VerdictDeny {
+		t.Fatalf("delegation decision = %q, want deny (reason=%s)", resp.Decision, resp.Reason)
+	}
+	if !strings.Contains(resp.Reason, "suspicious patterns") || !strings.Contains(resp.Reason, "pending injection alert") {
+		t.Fatalf("deny reason = %q, want suspicious-output warning with detail", resp.Reason)
+	}
+}
+
+func TestDelegationParity_PreToolUse_RecentlyReadUntrustedDoesNotForceApproval(t *testing.T) {
+	state := session.NewState(t.TempDir())
+	state.MarkUntrustedRead()
+
+	if delegationRequiresApproval(state) {
+		t.Fatal("RecentlyReadUntrusted alone should not force delegation approval; only the taint/elevated/pending-alert rules should gate")
+	}
+}
+
+func TestDelegationParity_SubagentStart_RiskySessionStates(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*session.State)
+	}{
+		{
+			name: "tainted mcp server",
+			mutate: func(state *session.State) {
+				state.AddTaintedMCPServer("jira")
+			},
+		},
+		{
+			name: "elevated posture",
+			mutate: func(state *session.State) {
+				state.RaisePosture(policy.PostureStateElevated)
+			},
+		},
+		{
+			name: "pending injection alert",
+			mutate: func(state *session.State) {
+				state.SetPendingInjectionAlert("pending injection alert")
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			projectRoot := t.TempDir()
+			l := lease.DefaultLease()
+
+			stateDir := session.StateDir(projectRoot)
+			if err := os.MkdirAll(stateDir, 0o700); err != nil {
+				t.Fatalf("mkdir state: %v", err)
+			}
+			if err := l.Save(stateDir + "/lease.json"); err != nil {
+				t.Fatalf("save lease: %v", err)
+			}
+
+			state := session.NewState(projectRoot)
+			if err := state.Save(); err != nil {
+				t.Fatalf("save initial session: %v", err)
+			}
+			tc.mutate(state)
+			if err := state.Save(); err != nil {
+				t.Fatalf("save mutated session: %v", err)
+			}
+
+			payloadJSON, err := json.Marshal(SubagentPayload{
+				HookEventName: "SubagentStart",
+				AgentName:     "general-purpose",
+				Tools:         []string{"Read"},
+			})
+			if err != nil {
+				t.Fatalf("marshal payload: %v", err)
+			}
+
+			origStdin, origStdout := os.Stdin, os.Stdout
+			defer func() {
+				os.Stdin = origStdin
+				os.Stdout = origStdout
+			}()
+
+			inR, inW, err := os.Pipe()
+			if err != nil {
+				t.Fatalf("pipe in: %v", err)
+			}
+			outR, outW, err := os.Pipe()
+			if err != nil {
+				t.Fatalf("pipe out: %v", err)
+			}
+			os.Stdin = inR
+			os.Stdout = outW
+
+			if _, err := inW.Write(payloadJSON); err != nil {
+				t.Fatalf("write payload: %v", err)
+			}
+			inW.Close()
+
+			done := make(chan error, 1)
+			go func() {
+				done <- EvaluateSubagentStart(projectRoot, &agent.ClaudeAgent{})
+			}()
+
+			if err := <-done; err != nil {
+				outW.Close()
+				t.Fatalf("EvaluateSubagentStart: %v", err)
+			}
+			outW.Close()
+
+			var buf bytes.Buffer
+			if _, err := io.Copy(&buf, outR); err != nil {
+				t.Fatalf("read stdout: %v", err)
+			}
+			if buf.Len() == 0 {
+				t.Fatalf("SubagentStart after %s: expected blocked or gated response, got no output", tc.name)
+			}
+
+			var resp struct {
+				HookSpecificOutput struct {
+					PermissionDecision string `json:"permissionDecision"`
+				} `json:"hookSpecificOutput"`
+			}
+			if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+				t.Fatalf("unmarshal response: %v\nraw: %s", err, buf.String())
+			}
+			if resp.HookSpecificOutput.PermissionDecision == "allow" {
+				t.Fatalf("SubagentStart after %s: expected blocked or gated decision, got allow", tc.name)
+			}
+		})
+	}
+}
+
+func TestDelegationParity_SubagentStart_RecentlyReadUntrustedPreservesReadOnlyDelegation(t *testing.T) {
+	cases := []struct {
+		name  string
+		tools []string
+		want  string
+	}{
+		{
+			name:  "read-only subagent",
+			tools: []string{"Read"},
+			want:  "",
+		},
+		{
+			name:  "dangerous-tools subagent",
+			tools: []string{"Read", "Bash"},
+			want:  "ask",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			projectRoot := t.TempDir()
+			l := lease.DefaultLease()
+
+			stateDir := session.StateDir(projectRoot)
+			if err := os.MkdirAll(stateDir, 0o700); err != nil {
+				t.Fatalf("mkdir state: %v", err)
+			}
+			if err := l.Save(stateDir + "/lease.json"); err != nil {
+				t.Fatalf("save lease: %v", err)
+			}
+
+			state := session.NewState(projectRoot)
+			if err := state.Save(); err != nil {
+				t.Fatalf("save initial session: %v", err)
+			}
+			state.PostureHashes = HashSentinelFiles(projectRoot, l.PostureFiles)
+			state.MarkUntrustedRead()
+			if err := state.Save(); err != nil {
+				t.Fatalf("save untrusted session: %v", err)
+			}
+
+			payloadJSON, err := json.Marshal(SubagentPayload{
+				HookEventName: "SubagentStart",
+				AgentName:     "general-purpose",
+				Tools:         tc.tools,
+			})
+			if err != nil {
+				t.Fatalf("marshal payload: %v", err)
+			}
+
+			origStdin, origStdout := os.Stdin, os.Stdout
+			defer func() {
+				os.Stdin = origStdin
+				os.Stdout = origStdout
+			}()
+
+			inR, inW, err := os.Pipe()
+			if err != nil {
+				t.Fatalf("pipe in: %v", err)
+			}
+			outR, outW, err := os.Pipe()
+			if err != nil {
+				t.Fatalf("pipe out: %v", err)
+			}
+			os.Stdin = inR
+			os.Stdout = outW
+
+			if _, err := inW.Write(payloadJSON); err != nil {
+				t.Fatalf("write payload: %v", err)
+			}
+			inW.Close()
+
+			done := make(chan error, 1)
+			go func() {
+				done <- EvaluateSubagentStart(projectRoot, &agent.ClaudeAgent{})
+			}()
+
+			if err := <-done; err != nil {
+				outW.Close()
+				t.Fatalf("EvaluateSubagentStart: %v", err)
+			}
+			outW.Close()
+
+			var buf bytes.Buffer
+			if _, err := io.Copy(&buf, outR); err != nil {
+				t.Fatalf("read stdout: %v", err)
+			}
+
+			if tc.want == "" {
+				if buf.Len() != 0 {
+					t.Fatalf("SubagentStart after untrusted read with %v: expected allow/no output, got %s", tc.tools, buf.String())
+				}
+				return
+			}
+
+			if buf.Len() == 0 {
+				t.Fatalf("SubagentStart after untrusted read with %v: expected %s response, got no output", tc.tools, tc.want)
+			}
+
+			var resp struct {
+				HookSpecificOutput struct {
+					PermissionDecision string `json:"permissionDecision"`
+				} `json:"hookSpecificOutput"`
+			}
+			if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+				t.Fatalf("unmarshal response: %v\nraw: %s", err, buf.String())
+			}
+			if resp.HookSpecificOutput.PermissionDecision != tc.want {
+				t.Fatalf("SubagentStart after untrusted read with %v: decision = %q, want %q", tc.tools, resp.HookSpecificOutput.PermissionDecision, tc.want)
+			}
+		})
 	}
 }
