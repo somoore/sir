@@ -159,11 +159,13 @@ GO_MIN_VERSION="1.22"
 # Each file is one line: "<hex-sha256>  rustup-init".
 #
 # To refresh on a rustup version bump:
-#   for t in x86_64-unknown-linux-gnu x86_64-apple-darwin aarch64-apple-darwin; do
+#   for t in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu \
+#            x86_64-apple-darwin aarch64-apple-darwin; do
 #     curl -fsSL "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/$t/rustup-init.sha256"
 #   done
 RUSTUP_VERSION="1.28.2"
 RUSTUP_INIT_SHA256_LINUX_X86_64="20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c"
+RUSTUP_INIT_SHA256_LINUX_ARM64="e3853c5a252fca15252d07cb23a1bdd9377a8c6f3efa01531109281ae47f841c"
 RUSTUP_INIT_SHA256_DARWIN_X86_64="9c331076f62b4d0edeae63d9d1c9442d5fe39b37b05025ec8d41c5ed35486496"
 RUSTUP_INIT_SHA256_DARWIN_ARM64="20ef5516c31b1ac2290084199ba77dbbcaa1406c45c1d978ca68558ef5964ef5"
 
@@ -203,6 +205,10 @@ if ! command -v cargo &> /dev/null; then
             RUSTUP_TARGET="x86_64-unknown-linux-gnu"
             RUSTUP_EXPECTED_SHA256="$RUSTUP_INIT_SHA256_LINUX_X86_64"
             ;;
+        Linux-aarch64 | Linux-arm64)
+            RUSTUP_TARGET="aarch64-unknown-linux-gnu"
+            RUSTUP_EXPECTED_SHA256="$RUSTUP_INIT_SHA256_LINUX_ARM64"
+            ;;
         Darwin-x86_64)
             RUSTUP_TARGET="x86_64-apple-darwin"
             RUSTUP_EXPECTED_SHA256="$RUSTUP_INIT_SHA256_DARWIN_X86_64"
@@ -213,7 +219,7 @@ if ! command -v cargo &> /dev/null; then
             ;;
         *)
             error "Unsupported platform for pinned rustup-init: ${RUSTUP_OS}-${RUSTUP_ARCH}.
-    Supported: Linux x86_64, macOS x86_64, macOS arm64.
+    Supported: Linux x86_64, Linux arm64, macOS x86_64, macOS arm64.
     For other platforms, install Rust $RUST_VERSION manually from
     https://rust-lang.org/tools/install and re-run this script."
             ;;
