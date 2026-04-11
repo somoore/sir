@@ -1,5 +1,8 @@
 # sir Supply Chain Policy
 
+> [!WARNING]
+> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+
 sir is a security runtime for AI coding agents. Its whole value proposition — a small, auditable policy oracle that constrains agents from above — collapses the moment the supply chain grows a soft spot. A dependency added in a hurry, an unpinned action, or a mutable release tag would give an attacker a shorter path to sir than the attacks sir is trying to stop.
 
 The supply chain has to stay boring, auditable, and hard to widen by accident. The zero-dependency Rust core and the standard-library-only Go CLI are not aesthetic choices; they are the reason the trust boundary is reviewable at all.

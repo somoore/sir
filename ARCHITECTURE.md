@@ -1,5 +1,8 @@
 # sir Architecture
 
+> [!WARNING]
+> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+
 sir is experimental. This document describes the shipped v1 design and is deliberately transparent about where the trust boundary is heuristic rather than absolute.
 
 > **Tip:** If you want the shortest path first, read [docs/contributor/core-mental-model.md](docs/contributor/core-mental-model.md).

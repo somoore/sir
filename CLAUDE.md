@@ -1,5 +1,8 @@
 # sir — Sandbox in Reverse
 
+> [!WARNING]
+> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+
 Security runtime for AI coding agents. Go CLI, Rust policy oracle, quiet on normal coding, loud on dangerous transitions.
 
 ## Core model

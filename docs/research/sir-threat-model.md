@@ -1,5 +1,8 @@
 # sir Threat Model
 
+> [!WARNING]
+> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+
 sir ("Sandbox in Reverse") is an experimental security runtime for AI coding agents. Traditional sandboxes constrain a process from below — syscalls, filesystem jails, seccomp. sir inverts that: it constrains the *agent* from above, intercepting tool calls at the hook layer before they execute and routing them through a Rust policy oracle (`mister-core`) that returns allow, ask, or deny. Every decision is appended to an immutable hash-chained ledger.
 
 This approach exists because AI coding agents are not a single sandboxable process. They orchestrate tools, spawn subprocesses, and call MCP servers. The dangerous surface is not syscalls — it is *intents* like "read `.env`, then `curl` an external host." sir uses **information flow control (IFC)** to track data sensitivity across operations: if the agent reads a secret file, that taint propagates to any file it writes, any commit, and any push attempt in the same session.
