@@ -6,35 +6,67 @@ import (
 	"strings"
 )
 
+// supportRenderProfile holds per-agent rendering metadata. Adding a new agent
+// means adding one entry to supportRenderProfiles — no switch edits needed.
+// docPath / threatModelDocPath are relative to the README / docs/research/.
+// runtimeName overrides the manifest Name in status headings (Codex shows as
+// "codex-cli"); empty falls through to Name. statusHeadingTemplate may
+// contain one "%s" which is substituted with MinimumVersion. surfaceNotes
+// holds per-agent overrides for surfaces whose text is not a pure function
+// of Capabilities (FileReadIFC, FileWriteIFC, SessionSweep).
+type supportRenderProfile struct {
+	docPath               string
+	threatModelDocPath    string
+	runtimeName           string
+	statusHeadingTemplate string
+	surfaceNotes          map[SupportSurfaceKey]string
+}
+
+var supportRenderProfiles = map[AgentID]supportRenderProfile{
+	Claude: {
+		docPath:               "docs/user/claude-code-hooks-integration.md",
+		threatModelDocPath:    "../user/claude-code-hooks-integration.md",
+		statusHeadingTemplate: "## Status: reference support on Claude Code",
+		surfaceNotes: map[SupportSurfaceKey]string{
+			SurfaceFileReadIFC:  "Sensitive reads are labeled before execution via Claude's native Read/Edit hook path.",
+			SurfaceFileWriteIFC: "Write/Edit posture changes are gated before the write executes.",
+			SurfaceSessionSweep: "SessionEnd closes single-turn blind spots with one last sentinel sweep.",
+		},
+	},
+	Gemini: {
+		docPath:               "docs/user/gemini-support.md",
+		threatModelDocPath:    "../user/gemini-support.md",
+		statusHeadingTemplate: "## Status: near-parity support on Gemini CLI %s+",
+		surfaceNotes: map[SupportSurfaceKey]string{
+			SurfaceFileReadIFC:  "BeforeTool labels read_file/read_many_files before execution.",
+			SurfaceFileWriteIFC: "BeforeTool gates write_file / replace posture mutations before execution.",
+			SurfaceSessionSweep: "SessionEnd closes single-turn blind spots with one last sentinel sweep.",
+		},
+	},
+	Codex: {
+		docPath:               "docs/user/codex-support.md",
+		threatModelDocPath:    "../user/codex-support.md",
+		runtimeName:           "codex-cli",
+		statusHeadingTemplate: "## Status: limited support on codex-cli %s+ (Bash-only)",
+		surfaceNotes: map[SupportSurfaceKey]string{
+			SurfaceFileReadIFC:  "Bash-mediated sensitive reads (cat/sed/head/tail/grep/etc.) are promoted to read_ref before execution.",
+			SurfaceFileWriteIFC: "Native apply_patch writes bypass PreToolUse on codex-cli 0.118.x; posture tamper is caught post-hoc.",
+			SurfaceSessionSweep: "The final posture sweep runs on Stop because Codex exposes no SessionEnd hook.",
+		},
+	},
+}
+
 func supportDocPath(m SupportManifest) string {
-	switch m.ID {
-	case Claude:
-		return "docs/user/claude-code-hooks-integration.md"
-	case Gemini:
-		return "docs/user/gemini-support.md"
-	case Codex:
-		return "docs/user/codex-support.md"
-	default:
-		return ""
-	}
+	return supportRenderProfiles[m.ID].docPath
 }
 
 func supportThreatModelDocPath(m SupportManifest) string {
-	switch m.ID {
-	case Claude:
-		return "../user/claude-code-hooks-integration.md"
-	case Gemini:
-		return "../user/gemini-support.md"
-	case Codex:
-		return "../user/codex-support.md"
-	default:
-		return ""
-	}
+	return supportRenderProfiles[m.ID].threatModelDocPath
 }
 
 func supportRuntimeName(m SupportManifest) string {
-	if m.ID == Codex {
-		return "codex-cli"
+	if name := supportRenderProfiles[m.ID].runtimeName; name != "" {
+		return name
 	}
 	return m.Name
 }
@@ -56,19 +88,20 @@ func supportDocLinkForFAQ(m SupportManifest) string {
 	return fmt.Sprintf("[%s](%s)", base, base)
 }
 
+// lifecycleMitigationDescriptions maps a sir-internal lifecycle event name to
+// the human-facing mitigation phrase used in threat model and FAQ prose.
+var lifecycleMitigationDescriptions = map[string]string{
+	"SubagentStart":      "SubagentStart delegation gating",
+	"ConfigChange":       "ConfigChange tamper detection at the moment of change",
+	"InstructionsLoaded": "InstructionsLoaded pre-read scanning",
+	"Elicitation":        "Elicitation interception",
+}
+
 func supportLifecycleMitigationDescription(event string) string {
-	switch event {
-	case "SubagentStart":
-		return "SubagentStart delegation gating"
-	case "ConfigChange":
-		return "ConfigChange tamper detection at the moment of change"
-	case "InstructionsLoaded":
-		return "InstructionsLoaded pre-read scanning"
-	case "Elicitation":
-		return "Elicitation interception"
-	default:
-		return event
+	if desc, ok := lifecycleMitigationDescriptions[event]; ok {
+		return desc
 	}
+	return event
 }
 
 func formatJoinedItems(items []string) string {
@@ -99,7 +132,57 @@ func missingLifecycleMitigations(m SupportManifest) string {
 	return formatJoinedItems(items)
 }
 
+// capabilityBranch describes a surface whose note text is purely a function
+// of a per-agent Capability bool. The unsupported template may contain one
+// "%s" for the agent name.
+type capabilityBranch struct {
+	capability  func(AgentCapabilities) bool
+	supported   string
+	unsupported string // format string, "%s" = spec.Name
+}
+
+var capabilityBranchNotes = map[SupportSurfaceKey]capabilityBranch{
+	SurfaceMCPToolHooks: {
+		capability:  func(c AgentCapabilities) bool { return c.MCPToolHooks },
+		supported:   "sir sees both MCP arguments and MCP responses on this agent.",
+		unsupported: "%s does not fire hooks for MCP tools today.",
+	},
+	SurfaceSubagentStart: {
+		capability:  func(c AgentCapabilities) bool { return c.SubagentStart },
+		supported:   "Delegation policy is enforced at SubagentStart.",
+		unsupported: "%s exposes no SubagentStart-equivalent hook.",
+	},
+	SurfaceConfigChange: {
+		capability:  func(c AgentCapabilities) bool { return c.ConfigChange },
+		supported:   "Mid-session hook config edits are detected when they happen.",
+		unsupported: "%s exposes no ConfigChange-equivalent hook.",
+	},
+	SurfaceInstructionsLoaded: {
+		capability:  func(c AgentCapabilities) bool { return c.InstructionsLoaded },
+		supported:   "Context files are scanned when the agent loads them.",
+		unsupported: "%s exposes no InstructionsLoaded-equivalent hook.",
+	},
+	SurfaceElicitation: {
+		capability:  func(c AgentCapabilities) bool { return c.Elicitation },
+		supported:   "Developer-facing permission prompts are scanned before display.",
+		unsupported: "%s exposes no Elicitation-equivalent hook.",
+	},
+}
+
+// supportSurfaceNotes resolves the note for (spec, surface) by consulting —
+// in order — (1) the per-agent override table in supportRenderProfiles, (2)
+// the capability-branch template for surfaces whose text is a pure function
+// of a Capability bool, (3) the remaining surface-specific logic below.
 func supportSurfaceNotes(spec *AgentSpec, key SupportSurfaceKey) string {
+	if notes, ok := supportRenderProfiles[spec.ID].surfaceNotes[key]; ok {
+		return notes
+	}
+	if branch, ok := capabilityBranchNotes[key]; ok {
+		if branch.capability(spec.Capabilities) {
+			return branch.supported
+		}
+		return fmt.Sprintf(branch.unsupported, spec.Name)
+	}
 	switch key {
 	case SurfaceInteractiveApproval:
 		if spec.Capabilities.InteractiveApproval {
@@ -107,63 +190,11 @@ func supportSurfaceNotes(spec *AgentSpec, key SupportSurfaceKey) string {
 		}
 		return fmt.Sprintf("%s folds sir's internal ask verdict into %s with remediation text.",
 			spec.Name, supportBlockVerb(spec))
-	case SurfaceFileReadIFC:
-		switch spec.ID {
-		case Claude:
-			return "Sensitive reads are labeled before execution via Claude's native Read/Edit hook path."
-		case Gemini:
-			return "BeforeTool labels read_file/read_many_files before execution."
-		case Codex:
-			return "Bash-mediated sensitive reads (cat/sed/head/tail/grep/etc.) are promoted to read_ref before execution."
-		}
-	case SurfaceFileWriteIFC:
-		switch spec.ID {
-		case Claude:
-			return "Write/Edit posture changes are gated before the write executes."
-		case Gemini:
-			return "BeforeTool gates write_file / replace posture mutations before execution."
-		case Codex:
-			return "Native apply_patch writes bypass PreToolUse on codex-cli 0.118.x; posture tamper is caught post-hoc."
-		}
 	case SurfaceShellClassification:
-		switch spec.Capabilities.ToolCoverage {
-		case ToolCoverageBashOnly:
+		if spec.Capabilities.ToolCoverage == ToolCoverageBashOnly {
 			return "Every hooked Codex tool call is Bash, so sir's shell classifier is the primary enforcement path."
-		default:
-			return "Bash commands are classified for egress, DNS, persistence, sudo, and install risk."
 		}
-	case SurfaceMCPToolHooks:
-		if spec.Capabilities.MCPToolHooks {
-			return "sir sees both MCP arguments and MCP responses on this agent."
-		}
-		return fmt.Sprintf("%s does not fire hooks for MCP tools today.", spec.Name)
-	case SurfaceSubagentStart:
-		if spec.Capabilities.SubagentStart {
-			return "Delegation policy is enforced at SubagentStart."
-		}
-		return fmt.Sprintf("%s exposes no SubagentStart-equivalent hook.", spec.Name)
-	case SurfaceConfigChange:
-		if spec.Capabilities.ConfigChange {
-			return "Mid-session hook config edits are detected when they happen."
-		}
-		return fmt.Sprintf("%s exposes no ConfigChange-equivalent hook.", spec.Name)
-	case SurfaceInstructionsLoaded:
-		if spec.Capabilities.InstructionsLoaded {
-			return "Context files are scanned when the agent loads them."
-		}
-		return fmt.Sprintf("%s exposes no InstructionsLoaded-equivalent hook.", spec.Name)
-	case SurfaceElicitation:
-		if spec.Capabilities.Elicitation {
-			return "Developer-facing permission prompts are scanned before display."
-		}
-		return fmt.Sprintf("%s exposes no Elicitation-equivalent hook.", spec.Name)
-	case SurfaceSessionSweep:
-		switch spec.ID {
-		case Codex:
-			return "The final posture sweep runs on Stop because Codex exposes no SessionEnd hook."
-		case Gemini, Claude:
-			return "SessionEnd closes single-turn blind spots with one last sentinel sweep."
-		}
+		return "Bash commands are classified for egress, DNS, persistence, sudo, and install risk."
 	}
 	return ""
 }
@@ -177,17 +208,19 @@ func supportBlockVerb(spec *AgentSpec) string {
 	}
 }
 
+// supportTierLabels maps a SupportTier to its human-facing label used in
+// prose. Unknown tiers fall through to the raw string form.
+var supportTierLabels = map[SupportTier]string{
+	SupportTierReference:  "reference support",
+	SupportTierNearParity: "near-parity support",
+	SupportTierLimited:    "limited support",
+}
+
 func (m SupportManifest) TierLabel() string {
-	switch m.SupportTier {
-	case SupportTierReference:
-		return "reference support"
-	case SupportTierNearParity:
-		return "near-parity support"
-	case SupportTierLimited:
-		return "limited support"
-	default:
-		return string(m.SupportTier)
+	if label, ok := supportTierLabels[m.SupportTier]; ok {
+		return label
 	}
+	return string(m.SupportTier)
 }
 
 // StatusSuffix is the capability-driven caveat shown in status/doctor output.
@@ -199,42 +232,51 @@ func (m SupportManifest) StatusSuffix() string {
 	return "  (" + strings.Join(parts, ", ") + ")"
 }
 
+// supportTierStatusWarningTemplates maps a tier to the format string used by
+// StatusWarningLine. The %s placeholder is substituted with the agent name.
+// Tiers absent from the map produce an empty line.
+var supportTierStatusWarningTemplates = map[SupportTier]string{
+	SupportTierNearParity: "             Note: %s is near-parity support; lifecycle coverage remains narrower than Claude Code.\n",
+	SupportTierLimited:    "             Warning: %s remains limited support; enforcement is bounded by the upstream Bash-only hook surface.\n",
+}
+
 // StatusWarningLine renders the support caveat used by `sir status`.
 func (m SupportManifest) StatusWarningLine(agentName string) string {
-	switch m.SupportTier {
-	case SupportTierNearParity:
-		return fmt.Sprintf("             Note: %s is near-parity support; lifecycle coverage remains narrower than Claude Code.\n", agentName)
-	case SupportTierLimited:
-		return fmt.Sprintf("             Warning: %s remains limited support; enforcement is bounded by the upstream Bash-only hook surface.\n", agentName)
-	default:
+	tmpl, ok := supportTierStatusWarningTemplates[m.SupportTier]
+	if !ok {
 		return ""
 	}
+	return fmt.Sprintf(tmpl, agentName)
+}
+
+// supportTierDoctorWarningTemplates maps a tier to the format string used by
+// DoctorWarningLine. The %s placeholder is substituted with the agent name.
+var supportTierDoctorWarningTemplates = map[SupportTier]string{
+	SupportTierNearParity: "  NOTE: %s is near-parity support — file IFC, shell classification, MCP scanning, and credential output scanning are covered, but some lifecycle hooks remain unavailable.\n",
+	SupportTierLimited:    "  WARNING: %s is limited support — Bash-mediated actions are guarded, but native writes and MCP tools still depend on sentinel hashing plus end-of-session sweeps.\n",
 }
 
 // DoctorWarningLine renders the support caveat used by `sir doctor`.
 func (m SupportManifest) DoctorWarningLine(agentName string) string {
-	switch m.SupportTier {
-	case SupportTierNearParity:
-		return fmt.Sprintf("  NOTE: %s is near-parity support — file IFC, shell classification, MCP scanning, and credential output scanning are covered, but some lifecycle hooks remain unavailable.\n", agentName)
-	case SupportTierLimited:
-		return fmt.Sprintf("  WARNING: %s is limited support — Bash-mediated actions are guarded, but native writes and MCP tools still depend on sentinel hashing plus end-of-session sweeps.\n", agentName)
-	default:
+	tmpl, ok := supportTierDoctorWarningTemplates[m.SupportTier]
+	if !ok {
 		return ""
 	}
+	return fmt.Sprintf(tmpl, agentName)
 }
 
 // StatusHeading is the generated heading used by per-agent support docs.
+// It consults the supportRenderProfiles table first; unknown agents fall
+// through to a generic "## Status: <tier> on <name>" line.
 func (m SupportManifest) StatusHeading() string {
-	switch m.ID {
-	case Gemini:
-		return fmt.Sprintf("## Status: near-parity support on Gemini CLI %s+", m.MinimumVersion)
-	case Codex:
-		return fmt.Sprintf("## Status: limited support on codex-cli %s+ (Bash-only)", m.MinimumVersion)
-	case Claude:
-		return "## Status: reference support on Claude Code"
-	default:
+	profile, ok := supportRenderProfiles[m.ID]
+	if !ok || profile.statusHeadingTemplate == "" {
 		return fmt.Sprintf("## Status: %s on %s", m.TierLabel(), m.Name)
 	}
+	if strings.Contains(profile.statusHeadingTemplate, "%s") {
+		return fmt.Sprintf(profile.statusHeadingTemplate, m.MinimumVersion)
+	}
+	return profile.statusHeadingTemplate
 }
 
 func (m SupportManifest) surface(key SupportSurfaceKey) SupportSurface {
