@@ -1,6 +1,6 @@
 // sir — Sandbox in Reverse
-// CLI entrypoint with subcommands for install, uninstall, status, doctor,
-// ledger, explain, and guard (hook handlers).
+// CLI entrypoint with subcommands for install, uninstall, status, support,
+// doctor, ledger, explain, and guard (hook handlers).
 package main
 
 import (
@@ -33,6 +33,8 @@ func main() {
 		cmdUninstall(projectRoot)
 	case "status":
 		cmdStatus(projectRoot)
+	case "support":
+		cmdSupport(os.Args[2:])
 	case "doctor":
 		cmdDoctor(projectRoot)
 	case "log", "ledger":
@@ -107,6 +109,7 @@ Get started
   sir install [--agent <id>]     Auto-detect installed agents and set up hooks
                                  (--agent: claude, codex, gemini)
   sir status                     Show whether sir is active and what it sees
+  sir support --json             Emit the public support manifests as JSON
   sir demo                       Run a 60-second tour of what sir blocks
 
 When sir asks or blocks

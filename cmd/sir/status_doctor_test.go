@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -272,6 +273,29 @@ func TestCmdStatus_ReportsOperabilityHealth(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("status output missing %q:\n%s", want, out)
 		}
+	}
+}
+
+func TestCmdSupportJSON(t *testing.T) {
+	out := captureStdout(t, func() {
+		cmdSupport([]string{"--json"})
+	})
+
+	var got []agent.SupportManifest
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("unmarshal support JSON: %v\n%s", err, out)
+	}
+	wantIDs := []agent.AgentID{agent.Claude, agent.Gemini, agent.Codex}
+	want := make([]agent.SupportManifest, 0, len(wantIDs))
+	for _, id := range wantIDs {
+		manifest, ok := agent.SupportManifestForID(id)
+		if !ok {
+			t.Fatalf("missing expected support manifest for %s", id)
+		}
+		want = append(want, manifest)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("support JSON drifted\nwant: %#v\n got: %#v", want, got)
 	}
 }
 

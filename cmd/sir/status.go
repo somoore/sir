@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -132,5 +134,16 @@ func cmdStatus(projectRoot string) {
 	fmt.Println("  Run 'sir why' to see the last decision.")
 	if sessionErr == nil && state.SecretSession {
 		fmt.Println("  Run 'sir unlock' to lift the secret-session lock.")
+	}
+}
+
+func cmdSupport(args []string) {
+	if len(args) != 1 || args[0] != "--json" {
+		fatal("usage: sir support --json")
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(agent.PublicSupportManifests()); err != nil {
+		fatal("encode support manifest: %v", err)
 	}
 }

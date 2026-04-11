@@ -48,7 +48,7 @@ type SupportManifest struct {
 	ToolCoverage             ToolCoverage     `json:"tool_coverage"`
 	HookEventCount           int              `json:"hook_event_count"`
 	SupportedSIREvents       []string         `json:"supported_sir_events"`
-	UnsupportedSIREvents     []string         `json:"unsupported_sir_events,omitempty"`
+	UnsupportedSIREvents     []string         `json:"unsupported_sir_events"`
 	SupportedWireEvents      []string         `json:"supported_wire_events"`
 	RequiredFeatureFlag      string           `json:"required_feature_flag,omitempty"`
 	FeatureFlagEnableCommand string           `json:"feature_flag_enable_command,omitempty"`
@@ -72,13 +72,32 @@ func AllSupportManifests() []SupportManifest {
 	return out
 }
 
+// PublicSupportManifests returns the public support manifests in the canonical
+// CLI order.
+func PublicSupportManifests() []SupportManifest {
+	return orderedPublicSupportManifests()
+}
+
 func orderedPublicSupportManifests() []SupportManifest {
-	order := []AgentID{Claude, Gemini, Codex}
-	out := make([]SupportManifest, 0, len(order))
-	for _, id := range order {
-		if manifest, ok := SupportManifestForID(id); ok {
-			out = append(out, manifest)
+	regs := Registry()
+	byID := make(map[AgentID]*AgentSpec, len(regs))
+	for _, reg := range regs {
+		byID[reg.ID] = reg.Spec
+	}
+	canonical := []AgentID{Claude, Gemini, Codex}
+	out := make([]SupportManifest, 0, len(regs))
+	seen := make(map[AgentID]struct{}, len(regs))
+	for _, id := range canonical {
+		if spec, ok := byID[id]; ok {
+			out = append(out, SupportManifestForSpec(spec))
+			seen[id] = struct{}{}
 		}
+	}
+	for _, reg := range regs {
+		if _, ok := seen[reg.ID]; ok {
+			continue
+		}
+		out = append(out, SupportManifestForSpec(reg.Spec))
 	}
 	return out
 }
