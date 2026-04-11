@@ -232,7 +232,6 @@ on:
 			"docs/user/README.md",
 			"docs/user/quickstart.md",
 			"docs/user/credential-scanning.md",
-			"docs/user/siem-integration.md",
 			"docs/contributor/README.md",
 			"docs/contributor/branch-protection.md",
 			"docs/contributor/architecture-reference.md",
@@ -292,6 +291,7 @@ func activeDocAllowlist() []string {
 		"docs/user/faq.md",
 		"docs/user/gemini-support.md",
 		"docs/user/runtime-security-overview.md",
+		"docs/user/siem-integration.md",
 	}
 }
 
