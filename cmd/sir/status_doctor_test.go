@@ -127,7 +127,7 @@ func TestCmdStatus_SupportManifestSuffixes(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s does not implement MapBuilder", ag.ID())
 		}
-		data, err := json.MarshalIndent(builder.GenerateHooksConfigMap("sir", "standard"), "", "  ")
+		data, err := json.MarshalIndent(mustHooksConfigMap(t, builder, "sir", "standard"), "", "  ")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -173,7 +173,7 @@ func TestCmdStatus_ReportsMCPRuntimeModes(t *testing.T) {
 	}
 	t.Cleanup(func() { execLookPath = origLookPath })
 
-	claudeConfig := agent.NewClaudeAgent().GenerateHooksConfigMap("sir", "guard")
+	claudeConfig := mustHooksConfigMap(t, agent.NewClaudeAgent(), "sir", "guard")
 	claudeConfig["mcpServers"] = map[string]interface{}{
 		"raw-server": map[string]interface{}{
 			"command": "node",
@@ -242,7 +242,7 @@ func TestCmdStatus_ReportsOperabilityHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	settings := agent.NewClaudeAgent().GenerateHooksConfigMap("sir", "guard")
+	settings := mustHooksConfigMap(t, agent.NewClaudeAgent(), "sir", "guard")
 	env.writeSettingsJSON(settings)
 
 	out := captureStdout(t, func() {
@@ -332,7 +332,7 @@ func TestCmdDoctor_CodexFeatureFlagWarningUsesManifest(t *testing.T) {
 	env.writeDefaultLease()
 	env.writeSession(session.NewState(env.projectRoot))
 
-	data, err := json.MarshalIndent(agent.NewCodexAgent().GenerateHooksConfigMap("sir", "standard"), "", "  ")
+	data, err := json.MarshalIndent(mustHooksConfigMap(t, agent.NewCodexAgent(), "sir", "standard"), "", "  ")
 	if err != nil {
 		t.Fatal(err)
 	}

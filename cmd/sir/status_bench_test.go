@@ -29,7 +29,7 @@ func BenchmarkCmdStatusLargeState(b *testing.B) {
 		b.Fatalf("mkdir claude dir: %v", err)
 	}
 
-	config := agent.NewClaudeAgent().GenerateHooksConfigMap("sir", "guard")
+	config := mustHooksConfigMap(b, agent.NewClaudeAgent(), "sir", "guard")
 	configData, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		b.Fatalf("marshal config: %v", err)

@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/somoore/sir/pkg/agent"
@@ -14,6 +16,10 @@ type fakeAgent struct {
 }
 
 func newFakeAgent() *fakeAgent {
+	return newFakeAgentWithLayout(agent.ConfigLayoutMatcherGroups)
+}
+
+func newFakeAgentWithLayout(layout agent.ConfigLayout) *fakeAgent {
 	return &fakeAgent{
 		spec: agent.AgentSpec{
 			ID:         "fake",
@@ -21,7 +27,7 @@ func newFakeAgent() *fakeAgent {
 			ConfigFile: ".fake/settings.json",
 			ConfigStrategy: agent.ConfigStrategy{
 				ManagedSubtreeKey:   "customHooks",
-				Layout:              agent.ConfigLayoutMatcherGroups,
+				Layout:              layout,
 				CanonicalBackupFile: "hooks-canonical-fake.json",
 			},
 			SupportedSIREvents:  []string{"BeforeTool"},
@@ -56,15 +62,22 @@ func (f *fakeAgent) ConfigPath() string {
 	return filepath.Join(home, f.spec.ConfigFile)
 }
 func (f *fakeAgent) GenerateHooksConfig(sirBinaryPath, mode string) ([]byte, error) {
-	return json.Marshal(f.GenerateHooksConfigMap(sirBinaryPath, mode))
+	config, err := f.GenerateHooksConfigMap(sirBinaryPath, mode)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(config)
 }
 func (f *fakeAgent) DetectInstallation() bool { return true }
 func (f *fakeAgent) MinVersion() string       { return "" }
 func (f *fakeAgent) GetSpec() *agent.AgentSpec {
 	return &f.spec
 }
-func (f *fakeAgent) GenerateHooksConfigMap(sirBinaryPath, mode string) map[string]interface{} {
+func (f *fakeAgent) GenerateHooksConfigMap(sirBinaryPath, mode string) (map[string]interface{}, error) {
 	_ = mode
+	if f.spec.ConfigStrategy.EffectiveLayout() != agent.ConfigLayoutMatcherGroups {
+		return nil, errors.New("unsupported config layout: " + string(f.spec.ConfigStrategy.EffectiveLayout()))
+	}
 	return map[string]interface{}{
 		"customHooks": map[string]interface{}{
 			"BeforeTool": []interface{}{
@@ -80,7 +93,7 @@ func (f *fakeAgent) GenerateHooksConfigMap(sirBinaryPath, mode string) map[strin
 				},
 			},
 		},
-	}
+	}, nil
 }
 
 var _ agent.Agent = (*fakeAgent)(nil)
@@ -131,7 +144,9 @@ func TestInstallForAgent_CustomManagedKeyRemovesStaleSirEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	installForAgent(ag, "guard", tmpHome, true, nil)
+	if err := installForAgent(ag, "guard", tmpHome, true, nil); err != nil {
+		t.Fatalf("installForAgent: %v", err)
+	}
 
 	raw, err := os.ReadFile(configPath)
 	if err != nil {
@@ -200,7 +215,9 @@ func TestInstallForAgent_CustomManagedKeyPreservesNonArrayMetadata(t *testing.T)
 		t.Fatal(err)
 	}
 
-	installForAgent(ag, "guard", tmpHome, true, nil)
+	if err := installForAgent(ag, "guard", tmpHome, true, nil); err != nil {
+		t.Fatalf("installForAgent: %v", err)
+	}
 
 	raw, err := os.ReadFile(configPath)
 	if err != nil {
@@ -259,7 +276,11 @@ func TestUninstallForAgent_CustomManagedKeyRemovesSirHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !uninstallForAgent(ag) {
+	removed, err := uninstallForAgent(ag)
+	if err != nil {
+		t.Fatalf("uninstallForAgent: %v", err)
+	}
+	if !removed {
 		t.Fatal("uninstallForAgent returned false")
 	}
 
@@ -284,5 +305,52 @@ func TestUninstallForAgent_CustomManagedKeyRemovesSirHooks(t *testing.T) {
 	}
 	if doc["theme"] != "dark" {
 		t.Fatalf("theme was not preserved: %#v", doc["theme"])
+	}
+}
+
+func TestInstallForAgent_InvalidLayoutReturnsError(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	ag := newFakeAgentWithLayout(agent.ConfigLayout("flat"))
+	configPath := ag.ConfigPath()
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(`{"customHooks":{"BeforeTool":[]}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := installForAgent(ag, "guard", tmpHome, true, nil)
+	if err == nil {
+		t.Fatal("installForAgent unexpectedly succeeded")
+	}
+	if !strings.Contains(err.Error(), "unsupported config layout") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestUninstallForAgent_InvalidLayoutReturnsError(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	ag := newFakeAgentWithLayout(agent.ConfigLayout("flat"))
+	configPath := ag.ConfigPath()
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(`{"customHooks":{"BeforeTool":[]}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	removed, err := uninstallForAgent(ag)
+	if err == nil {
+		t.Fatal("uninstallForAgent unexpectedly succeeded")
+	}
+	if removed {
+		t.Fatal("uninstallForAgent reported removal on error")
+	}
+	if !strings.Contains(err.Error(), "unsupported config layout") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

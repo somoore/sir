@@ -132,7 +132,7 @@ func generatedWireEvents(t *testing.T, ag Agent) map[string]bool {
 	if !ok {
 		t.Fatalf("%s does not implement MapBuilder", ag.ID())
 	}
-	doc := builder.GenerateHooksConfigMap("/usr/local/bin/sir", "standard")
+	doc := mustHooksConfigMap(t, builder, "/usr/local/bin/sir", "standard")
 	spec := ag.GetSpec()
 	if key := spec.ConfigStrategy.ManagedSubtreeKey; key != "" {
 		raw, ok := doc[key]

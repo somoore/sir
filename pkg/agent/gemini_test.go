@@ -367,7 +367,7 @@ func TestGeminiFormatLifecycle_OtherEvents(t *testing.T) {
 
 func TestGeminiGenerateHooksConfigMap(t *testing.T) {
 	g := &GeminiAgent{}
-	m := g.GenerateHooksConfigMap("/usr/local/bin/sir", "guard")
+	m := mustHooksConfigMap(t, g, "/usr/local/bin/sir", "guard")
 	hooks, ok := m["hooks"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("hooks key missing: %T", m["hooks"])
