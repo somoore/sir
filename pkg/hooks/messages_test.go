@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	hookmessages "github.com/somoore/sir/pkg/hooks/messages"
 )
 
 func init() {
@@ -388,16 +390,16 @@ func TestNoSecretContentInMessages(t *testing.T) {
 
 func TestTruncateCmd(t *testing.T) {
 	short := "ls -la"
-	if truncateCmd(short) != short {
-		t.Errorf("truncateCmd should not modify short strings")
+	if hookmessages.TruncateCmd(short) != short {
+		t.Errorf("TruncateCmd should not modify short strings")
 	}
 
 	long := strings.Repeat("a", 100)
-	result := truncateCmd(long)
+	result := hookmessages.TruncateCmd(long)
 	if len(result) > 60 {
-		t.Errorf("truncateCmd should cap at 60 chars, got %d", len(result))
+		t.Errorf("TruncateCmd should cap at 60 chars, got %d", len(result))
 	}
 	if !strings.HasSuffix(result, "...") {
-		t.Errorf("truncateCmd should end with ... for long strings")
+		t.Errorf("TruncateCmd should end with ... for long strings")
 	}
 }
