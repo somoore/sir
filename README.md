@@ -25,7 +25,7 @@ sir is defense in depth for the layer where AI coding agents actually operate. T
 
 ### The observability gap
 
-Every major AI coding agent provider today stops at **governance** — prompts and tool names — and calls it observability. The tool response content, MCP arguments, and execution evidence a defender needs for **investigation** ("reconstruct what happened") or **detection** ("catch it in real time") are simply not captured. Frontier labs are shipping the execution engines and the API bridges. They are leaving the seatbelts, the isolation boundaries, and the flight data recorders for someone else to build — which is a gaping hole for any security team trying to defend an organization. sir records redacted evidence at all three tiers, at the tool boundary, on your machine, under your control. See [docs/research/observability-design.md](docs/research/observability-design.md).
+Provider audit logs today capture prompts and tool names but not tool responses, MCP arguments, or execution evidence — the data a defender needs for investigation and detection. sir records redacted evidence at all three tiers (governance, investigation, detection). See [docs/research/observability-design.md](docs/research/observability-design.md).
 
 ## What it is
 
@@ -35,12 +35,12 @@ Every major AI coding agent provider today stops at **governance** — prompts a
 
 ```mermaid
 flowchart LR
-    A[AI Coding Agent] -->|tool call| H[sir hook handler<br/>Go]
-    H -->|facts + session state| R[mister-core<br/>Rust policy oracle]
-    R -->|allow / ask / deny| H
-    H -->|decision + evidence| L[(hash-chained<br/>ledger)]
-    H -->|verdict| A
+    A[Agent] -->|① Read .env| S1["sir: allow<br/>session → SECRET"]
+    A -->|② curl external| S2["sir: DENY<br/>session is SECRET"]
+    S1 -. IFC taint .-> S2
 ```
+
+Same turn, two tool calls, different verdicts — the oracle's decision changed because session state mutated between them. That is IFC, not a static rule list.
 
 <!-- BEGIN GENERATED SUPPORT SUMMARY -->
 - **Claude Code** — **Reference support.** Full 10-hook lifecycle with native interactive approval and complete tool-path coverage.
