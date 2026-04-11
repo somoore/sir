@@ -19,17 +19,69 @@ import (
 	"testing"
 )
 
-type supportFixture struct {
-	ID                       AgentID                    `json:"id"`
-	SupportTier              SupportTier                `json:"support_tier"`
-	ToolCoverage             ToolCoverage               `json:"tool_coverage"`
-	HookEventCount           int                        `json:"hook_event_count"`
-	SupportedSIREvents       []string                   `json:"supported_sir_events"`
-	UnsupportedSIREvents     []string                   `json:"unsupported_sir_events"`
-	SupportedWireEvents      []string                   `json:"supported_wire_events"`
-	RequiredFeatureFlag      string                     `json:"required_feature_flag,omitempty"`
-	FeatureFlagEnableCommand string                     `json:"feature_flag_enable_command,omitempty"`
-	Surfaces                 map[SupportSurfaceKey]bool `json:"surfaces"`
+type supportFixture = SupportManifest
+
+type strictSupportSurface struct {
+	Key       SupportSurfaceKey `json:"key"`
+	Title     string            `json:"title"`
+	Supported bool              `json:"supported"`
+	Notes     string            `json:"notes"`
+}
+
+type strictSupportFixture struct {
+	ID                       AgentID                `json:"id"`
+	Name                     string                 `json:"name"`
+	MinimumVersion           string                 `json:"minimum_version"`
+	SupportTier              SupportTier            `json:"support_tier"`
+	ToolCoverage             ToolCoverage           `json:"tool_coverage"`
+	HookEventCount           int                    `json:"hook_event_count"`
+	SupportedSIREvents       []string               `json:"supported_sir_events"`
+	UnsupportedSIREvents     []string               `json:"unsupported_sir_events"`
+	SupportedWireEvents      []string               `json:"supported_wire_events"`
+	RequiredFeatureFlag      string                 `json:"required_feature_flag"`
+	FeatureFlagEnableCommand string                 `json:"feature_flag_enable_command"`
+	Surfaces                 []strictSupportSurface `json:"surfaces"`
+}
+
+func strictSupportFixtureFrom(manifest SupportManifest) strictSupportFixture {
+	surfaces := make([]strictSupportSurface, len(manifest.Surfaces))
+	for i, surface := range manifest.Surfaces {
+		surfaces[i] = strictSupportSurface{
+			Key:       surface.Key,
+			Title:     surface.Title,
+			Supported: surface.Supported,
+			Notes:     surface.Notes,
+		}
+	}
+	return strictSupportFixture{
+		ID:                       manifest.ID,
+		Name:                     manifest.Name,
+		MinimumVersion:           manifest.MinimumVersion,
+		SupportTier:              manifest.SupportTier,
+		ToolCoverage:             manifest.ToolCoverage,
+		HookEventCount:           manifest.HookEventCount,
+		SupportedSIREvents:       manifest.SupportedSIREvents,
+		UnsupportedSIREvents:     manifest.UnsupportedSIREvents,
+		SupportedWireEvents:      manifest.SupportedWireEvents,
+		RequiredFeatureFlag:      manifest.RequiredFeatureFlag,
+		FeatureFlagEnableCommand: manifest.FeatureFlagEnableCommand,
+		Surfaces:                 surfaces,
+	}
+}
+
+func assertStrictJSONEqual(t *testing.T, got, want []byte, context string) {
+	t.Helper()
+	var gotValue interface{}
+	if err := json.Unmarshal(got, &gotValue); err != nil {
+		t.Fatalf("unmarshal generated %s: %v", context, err)
+	}
+	var wantValue interface{}
+	if err := json.Unmarshal(want, &wantValue); err != nil {
+		t.Fatalf("unmarshal golden %s: %v", context, err)
+	}
+	if !reflect.DeepEqual(gotValue, wantValue) {
+		t.Fatalf("%s drift\n got: %s\n want: %s", context, string(got), string(want))
+	}
 }
 
 type capabilityWitness struct {
@@ -217,40 +269,26 @@ func TestConformance(t *testing.T) {
 			t.Run("SupportManifest_matches_fixture", func(t *testing.T) {
 				fixture := loadSupportFixture(t, ag.ID())
 				manifest := SupportManifestForAgent(ag)
-				if manifest.ID != fixture.ID {
-					t.Errorf("manifest ID = %q, want %q", manifest.ID, fixture.ID)
+				if !reflect.DeepEqual(manifest, fixture) {
+					got, err := json.MarshalIndent(manifest, "", "  ")
+					if err != nil {
+						t.Fatalf("marshal generated support manifest: %v", err)
+					}
+					want, err := json.MarshalIndent(fixture, "", "  ")
+					if err != nil {
+						t.Fatalf("marshal golden support manifest: %v", err)
+					}
+					t.Fatalf("support manifest drift for %s\n got: %s\n want: %s", ag.ID(), string(got), string(want))
 				}
-				if manifest.SupportTier != fixture.SupportTier {
-					t.Errorf("manifest SupportTier = %q, want %q", manifest.SupportTier, fixture.SupportTier)
+				got, err := json.MarshalIndent(strictSupportFixtureFrom(manifest), "", "  ")
+				if err != nil {
+					t.Fatalf("marshal strict support manifest: %v", err)
 				}
-				if manifest.ToolCoverage != fixture.ToolCoverage {
-					t.Errorf("manifest ToolCoverage = %q, want %q", manifest.ToolCoverage, fixture.ToolCoverage)
+				raw, err := os.ReadFile(filepath.Clean(supportFixturePath(ag.ID())))
+				if err != nil {
+					t.Fatalf("read support fixture raw bytes: %v", err)
 				}
-				if manifest.HookEventCount != fixture.HookEventCount {
-					t.Errorf("manifest HookEventCount = %d, want %d", manifest.HookEventCount, fixture.HookEventCount)
-				}
-				if !reflect.DeepEqual(manifest.SupportedSIREvents, fixture.SupportedSIREvents) {
-					t.Errorf("manifest SupportedSIREvents = %v, want %v", manifest.SupportedSIREvents, fixture.SupportedSIREvents)
-				}
-				if !reflect.DeepEqual(manifest.UnsupportedSIREvents, fixture.UnsupportedSIREvents) {
-					t.Errorf("manifest UnsupportedSIREvents = %v, want %v", manifest.UnsupportedSIREvents, fixture.UnsupportedSIREvents)
-				}
-				if !reflect.DeepEqual(manifest.SupportedWireEvents, fixture.SupportedWireEvents) {
-					t.Errorf("manifest SupportedWireEvents = %v, want %v", manifest.SupportedWireEvents, fixture.SupportedWireEvents)
-				}
-				if manifest.RequiredFeatureFlag != fixture.RequiredFeatureFlag {
-					t.Errorf("manifest RequiredFeatureFlag = %q, want %q", manifest.RequiredFeatureFlag, fixture.RequiredFeatureFlag)
-				}
-				if manifest.FeatureFlagEnableCommand != fixture.FeatureFlagEnableCommand {
-					t.Errorf("manifest FeatureFlagEnableCommand = %q, want %q", manifest.FeatureFlagEnableCommand, fixture.FeatureFlagEnableCommand)
-				}
-				gotSurfaces := map[SupportSurfaceKey]bool{}
-				for _, surface := range manifest.Surfaces {
-					gotSurfaces[surface.Key] = surface.Supported
-				}
-				if !reflect.DeepEqual(gotSurfaces, fixture.Surfaces) {
-					t.Errorf("manifest surfaces = %v, want %v", gotSurfaces, fixture.Surfaces)
-				}
+				assertStrictJSONEqual(t, got, raw, "support manifest raw keys for "+string(ag.ID()))
 			})
 
 			t.Run("SupportedEvents_are_valid", func(t *testing.T) {

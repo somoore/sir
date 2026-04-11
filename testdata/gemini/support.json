@@ -1,5 +1,7 @@
 {
   "id": "gemini",
+  "name": "Gemini CLI",
+  "minimum_version": "0.36.0",
   "support_tier": "near_parity",
   "tool_coverage": "full",
   "hook_event_count": 6,
@@ -25,16 +27,68 @@
     "SessionEnd",
     "AfterAgent"
   ],
-  "surfaces": {
-    "interactive_approval": false,
-    "file_read_ifc": true,
-    "file_write_ifc": true,
-    "shell_classification": true,
-    "mcp_tool_hooks": true,
-    "subagent_start": false,
-    "config_change": false,
-    "instructions_loaded": false,
-    "elicitation": false,
-    "session_terminal_sweep": true
-  }
+  "required_feature_flag": "",
+  "feature_flag_enable_command": "",
+  "surfaces": [
+    {
+      "key": "interactive_approval",
+      "title": "Interactive approvals",
+      "supported": false,
+      "notes": "Gemini CLI folds sir's internal ask verdict into deny with remediation text."
+    },
+    {
+      "key": "file_read_ifc",
+      "title": "File-read IFC labeling",
+      "supported": true,
+      "notes": "BeforeTool labels read_file/read_many_files before execution."
+    },
+    {
+      "key": "file_write_ifc",
+      "title": "File-write pre-gating",
+      "supported": true,
+      "notes": "BeforeTool gates write_file / replace posture mutations before execution."
+    },
+    {
+      "key": "shell_classification",
+      "title": "Shell classification",
+      "supported": true,
+      "notes": "Bash commands are classified for egress, DNS, persistence, sudo, and install risk."
+    },
+    {
+      "key": "mcp_tool_hooks",
+      "title": "MCP tool hooks",
+      "supported": true,
+      "notes": "sir sees both MCP arguments and MCP responses on this agent."
+    },
+    {
+      "key": "subagent_start",
+      "title": "Delegation gating",
+      "supported": false,
+      "notes": "Gemini CLI exposes no SubagentStart-equivalent hook."
+    },
+    {
+      "key": "config_change",
+      "title": "Config change detection",
+      "supported": false,
+      "notes": "Gemini CLI exposes no ConfigChange-equivalent hook."
+    },
+    {
+      "key": "instructions_loaded",
+      "title": "InstructionsLoaded scanning",
+      "supported": false,
+      "notes": "Gemini CLI exposes no InstructionsLoaded-equivalent hook."
+    },
+    {
+      "key": "elicitation",
+      "title": "Elicitation interception",
+      "supported": false,
+      "notes": "Gemini CLI exposes no Elicitation-equivalent hook."
+    },
+    {
+      "key": "session_terminal_sweep",
+      "title": "Terminal posture sweep",
+      "supported": true,
+      "notes": "SessionEnd closes single-turn blind spots with one last sentinel sweep."
+    }
+  ]
 }

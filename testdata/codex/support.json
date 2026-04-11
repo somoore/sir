@@ -1,5 +1,7 @@
 {
   "id": "codex",
+  "name": "Codex",
+  "minimum_version": "0.118.0",
   "support_tier": "limited",
   "tool_coverage": "bash_only",
   "hook_event_count": 5,
@@ -26,16 +28,66 @@
   ],
   "required_feature_flag": "codex_hooks",
   "feature_flag_enable_command": "codex features enable codex_hooks",
-  "surfaces": {
-    "interactive_approval": false,
-    "file_read_ifc": true,
-    "file_write_ifc": false,
-    "shell_classification": true,
-    "mcp_tool_hooks": false,
-    "subagent_start": false,
-    "config_change": false,
-    "instructions_loaded": false,
-    "elicitation": false,
-    "session_terminal_sweep": true
-  }
+  "surfaces": [
+    {
+      "key": "interactive_approval",
+      "title": "Interactive approvals",
+      "supported": false,
+      "notes": "Codex folds sir's internal ask verdict into block with remediation text."
+    },
+    {
+      "key": "file_read_ifc",
+      "title": "File-read IFC labeling",
+      "supported": true,
+      "notes": "Bash-mediated sensitive reads (cat/sed/head/tail/grep/etc.) are promoted to read_ref before execution."
+    },
+    {
+      "key": "file_write_ifc",
+      "title": "File-write pre-gating",
+      "supported": false,
+      "notes": "Native apply_patch writes bypass PreToolUse on codex-cli 0.118.x; posture tamper is caught post-hoc."
+    },
+    {
+      "key": "shell_classification",
+      "title": "Shell classification",
+      "supported": true,
+      "notes": "Every hooked Codex tool call is Bash, so sir's shell classifier is the primary enforcement path."
+    },
+    {
+      "key": "mcp_tool_hooks",
+      "title": "MCP tool hooks",
+      "supported": false,
+      "notes": "Codex does not fire hooks for MCP tools today."
+    },
+    {
+      "key": "subagent_start",
+      "title": "Delegation gating",
+      "supported": false,
+      "notes": "Codex exposes no SubagentStart-equivalent hook."
+    },
+    {
+      "key": "config_change",
+      "title": "Config change detection",
+      "supported": false,
+      "notes": "Codex exposes no ConfigChange-equivalent hook."
+    },
+    {
+      "key": "instructions_loaded",
+      "title": "InstructionsLoaded scanning",
+      "supported": false,
+      "notes": "Codex exposes no InstructionsLoaded-equivalent hook."
+    },
+    {
+      "key": "elicitation",
+      "title": "Elicitation interception",
+      "supported": false,
+      "notes": "Codex exposes no Elicitation-equivalent hook."
+    },
+    {
+      "key": "session_terminal_sweep",
+      "title": "Terminal posture sweep",
+      "supported": true,
+      "notes": "The final posture sweep runs on Stop because Codex exposes no SessionEnd hook."
+    }
+  ]
 }
