@@ -12,25 +12,6 @@ func inspectRuntimeContainment(projectRoot string) (*session.RuntimeContainmentI
 	return session.InspectRuntimeContainment(projectRoot, time.Now())
 }
 
-func loadRuntimeSessionState(projectRoot string, inspection *session.RuntimeContainmentInspection) (*session.State, string, error) {
-	stateDir := session.StateDir(projectRoot)
-	if inspection == nil || inspection.Info == nil || inspection.Info.ShadowStateHome == "" {
-		state, err := session.Load(projectRoot)
-		return state, stateDir, err
-	}
-	if inspection.Health != session.RuntimeContainmentActive &&
-		inspection.Health != session.RuntimeContainmentDegraded &&
-		inspection.Health != session.RuntimeContainmentLegacy {
-		state, err := session.Load(projectRoot)
-		return state, stateDir, err
-	}
-	state, err := session.LoadFromHome(inspection.Info.ShadowStateHome, projectRoot)
-	if err != nil {
-		return nil, stateDir, err
-	}
-	return state, session.StateDirUnder(inspection.Info.ShadowStateHome, projectRoot), nil
-}
-
 func printRuntimeContainmentStatus(inspection *session.RuntimeContainmentInspection) {
 	if inspection == nil || inspection.Info == nil {
 		fmt.Printf("  %-9s none\n", "runtime")
@@ -48,13 +29,13 @@ func printRuntimeContainmentStatus(inspection *session.RuntimeContainmentInspect
 		if inspection.Reason != "" {
 			fmt.Printf("             Reason: %s\n", inspection.Reason)
 		}
-		if warning := runtimeContainmentWarning(inspection); warning != "" {
+		if warning := inspection.Warning(); warning != "" {
 			fmt.Printf("             Warning: %s\n", warning)
 		}
-		if impact := runtimeContainmentImpact(inspection); impact != "" {
+		if impact := inspection.Impact(); impact != "" {
 			fmt.Printf("             Impact: %s\n", impact)
 		}
-		for _, fix := range runtimeContainmentFixes(inspection) {
+		for _, fix := range inspection.Fixes() {
 			fmt.Printf("             Fix: %s\n", fix)
 		}
 	case session.RuntimeContainmentLegacy:
@@ -63,13 +44,13 @@ func printRuntimeContainmentStatus(inspection *session.RuntimeContainmentInspect
 		if inspection.Reason != "" {
 			fmt.Printf("             Reason: %s\n", inspection.Reason)
 		}
-		if warning := runtimeContainmentWarning(inspection); warning != "" {
+		if warning := inspection.Warning(); warning != "" {
 			fmt.Printf("             Warning: %s\n", warning)
 		}
-		if impact := runtimeContainmentImpact(inspection); impact != "" {
+		if impact := inspection.Impact(); impact != "" {
 			fmt.Printf("             Impact: %s\n", impact)
 		}
-		for _, fix := range runtimeContainmentFixes(inspection) {
+		for _, fix := range inspection.Fixes() {
 			fmt.Printf("             Fix: %s\n", fix)
 		}
 	case session.RuntimeContainmentStale:
@@ -77,13 +58,13 @@ func printRuntimeContainmentStatus(inspection *session.RuntimeContainmentInspect
 		if inspection.Reason != "" {
 			fmt.Printf("             Reason: %s\n", inspection.Reason)
 		}
-		if warning := runtimeContainmentWarning(inspection); warning != "" {
+		if warning := inspection.Warning(); warning != "" {
 			fmt.Printf("             Warning: %s\n", warning)
 		}
-		if impact := runtimeContainmentImpact(inspection); impact != "" {
+		if impact := inspection.Impact(); impact != "" {
 			fmt.Printf("             Impact: %s\n", impact)
 		}
-		for _, fix := range runtimeContainmentFixes(inspection) {
+		for _, fix := range inspection.Fixes() {
 			fmt.Printf("             Fix: %s\n", fix)
 		}
 	case session.RuntimeContainmentInactive:

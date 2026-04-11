@@ -112,22 +112,22 @@ func printDoctorOperability(projectRoot string, state *session.State, ledgerCoun
 			}
 		case session.RuntimeContainmentStale:
 			fmt.Printf("  WARNING: runtime containment is stale (%s)\n", runtimeInspection.Reason)
-			if warning := runtimeContainmentWarning(runtimeInspection); warning != "" {
+			if warning := runtimeInspection.Warning(); warning != "" {
 				fmt.Printf("           Warning: %s.\n", strings.TrimSuffix(warning, "."))
 			}
-			if impact := runtimeContainmentImpact(runtimeInspection); impact != "" {
+			if impact := runtimeInspection.Impact(); impact != "" {
 				fmt.Printf("           Impact: %s.\n", strings.TrimSuffix(impact, "."))
 			}
 			fmt.Println("           Fix: rerun `sir run <agent>` or let `sir doctor` prune stale runtime state.")
 		case session.RuntimeContainmentDegraded:
 			fmt.Printf("  WARNING: runtime containment is degraded (%s)\n", runtimeInspection.Reason)
-			if warning := runtimeContainmentWarning(runtimeInspection); warning != "" {
+			if warning := runtimeInspection.Warning(); warning != "" {
 				fmt.Printf("           Warning: %s.\n", strings.TrimSuffix(warning, "."))
 			}
-			if impact := runtimeContainmentImpact(runtimeInspection); impact != "" {
+			if impact := runtimeInspection.Impact(); impact != "" {
 				fmt.Printf("           Impact: %s.\n", strings.TrimSuffix(impact, "."))
 			}
-			for _, fix := range runtimeContainmentFixes(runtimeInspection) {
+			for _, fix := range runtimeInspection.Fixes() {
 				fmt.Printf("           Fix: %s.\n", strings.TrimSuffix(fix, "."))
 			}
 		}
