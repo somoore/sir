@@ -289,6 +289,69 @@ func TestBashLineageMutationParsesTargetDirectoryFlags(t *testing.T) {
 	}
 }
 
+func TestBashLineageMutationRespectsDoubleDashForDashPrefixedOperands(t *testing.T) {
+	forceLocalPolicyFallback(t)
+	projectRoot := t.TempDir()
+	state := session.NewState(projectRoot)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(projectRoot, "archive"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("mv dash-prefixed destination", func(t *testing.T) {
+		localState := session.NewState(projectRoot)
+		if err := localState.Save(); err != nil {
+			t.Fatal(err)
+		}
+		seedLineageRecord(t, localState, projectRoot, "report.txt", session.LineageLabel{
+			Sensitivity: "secret",
+			Trust:       "trusted",
+			Provenance:  "user",
+		})
+
+		propagateBashLineageMutation(projectRoot, localState, &PostHookPayload{
+			ToolName:  "Bash",
+			ToolInput: map[string]interface{}{"command": "mv report.txt -- -tainted.txt"},
+		})
+
+		labels := localState.DerivedLabelsForPath(ResolveTarget(projectRoot, "-tainted.txt"))
+		if len(labels) != 1 {
+			t.Fatalf("-tainted.txt labels = %+v, want copied source lineage", labels)
+		}
+		if labels[0].Sensitivity != "secret" || labels[0].Trust != "trusted" || labels[0].Provenance != "user" {
+			t.Fatalf("-tainted.txt labels = %+v, want copied source lineage", labels)
+		}
+	})
+
+	t.Run("cp dash-prefixed source", func(t *testing.T) {
+		localState := session.NewState(projectRoot)
+		if err := localState.Save(); err != nil {
+			t.Fatal(err)
+		}
+		seedLineageRecord(t, localState, projectRoot, "-tainted.txt", session.LineageLabel{
+			Sensitivity: "secret",
+			Trust:       "trusted",
+			Provenance:  "user",
+		})
+
+		propagateBashLineageMutation(projectRoot, localState, &PostHookPayload{
+			ToolName:  "Bash",
+			ToolInput: map[string]interface{}{"command": "cp -- -tainted.txt archive/"},
+		})
+
+		labels := localState.DerivedLabelsForPath(ResolveTarget(projectRoot, "archive/-tainted.txt"))
+		if len(labels) != 1 {
+			t.Fatalf("archive/-tainted.txt labels = %+v, want copied source lineage", labels)
+		}
+		if labels[0].Sensitivity != "secret" || labels[0].Trust != "trusted" || labels[0].Provenance != "user" {
+			t.Fatalf("archive/-tainted.txt labels = %+v, want copied source lineage", labels)
+		}
+	})
+}
+
 func TestBashLineageMutationMergesExistingDestinationLineage(t *testing.T) {
 	forceLocalPolicyFallback(t)
 	projectRoot := t.TempDir()

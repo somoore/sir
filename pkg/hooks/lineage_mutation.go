@@ -130,13 +130,24 @@ func parseBashLineageMutation(cmd string) (sources []string, dest string, ok boo
 	operands := make([]string, 0, len(parts)-1)
 	targetDir := ""
 	skipNext := false
+	endOfOptions := false
 	for i := 1; i < len(parts); i++ {
 		part := parts[i]
 		if skipNext {
 			skipNext = false
 			continue
 		}
-		if part == "" || strings.HasPrefix(part, "-") {
+		if part == "--" {
+			endOfOptions = true
+			continue
+		}
+		if isShellRedirectionToken(part) {
+			if shellRedirectionConsumesFollowingToken(part) {
+				skipNext = true
+			}
+			continue
+		}
+		if !endOfOptions && (part == "" || strings.HasPrefix(part, "-")) {
 			if dir, consumed, ok := consumeTargetDirectoryFlag(parts[i:]); ok {
 				targetDir = strings.Trim(strings.TrimSpace(dir), "\"'`")
 				if targetDir == "" {
@@ -144,12 +155,6 @@ func parseBashLineageMutation(cmd string) (sources []string, dest string, ok boo
 				}
 				i += consumed - 1
 				continue
-			}
-			continue
-		}
-		if isShellRedirectionToken(part) {
-			if shellRedirectionConsumesFollowingToken(part) {
-				skipNext = true
 			}
 			continue
 		}
