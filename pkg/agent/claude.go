@@ -140,45 +140,14 @@ var claudeSpec = AgentSpec{
 	FormatLifecycleFunc: formatClaudeLifecycleResponse,
 }
 
-// ClaudeAgent is the Claude Code adapter.
-type ClaudeAgent struct{}
+// ClaudeAgent is the Claude Code adapter. Its Agent/MapBuilder methods come
+// from the embedded specAdapter bound to claudeSpec — nothing per-agent lives
+// here except the spec, the lifecycle formatter, and the constructor.
+type ClaudeAgent struct{ specAdapter }
 
 // compile-time interface assertions
 var _ Agent = (*ClaudeAgent)(nil)
 var _ MapBuilder = (*ClaudeAgent)(nil)
 
 // NewClaudeAgent returns a new Claude Code adapter.
-func NewClaudeAgent() *ClaudeAgent { return &ClaudeAgent{} }
-
-func (c *ClaudeAgent) ID() AgentID         { return claudeSpec.ID }
-func (c *ClaudeAgent) Name() string        { return claudeSpec.Name }
-func (c *ClaudeAgent) MinVersion() string  { return claudeSpec.MinVersion }
-func (c *ClaudeAgent) GetSpec() *AgentSpec { return &claudeSpec }
-
-func (c *ClaudeAgent) ParsePreToolUse(raw []byte) (*HookPayload, error) {
-	return baseParseHookPayload(&claudeSpec, raw)
-}
-func (c *ClaudeAgent) ParsePostToolUse(raw []byte) (*HookPayload, error) {
-	return baseParseHookPayload(&claudeSpec, raw)
-}
-
-func (c *ClaudeAgent) FormatPreToolUseResponse(decision, reason string) ([]byte, error) {
-	return baseFormatPreToolUseResponse(&claudeSpec, decision, reason)
-}
-func (c *ClaudeAgent) FormatPostToolUseResponse(decision, reason string) ([]byte, error) {
-	return baseFormatPostToolUseResponse(&claudeSpec, decision, reason)
-}
-func (c *ClaudeAgent) FormatLifecycleResponse(eventName, decision, reason, context string) ([]byte, error) {
-	return baseFormatLifecycleResponse(&claudeSpec, eventName, decision, reason, context)
-}
-
-func (c *ClaudeAgent) SupportedEvents() []string { return claudeSpec.SupportedWireEvents }
-func (c *ClaudeAgent) ConfigPath() string        { return baseConfigPath(&claudeSpec) }
-func (c *ClaudeAgent) DetectInstallation() bool  { return baseDetectInstallation(&claudeSpec) }
-
-func (c *ClaudeAgent) GenerateHooksConfig(sirBinaryPath, mode string) ([]byte, error) {
-	return baseGenerateHooksConfig(&claudeSpec, sirBinaryPath, mode)
-}
-func (c *ClaudeAgent) GenerateHooksConfigMap(sirBinaryPath, mode string) (map[string]interface{}, error) {
-	return baseGenerateHooksConfigMap(&claudeSpec, sirBinaryPath, mode)
-}
+func NewClaudeAgent() *ClaudeAgent { return &ClaudeAgent{specAdapter{spec: &claudeSpec}} }

@@ -139,45 +139,13 @@ var geminiSpec = AgentSpec{
 	ExtractToolOutputFunc: extractGeminiToolOutput,
 }
 
-// GeminiAgent is the Google Gemini CLI adapter.
-type GeminiAgent struct{}
+// GeminiAgent is the Google Gemini CLI adapter. Its Agent/MapBuilder methods
+// come from the embedded specAdapter bound to geminiSpec.
+type GeminiAgent struct{ specAdapter }
 
 // compile-time interface assertions
 var _ Agent = (*GeminiAgent)(nil)
 var _ MapBuilder = (*GeminiAgent)(nil)
 
 // NewGeminiAgent returns a new Gemini CLI adapter.
-func NewGeminiAgent() *GeminiAgent { return &GeminiAgent{} }
-
-func (g *GeminiAgent) ID() AgentID         { return geminiSpec.ID }
-func (g *GeminiAgent) Name() string        { return geminiSpec.Name }
-func (g *GeminiAgent) MinVersion() string  { return geminiSpec.MinVersion }
-func (g *GeminiAgent) GetSpec() *AgentSpec { return &geminiSpec }
-
-func (g *GeminiAgent) ParsePreToolUse(raw []byte) (*HookPayload, error) {
-	return baseParseHookPayload(&geminiSpec, raw)
-}
-func (g *GeminiAgent) ParsePostToolUse(raw []byte) (*HookPayload, error) {
-	return baseParseHookPayload(&geminiSpec, raw)
-}
-
-func (g *GeminiAgent) FormatPreToolUseResponse(decision, reason string) ([]byte, error) {
-	return baseFormatPreToolUseResponse(&geminiSpec, decision, reason)
-}
-func (g *GeminiAgent) FormatPostToolUseResponse(decision, reason string) ([]byte, error) {
-	return baseFormatPostToolUseResponse(&geminiSpec, decision, reason)
-}
-func (g *GeminiAgent) FormatLifecycleResponse(eventName, decision, reason, context string) ([]byte, error) {
-	return baseFormatLifecycleResponse(&geminiSpec, eventName, decision, reason, context)
-}
-
-func (g *GeminiAgent) SupportedEvents() []string { return geminiSpec.SupportedWireEvents }
-func (g *GeminiAgent) ConfigPath() string        { return baseConfigPath(&geminiSpec) }
-func (g *GeminiAgent) DetectInstallation() bool  { return baseDetectInstallation(&geminiSpec) }
-
-func (g *GeminiAgent) GenerateHooksConfig(sirBinaryPath, mode string) ([]byte, error) {
-	return baseGenerateHooksConfig(&geminiSpec, sirBinaryPath, mode)
-}
-func (g *GeminiAgent) GenerateHooksConfigMap(sirBinaryPath, mode string) (map[string]interface{}, error) {
-	return baseGenerateHooksConfigMap(&geminiSpec, sirBinaryPath, mode)
-}
+func NewGeminiAgent() *GeminiAgent { return &GeminiAgent{specAdapter{spec: &geminiSpec}} }

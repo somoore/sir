@@ -80,45 +80,13 @@ var codexSpec = AgentSpec{
 	PostInstallFunc: nil,
 }
 
-// CodexAgent is the OpenAI Codex CLI adapter.
-type CodexAgent struct{}
+// CodexAgent is the OpenAI Codex CLI adapter. Its Agent/MapBuilder methods
+// come from the embedded specAdapter bound to codexSpec.
+type CodexAgent struct{ specAdapter }
 
 // compile-time interface assertions
 var _ Agent = (*CodexAgent)(nil)
 var _ MapBuilder = (*CodexAgent)(nil)
 
 // NewCodexAgent returns a new Codex adapter.
-func NewCodexAgent() *CodexAgent { return &CodexAgent{} }
-
-func (c *CodexAgent) ID() AgentID         { return codexSpec.ID }
-func (c *CodexAgent) Name() string        { return codexSpec.Name }
-func (c *CodexAgent) MinVersion() string  { return codexSpec.MinVersion }
-func (c *CodexAgent) GetSpec() *AgentSpec { return &codexSpec }
-
-func (c *CodexAgent) ParsePreToolUse(raw []byte) (*HookPayload, error) {
-	return baseParseHookPayload(&codexSpec, raw)
-}
-func (c *CodexAgent) ParsePostToolUse(raw []byte) (*HookPayload, error) {
-	return baseParseHookPayload(&codexSpec, raw)
-}
-
-func (c *CodexAgent) FormatPreToolUseResponse(decision, reason string) ([]byte, error) {
-	return baseFormatPreToolUseResponse(&codexSpec, decision, reason)
-}
-func (c *CodexAgent) FormatPostToolUseResponse(decision, reason string) ([]byte, error) {
-	return baseFormatPostToolUseResponse(&codexSpec, decision, reason)
-}
-func (c *CodexAgent) FormatLifecycleResponse(eventName, decision, reason, context string) ([]byte, error) {
-	return baseFormatLifecycleResponse(&codexSpec, eventName, decision, reason, context)
-}
-
-func (c *CodexAgent) SupportedEvents() []string { return codexSpec.SupportedWireEvents }
-func (c *CodexAgent) ConfigPath() string        { return baseConfigPath(&codexSpec) }
-func (c *CodexAgent) DetectInstallation() bool  { return baseDetectInstallation(&codexSpec) }
-
-func (c *CodexAgent) GenerateHooksConfig(sirBinaryPath, mode string) ([]byte, error) {
-	return baseGenerateHooksConfig(&codexSpec, sirBinaryPath, mode)
-}
-func (c *CodexAgent) GenerateHooksConfigMap(sirBinaryPath, mode string) (map[string]interface{}, error) {
-	return baseGenerateHooksConfigMap(&codexSpec, sirBinaryPath, mode)
-}
+func NewCodexAgent() *CodexAgent { return &CodexAgent{specAdapter{spec: &codexSpec}} }

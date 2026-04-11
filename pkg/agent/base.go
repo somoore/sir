@@ -264,3 +264,53 @@ func baseGenerateHooksConfig(spec *AgentSpec, sirBinaryPath, mode string) ([]byt
 	}
 	return json.Marshal(config)
 }
+
+// specAdapter is the shared Agent + MapBuilder implementation for adapters
+// whose methods are pure data-driven forwards into the base* functions. Each
+// concrete adapter (ClaudeAgent, CodexAgent, GeminiAgent) embeds specAdapter
+// with its own *AgentSpec. Embedding is safe here despite the CRITICAL DESIGN
+// NOTE above because the base functions accept the spec as a parameter and do
+// not dispatch back into adapter methods — there is no virtual-dispatch hazard
+// because nothing overrides. Per-agent customization still lives on the spec
+// as function-pointer fields (ExtractToolOutputFunc, FormatLifecycleFunc,
+// PostInstallFunc).
+type specAdapter struct {
+	spec *AgentSpec
+}
+
+func (a specAdapter) ID() AgentID         { return a.spec.ID }
+func (a specAdapter) Name() string        { return a.spec.Name }
+func (a specAdapter) MinVersion() string  { return a.spec.MinVersion }
+func (a specAdapter) GetSpec() *AgentSpec { return a.spec }
+
+func (a specAdapter) ParsePreToolUse(raw []byte) (*HookPayload, error) {
+	return baseParseHookPayload(a.spec, raw)
+}
+
+func (a specAdapter) ParsePostToolUse(raw []byte) (*HookPayload, error) {
+	return baseParseHookPayload(a.spec, raw)
+}
+
+func (a specAdapter) FormatPreToolUseResponse(decision, reason string) ([]byte, error) {
+	return baseFormatPreToolUseResponse(a.spec, decision, reason)
+}
+
+func (a specAdapter) FormatPostToolUseResponse(decision, reason string) ([]byte, error) {
+	return baseFormatPostToolUseResponse(a.spec, decision, reason)
+}
+
+func (a specAdapter) FormatLifecycleResponse(eventName, decision, reason, context string) ([]byte, error) {
+	return baseFormatLifecycleResponse(a.spec, eventName, decision, reason, context)
+}
+
+func (a specAdapter) SupportedEvents() []string { return a.spec.SupportedWireEvents }
+func (a specAdapter) ConfigPath() string        { return baseConfigPath(a.spec) }
+func (a specAdapter) DetectInstallation() bool  { return baseDetectInstallation(a.spec) }
+
+func (a specAdapter) GenerateHooksConfig(sirBinaryPath, mode string) ([]byte, error) {
+	return baseGenerateHooksConfig(a.spec, sirBinaryPath, mode)
+}
+
+func (a specAdapter) GenerateHooksConfigMap(sirBinaryPath, mode string) (map[string]interface{}, error) {
+	return baseGenerateHooksConfigMap(a.spec, sirBinaryPath, mode)
+}

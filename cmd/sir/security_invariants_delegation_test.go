@@ -137,7 +137,7 @@ func runSubagentStartDecision(projectRoot string, state *session.State) (string,
 
 	done := make(chan error, 1)
 	go func() {
-		done <- hooks.EvaluateSubagentStart(projectRoot, &agent.ClaudeAgent{})
+		done <- hooks.EvaluateSubagentStart(projectRoot, agent.NewClaudeAgent())
 	}()
 
 	if err := <-done; err != nil {

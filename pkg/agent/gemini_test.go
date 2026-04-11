@@ -21,21 +21,21 @@ func loadGeminiFixture(t *testing.T, name string) []byte {
 }
 
 func TestGeminiAgent_ID(t *testing.T) {
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 	if g.ID() != Gemini {
 		t.Errorf("ID() = %q, want %q", g.ID(), Gemini)
 	}
 }
 
 func TestGeminiAgent_Name(t *testing.T) {
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 	if g.Name() != "Gemini CLI" {
 		t.Errorf("Name() = %q, want %q", g.Name(), "Gemini CLI")
 	}
 }
 
 func TestGeminiAgent_SupportedEvents(t *testing.T) {
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 	events := g.SupportedEvents()
 	want := []string{"BeforeTool", "AfterTool", "BeforeAgent", "SessionStart", "SessionEnd", "AfterAgent"}
 	if len(events) != len(want) {
@@ -49,7 +49,7 @@ func TestGeminiAgent_SupportedEvents(t *testing.T) {
 }
 
 func TestGeminiAgent_ConfigPath(t *testing.T) {
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 	path := g.ConfigPath()
 	if !strings.HasSuffix(path, filepath.Join(".gemini", "settings.json")) {
 		t.Errorf("ConfigPath() = %q, want suffix %q", path, filepath.Join(".gemini", "settings.json"))
@@ -58,7 +58,7 @@ func TestGeminiAgent_ConfigPath(t *testing.T) {
 
 func TestGeminiParsePreToolUse_ShellCommand(t *testing.T) {
 	raw := loadGeminiFixture(t, "beforetool-shell-curl.json")
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 	p, err := g.ParsePreToolUse(raw)
 	if err != nil {
 		t.Fatalf("ParsePreToolUse: %v", err)
@@ -79,7 +79,7 @@ func TestGeminiParsePreToolUse_ShellCommand(t *testing.T) {
 
 func TestGeminiParsePreToolUse_ReadFile(t *testing.T) {
 	raw := loadGeminiFixture(t, "beforetool-read-env.json")
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 	p, err := g.ParsePreToolUse(raw)
 	if err != nil {
 		t.Fatalf("ParsePreToolUse: %v", err)
@@ -91,7 +91,7 @@ func TestGeminiParsePreToolUse_ReadFile(t *testing.T) {
 
 func TestGeminiParsePreToolUse_WriteFile(t *testing.T) {
 	raw := loadGeminiFixture(t, "beforetool-write-geminimd.json")
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 	p, err := g.ParsePreToolUse(raw)
 	if err != nil {
 		t.Fatalf("ParsePreToolUse: %v", err)
@@ -103,7 +103,7 @@ func TestGeminiParsePreToolUse_WriteFile(t *testing.T) {
 
 func TestGeminiParsePreToolUse_Replace(t *testing.T) {
 	raw := []byte(`{"session_id":"x","hook_event_name":"BeforeTool","tool_name":"replace","tool_input":{"file_path":"/tmp/foo","old_string":"a","new_string":"b"},"tool_use_id":"u","cwd":"/"}`)
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 	p, err := g.ParsePreToolUse(raw)
 	if err != nil {
 		t.Fatalf("ParsePreToolUse: %v", err)
@@ -115,7 +115,7 @@ func TestGeminiParsePreToolUse_Replace(t *testing.T) {
 
 func TestGeminiParsePreToolUse_Glob(t *testing.T) {
 	raw := []byte(`{"session_id":"x","hook_event_name":"BeforeTool","tool_name":"glob","tool_input":{"pattern":"**/*.go"},"tool_use_id":"u","cwd":"/"}`)
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 	p, err := g.ParsePreToolUse(raw)
 	if err != nil {
 		t.Fatalf("ParsePreToolUse: %v", err)
@@ -127,7 +127,7 @@ func TestGeminiParsePreToolUse_Glob(t *testing.T) {
 
 func TestGeminiParsePreToolUse_GrepSearch(t *testing.T) {
 	raw := []byte(`{"session_id":"x","hook_event_name":"BeforeTool","tool_name":"grep_search","tool_input":{"pattern":"TODO"},"tool_use_id":"u","cwd":"/"}`)
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 	p, err := g.ParsePreToolUse(raw)
 	if err != nil {
 		t.Fatalf("ParsePreToolUse: %v", err)
@@ -138,7 +138,7 @@ func TestGeminiParsePreToolUse_GrepSearch(t *testing.T) {
 }
 
 func TestGeminiParsePreToolUse_MCPNormalization(t *testing.T) {
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 
 	// mcp_<server>_<tool> form (server=slack, tool=post_message)
 	raw := loadGeminiFixture(t, "beforetool-mcp-slack.json")
@@ -163,7 +163,7 @@ func TestGeminiParsePreToolUse_MCPNormalization(t *testing.T) {
 
 func TestGeminiParsePostToolUse_StringLLMContent(t *testing.T) {
 	raw := loadGeminiFixture(t, "aftertool-shell-output.json")
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 	p, err := g.ParsePostToolUse(raw)
 	if err != nil {
 		t.Fatalf("ParsePostToolUse: %v", err)
@@ -179,7 +179,7 @@ func TestGeminiParsePostToolUse_StringLLMContent(t *testing.T) {
 func TestGeminiParsePostToolUse_StructuredLLMContent(t *testing.T) {
 	// llmContent is an OBJECT, not a string — should fall back to JSON encode.
 	raw := []byte(`{"session_id":"x","hook_event_name":"AfterTool","tool_name":"run_shell_command","tool_input":{"command":"ls"},"tool_use_id":"u","tool_response":{"llmContent":{"exit_code":0,"stdout":"foo"},"returnDisplay":null,"error":null},"cwd":"/"}`)
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 	p, err := g.ParsePostToolUse(raw)
 	if err != nil {
 		t.Fatalf("ParsePostToolUse: %v", err)
@@ -197,7 +197,7 @@ func TestGeminiParsePostToolUse_StructuredLLMContent(t *testing.T) {
 func TestGeminiParsePostToolUse_ReturnDisplayFallback(t *testing.T) {
 	// llmContent is null, returnDisplay is a string — should pick returnDisplay.
 	raw := []byte(`{"session_id":"x","hook_event_name":"AfterTool","tool_name":"read_file","tool_input":{"absolute_path":"/x"},"tool_use_id":"u","tool_response":{"llmContent":null,"returnDisplay":"display text","error":null},"cwd":"/"}`)
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 	p, err := g.ParsePostToolUse(raw)
 	if err != nil {
 		t.Fatalf("ParsePostToolUse: %v", err)
@@ -208,7 +208,7 @@ func TestGeminiParsePostToolUse_ReturnDisplayFallback(t *testing.T) {
 }
 
 func TestGeminiFormatPreToolUse_Allow(t *testing.T) {
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 	out, err := g.FormatPreToolUseResponse("allow", "whatever")
 	if err != nil {
 		t.Fatalf("Format: %v", err)
@@ -219,7 +219,7 @@ func TestGeminiFormatPreToolUse_Allow(t *testing.T) {
 }
 
 func TestGeminiFormatPreToolUse_Deny(t *testing.T) {
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 	out, err := g.FormatPreToolUseResponse("deny", "net_external to evil.com")
 	if err != nil {
 		t.Fatalf("Format: %v", err)
@@ -240,7 +240,7 @@ func TestGeminiFormatPreToolUse_Deny(t *testing.T) {
 }
 
 func TestGeminiFormatPreToolUse_AskMapsToDeny(t *testing.T) {
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 	out, err := g.FormatPreToolUseResponse("ask", "approve env_read")
 	if err != nil {
 		t.Fatalf("Format: %v", err)
@@ -262,7 +262,7 @@ func TestGeminiFormatPreToolUse_AskMapsToDeny(t *testing.T) {
 }
 
 func TestGeminiFormatPostToolUse_Deny(t *testing.T) {
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 	out, err := g.FormatPostToolUseResponse("deny", "credential leaked")
 	if err != nil {
 		t.Fatalf("Format: %v", err)
@@ -280,7 +280,7 @@ func TestGeminiFormatPostToolUse_Deny(t *testing.T) {
 }
 
 func TestGeminiFormatLifecycle_SessionStart(t *testing.T) {
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 	out, err := g.FormatLifecycleResponse("SessionStart", "allow", "", "sir context: posture=clean")
 	if err != nil {
 		t.Fatalf("Format: %v", err)
@@ -302,7 +302,7 @@ func TestGeminiFormatLifecycle_SessionStart(t *testing.T) {
 }
 
 func TestGeminiFormatLifecycle_SessionStart_EmptyContext(t *testing.T) {
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 	out, err := g.FormatLifecycleResponse("SessionStart", "allow", "", "")
 	if err != nil {
 		t.Fatalf("Format: %v", err)
@@ -313,7 +313,7 @@ func TestGeminiFormatLifecycle_SessionStart_EmptyContext(t *testing.T) {
 }
 
 func TestGeminiFormatLifecycle_OtherEvents(t *testing.T) {
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 
 	// Stop → {}
 	out, err := g.FormatLifecycleResponse("Stop", "allow", "", "")
@@ -366,7 +366,7 @@ func TestGeminiFormatLifecycle_OtherEvents(t *testing.T) {
 }
 
 func TestGeminiGenerateHooksConfigMap(t *testing.T) {
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 	m := mustHooksConfigMap(t, g, "/usr/local/bin/sir", "guard")
 	hooks, ok := m["hooks"].(map[string]interface{})
 	if !ok {
@@ -424,7 +424,7 @@ func TestGeminiGenerateHooksConfigMap(t *testing.T) {
 func TestGeminiDetectInstallation(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
-	g := &GeminiAgent{}
+	g := NewGeminiAgent()
 
 	// First, with neither dir nor binary on a hermetic PATH the result is
 	// only true if `gemini` happens to be installed system-wide. We can't

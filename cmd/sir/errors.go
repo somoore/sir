@@ -25,7 +25,7 @@ func guardDeny(ag agent.Agent, format string, args ...interface{}) {
 	reason := fmt.Sprintf("sir INTERNAL ERROR: "+format, args...)
 	fmt.Fprintf(os.Stderr, "%s\n", reason)
 	if ag == nil {
-		ag = &agent.ClaudeAgent{}
+		ag = agent.NewClaudeAgent()
 	}
 	if data, err := ag.FormatPreToolUseResponse("deny", reason); err == nil {
 		os.Stdout.Write(data) //nolint:errcheck
@@ -57,7 +57,7 @@ func guardPostDeny(ag agent.Agent, format string, args ...interface{}) {
 	reason := fmt.Sprintf("sir INTERNAL ERROR: "+format, args...)
 	fmt.Fprintf(os.Stderr, "%s\n", reason)
 	if ag == nil {
-		ag = &agent.ClaudeAgent{}
+		ag = agent.NewClaudeAgent()
 	}
 	if data, err := ag.FormatPostToolUseResponse("deny", reason); err == nil && len(data) > 0 {
 		os.Stdout.Write(data) //nolint:errcheck
@@ -69,7 +69,7 @@ func guardLifecycleDeny(ag agent.Agent, eventName, format string, args ...interf
 	reason := fmt.Sprintf("sir INTERNAL ERROR: "+format, args...)
 	fmt.Fprintf(os.Stderr, "%s\n", reason)
 	if ag == nil {
-		ag = &agent.ClaudeAgent{}
+		ag = agent.NewClaudeAgent()
 	}
 	if data, err := ag.FormatLifecycleResponse(eventName, lifecycleDecisionLiteral(ag, eventName), reason, ""); err == nil && len(data) > 0 {
 		os.Stdout.Write(data) //nolint:errcheck

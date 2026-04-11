@@ -22,7 +22,7 @@ func loadCodexFixture(t *testing.T, name string) []byte {
 }
 
 func TestCodexAgent_Metadata(t *testing.T) {
-	c := &CodexAgent{}
+	c := NewCodexAgent()
 	if c.ID() != Codex {
 		t.Errorf("ID() = %q, want %q", c.ID(), Codex)
 	}
@@ -46,7 +46,7 @@ func TestCodexAgent_Metadata(t *testing.T) {
 
 func TestCodexAgent_ParsePreToolUse(t *testing.T) {
 	raw := loadCodexFixture(t, "pretooluse-bash-curl.json")
-	c := &CodexAgent{}
+	c := NewCodexAgent()
 	p, err := c.ParsePreToolUse(raw)
 	if err != nil {
 		t.Fatalf("ParsePreToolUse: %v", err)
@@ -76,7 +76,7 @@ func TestCodexAgent_ParsePreToolUse(t *testing.T) {
 
 func TestCodexAgent_ParsePostToolUse_StringResponse(t *testing.T) {
 	raw := loadCodexFixture(t, "posttooluse-bash-string-output.json")
-	c := &CodexAgent{}
+	c := NewCodexAgent()
 	p, err := c.ParsePostToolUse(raw)
 	if err != nil {
 		t.Fatalf("ParsePostToolUse: %v", err)
@@ -91,7 +91,7 @@ func TestCodexAgent_ParsePostToolUse_StringResponse(t *testing.T) {
 
 func TestCodexAgent_ParsePostToolUse_StructuredResponse(t *testing.T) {
 	raw := loadCodexFixture(t, "posttooluse-bash-structured-output.json")
-	c := &CodexAgent{}
+	c := NewCodexAgent()
 	p, err := c.ParsePostToolUse(raw)
 	if err != nil {
 		t.Fatalf("ParsePostToolUse: %v", err)
@@ -111,7 +111,7 @@ func TestCodexAgent_ParsePostToolUse_StructuredResponse(t *testing.T) {
 }
 
 func TestCodexAgent_FormatPreToolUseResponse_Allow(t *testing.T) {
-	c := &CodexAgent{}
+	c := NewCodexAgent()
 	out, err := c.FormatPreToolUseResponse("allow", "whatever")
 	if err != nil {
 		t.Fatalf("Format: %v", err)
@@ -122,7 +122,7 @@ func TestCodexAgent_FormatPreToolUseResponse_Allow(t *testing.T) {
 }
 
 func TestCodexAgent_FormatPreToolUseResponse_Deny(t *testing.T) {
-	c := &CodexAgent{}
+	c := NewCodexAgent()
 	out, err := c.FormatPreToolUseResponse("deny", "net_external to evil.com")
 	if err != nil {
 		t.Fatalf("Format: %v", err)
@@ -143,7 +143,7 @@ func TestCodexAgent_FormatPreToolUseResponse_Deny(t *testing.T) {
 }
 
 func TestCodexAgent_FormatPreToolUseResponse_Ask_MapsToBlock(t *testing.T) {
-	c := &CodexAgent{}
+	c := NewCodexAgent()
 	out, err := c.FormatPreToolUseResponse("ask", "approve env_read")
 	if err != nil {
 		t.Fatalf("Format: %v", err)
@@ -165,7 +165,7 @@ func TestCodexAgent_FormatPreToolUseResponse_Ask_MapsToBlock(t *testing.T) {
 }
 
 func TestCodexAgent_FormatPostToolUseResponse_Deny(t *testing.T) {
-	c := &CodexAgent{}
+	c := NewCodexAgent()
 	out, err := c.FormatPostToolUseResponse("deny", "credential leaked")
 	if err != nil {
 		t.Fatalf("Format: %v", err)
@@ -193,7 +193,7 @@ func TestCodexAgent_FormatPostToolUseResponse_Deny(t *testing.T) {
 }
 
 func TestCodexAgent_FormatLifecycleResponse_SessionStart(t *testing.T) {
-	c := &CodexAgent{}
+	c := NewCodexAgent()
 
 	// With context: returns hookSpecificOutput envelope.
 	out, err := c.FormatLifecycleResponse("SessionStart", "allow", "", "sir context: posture=clean")
@@ -226,7 +226,7 @@ func TestCodexAgent_FormatLifecycleResponse_SessionStart(t *testing.T) {
 }
 
 func TestCodexAgent_FormatLifecycleResponse_Stop(t *testing.T) {
-	c := &CodexAgent{}
+	c := NewCodexAgent()
 
 	// Block decision produces a continuation request.
 	out, err := c.FormatLifecycleResponse("Stop", "block", "session tainted — cannot stop", "")
@@ -261,7 +261,7 @@ func TestCodexAgent_FormatLifecycleResponse_Stop(t *testing.T) {
 }
 
 func TestCodexAgent_GenerateHooksConfig_Shape(t *testing.T) {
-	c := &CodexAgent{}
+	c := NewCodexAgent()
 	raw, err := c.GenerateHooksConfig("/usr/local/bin/sir", "guard")
 	if err != nil {
 		t.Fatalf("GenerateHooksConfig: %v", err)
@@ -324,7 +324,7 @@ func TestCodexAgent_GenerateHooksConfig_Shape(t *testing.T) {
 }
 
 func TestCodexAgent_GenerateHooksConfigMap_RoundTrip(t *testing.T) {
-	c := &CodexAgent{}
+	c := NewCodexAgent()
 	m := mustHooksConfigMap(t, c, "/usr/local/bin/sir", "guard")
 	fromMap, err := json.Marshal(m)
 	if err != nil {
@@ -347,7 +347,7 @@ func TestCodexAgent_GenerateHooksConfigMap_RoundTrip(t *testing.T) {
 }
 
 func TestCodexAgent_DetectInstallation(t *testing.T) {
-	c := &CodexAgent{}
+	c := NewCodexAgent()
 	// Smoke test: skip unless something on the host indicates Codex.
 	home, _ := os.UserHomeDir()
 	_, errDir := os.Stat(filepath.Join(home, ".codex"))

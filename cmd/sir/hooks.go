@@ -146,7 +146,7 @@ func validateHookSchemaAt(configPath string, strategy agent.ConfigStrategy) (inv
 // install paths should call the agent adapter directly (see
 // installForAgent in install.go) so multi-agent dispatch stays centralized.
 func generateHooksConfig(mode string) (map[string]interface{}, error) {
-	ag := &agent.ClaudeAgent{}
+	ag := agent.NewClaudeAgent()
 	return ag.GenerateHooksConfigMap(sirBinaryPath, mode)
 }
 

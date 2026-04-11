@@ -28,7 +28,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestOutputEquivalence_Claude_PreToolUse(t *testing.T) {
-	a := &ClaudeAgent{}
+	a := NewClaudeAgent()
 	cases := []struct {
 		decision, reason string
 		want             string
@@ -49,7 +49,7 @@ func TestOutputEquivalence_Claude_PreToolUse(t *testing.T) {
 }
 
 func TestOutputEquivalence_Claude_PostToolUse(t *testing.T) {
-	a := &ClaudeAgent{}
+	a := NewClaudeAgent()
 	// Claude PostToolUse always returns nil bytes (stderr fall-through).
 	for _, c := range []struct{ decision, reason string }{
 		{"allow", ""},
@@ -67,7 +67,7 @@ func TestOutputEquivalence_Claude_PostToolUse(t *testing.T) {
 }
 
 func TestOutputEquivalence_Claude_Lifecycle(t *testing.T) {
-	a := &ClaudeAgent{}
+	a := NewClaudeAgent()
 	type tc struct {
 		event, decision, reason, context string
 		want                             string // empty means expect nil bytes
@@ -113,7 +113,7 @@ func TestOutputEquivalence_Claude_Lifecycle(t *testing.T) {
 }
 
 func TestOutputEquivalence_Claude_HooksConfig(t *testing.T) {
-	a := &ClaudeAgent{}
+	a := NewClaudeAgent()
 	want := `{"hooks":{"ConfigChange":[{"hooks":[{"command":"/usr/local/bin/sir guard config-change","timeout":5,"type":"command"}]}],"Elicitation":[{"hooks":[{"command":"/usr/local/bin/sir guard elicitation","timeout":5,"type":"command"}]}],"InstructionsLoaded":[{"hooks":[{"command":"/usr/local/bin/sir guard instructions-loaded","timeout":5,"type":"command"}]}],"PostToolUse":[{"hooks":[{"command":"/usr/local/bin/sir guard post-evaluate","timeout":10,"type":"command"}],"matcher":".*"}],"PreToolUse":[{"hooks":[{"command":"/usr/local/bin/sir guard evaluate","timeout":10,"type":"command"}],"matcher":".*"}],"SessionEnd":[{"hooks":[{"command":"/usr/local/bin/sir guard session-end","timeout":5,"type":"command"}]}],"SessionStart":[{"hooks":[{"command":"/usr/local/bin/sir guard compact-reinject","timeout":5,"type":"command"}]}],"Stop":[{"hooks":[{"command":"/usr/local/bin/sir guard session-summary","timeout":5,"type":"command"}]}],"SubagentStart":[{"hooks":[{"command":"/usr/local/bin/sir guard subagent-start","timeout":10,"type":"command"}],"matcher":".*"}],"UserPromptSubmit":[{"hooks":[{"command":"/usr/local/bin/sir guard user-prompt","timeout":5,"type":"command"}]}]}}`
 	got, err := a.GenerateHooksConfig("/usr/local/bin/sir", "guard")
 	if err != nil {
@@ -129,7 +129,7 @@ func TestOutputEquivalence_Claude_HooksConfig(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestOutputEquivalence_Codex_PreToolUse(t *testing.T) {
-	a := &CodexAgent{}
+	a := NewCodexAgent()
 	cases := []struct {
 		decision, reason string
 		want             string
@@ -150,7 +150,7 @@ func TestOutputEquivalence_Codex_PreToolUse(t *testing.T) {
 }
 
 func TestOutputEquivalence_Codex_PostToolUse(t *testing.T) {
-	a := &CodexAgent{}
+	a := NewCodexAgent()
 	cases := []struct {
 		decision, reason string
 		want             string
@@ -171,7 +171,7 @@ func TestOutputEquivalence_Codex_PostToolUse(t *testing.T) {
 }
 
 func TestOutputEquivalence_Codex_Lifecycle(t *testing.T) {
-	a := &CodexAgent{}
+	a := NewCodexAgent()
 	cases := []struct {
 		event, decision, reason, context string
 		want                             string
@@ -209,7 +209,7 @@ func TestOutputEquivalence_Codex_Lifecycle(t *testing.T) {
 }
 
 func TestOutputEquivalence_Codex_HooksConfig(t *testing.T) {
-	a := &CodexAgent{}
+	a := NewCodexAgent()
 	want := `{"hooks":{"PostToolUse":[{"hooks":[{"command":"/usr/local/bin/sir guard post-evaluate --agent codex","timeout":10,"type":"command"}],"matcher":"Bash"}],"PreToolUse":[{"hooks":[{"command":"/usr/local/bin/sir guard evaluate --agent codex","timeout":10,"type":"command"}],"matcher":"Bash"}],"SessionStart":[{"hooks":[{"command":"/usr/local/bin/sir guard compact-reinject --agent codex","timeout":5,"type":"command"}],"matcher":"startup|resume"}],"Stop":[{"hooks":[{"command":"/usr/local/bin/sir guard session-summary --agent codex","timeout":5,"type":"command"}]}],"UserPromptSubmit":[{"hooks":[{"command":"/usr/local/bin/sir guard user-prompt --agent codex","timeout":5,"type":"command"}]}]}}`
 	got, err := a.GenerateHooksConfig("/usr/local/bin/sir", "guard")
 	if err != nil {
@@ -225,7 +225,7 @@ func TestOutputEquivalence_Codex_HooksConfig(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestOutputEquivalence_Gemini_PreToolUse(t *testing.T) {
-	a := &GeminiAgent{}
+	a := NewGeminiAgent()
 	cases := []struct {
 		decision, reason string
 		want             string
@@ -246,7 +246,7 @@ func TestOutputEquivalence_Gemini_PreToolUse(t *testing.T) {
 }
 
 func TestOutputEquivalence_Gemini_PostToolUse(t *testing.T) {
-	a := &GeminiAgent{}
+	a := NewGeminiAgent()
 	cases := []struct {
 		decision, reason string
 		want             string
@@ -267,7 +267,7 @@ func TestOutputEquivalence_Gemini_PostToolUse(t *testing.T) {
 }
 
 func TestOutputEquivalence_Gemini_Lifecycle(t *testing.T) {
-	a := &GeminiAgent{}
+	a := NewGeminiAgent()
 	type tc struct {
 		event, decision, reason, context string
 		want                             string
@@ -315,7 +315,7 @@ func TestOutputEquivalence_Gemini_Lifecycle(t *testing.T) {
 }
 
 func TestOutputEquivalence_Gemini_HooksConfig(t *testing.T) {
-	a := &GeminiAgent{}
+	a := NewGeminiAgent()
 	want := `{"hooks":{"AfterAgent":[{"hooks":[{"command":"/usr/local/bin/sir guard session-summary --agent gemini","timeout":5000,"type":"command"}]}],"AfterTool":[{"hooks":[{"command":"/usr/local/bin/sir guard post-evaluate --agent gemini","timeout":10000,"type":"command"}],"matcher":".*"}],"BeforeAgent":[{"hooks":[{"command":"/usr/local/bin/sir guard user-prompt --agent gemini","timeout":5000,"type":"command"}]}],"BeforeTool":[{"hooks":[{"command":"/usr/local/bin/sir guard evaluate --agent gemini","timeout":10000,"type":"command"}],"matcher":".*"}],"SessionEnd":[{"hooks":[{"command":"/usr/local/bin/sir guard session-end --agent gemini","timeout":5000,"type":"command"}]}],"SessionStart":[{"hooks":[{"command":"/usr/local/bin/sir guard compact-reinject --agent gemini","timeout":5000,"type":"command"}],"matcher":"startup|resume|clear"}]}}`
 	got, err := a.GenerateHooksConfig("/usr/local/bin/sir", "guard")
 	if err != nil {

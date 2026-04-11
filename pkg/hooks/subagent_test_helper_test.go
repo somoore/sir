@@ -54,7 +54,7 @@ func runSubagentStartForTest(t *testing.T, projectRoot string, payload SubagentP
 
 	evalDone := make(chan error, 1)
 	go func() {
-		evalDone <- EvaluateSubagentStart(projectRoot, &agent.ClaudeAgent{})
+		evalDone <- EvaluateSubagentStart(projectRoot, agent.NewClaudeAgent())
 		outW.Close()
 	}()
 

@@ -10,7 +10,7 @@ import (
 
 // TestClaudeAgent_ID verifies the adapter identity.
 func TestClaudeAgent_ID(t *testing.T) {
-	c := &ClaudeAgent{}
+	c := NewClaudeAgent()
 	if c.ID() != Claude {
 		t.Errorf("ID() = %q, want %q", c.ID(), Claude)
 	}
@@ -21,7 +21,7 @@ func TestClaudeAgent_ID(t *testing.T) {
 
 // TestClaudeAgent_SupportedEvents asserts all ten hook events are present.
 func TestClaudeAgent_SupportedEvents(t *testing.T) {
-	c := &ClaudeAgent{}
+	c := NewClaudeAgent()
 	events := c.SupportedEvents()
 	want := []string{
 		"PreToolUse",
@@ -52,7 +52,7 @@ func TestClaudeAgent_SupportedEvents(t *testing.T) {
 // TestClaudeAgent_RoundTrip_PreToolUse parses a real Claude PreToolUse JSON
 // fixture, formats an allow response, and asserts the response shape.
 func TestClaudeAgent_RoundTrip_PreToolUse(t *testing.T) {
-	c := &ClaudeAgent{}
+	c := NewClaudeAgent()
 	// Use the pre-shipped allow-curl-localhost.json fixture
 	fixturePath := filepath.Join("..", "..", "testdata", "hook-payloads", "allow-curl-localhost.json")
 	raw, err := os.ReadFile(fixturePath)
@@ -100,7 +100,7 @@ func TestClaudeAgent_RoundTrip_PreToolUse(t *testing.T) {
 // TestClaudeAgent_FormatDeny asserts that a deny response contains the
 // reason and the correct permissionDecision.
 func TestClaudeAgent_FormatDeny(t *testing.T) {
-	c := &ClaudeAgent{}
+	c := NewClaudeAgent()
 	reason := "sir blocks this because reasons"
 	data, err := c.FormatPreToolUseResponse("deny", reason)
 	if err != nil {
@@ -121,7 +121,7 @@ func TestClaudeAgent_FormatDeny(t *testing.T) {
 // TestClaudeAgent_FormatLifecycleResponse_SessionStart asserts compact
 // reinjection produces the { message: ... } shape Claude Code expects.
 func TestClaudeAgent_FormatLifecycleResponse_SessionStart(t *testing.T) {
-	c := &ClaudeAgent{}
+	c := NewClaudeAgent()
 	data, err := c.FormatLifecycleResponse("SessionStart", "allow", "", "[sir] reminder text")
 	if err != nil {
 		t.Fatalf("FormatLifecycleResponse: %v", err)
@@ -138,7 +138,7 @@ func TestClaudeAgent_FormatLifecycleResponse_SessionStart(t *testing.T) {
 // TestClaudeAgent_FormatLifecycleResponse_Silent asserts events that should
 // produce no stdout output return nil bytes.
 func TestClaudeAgent_FormatLifecycleResponse_Silent(t *testing.T) {
-	c := &ClaudeAgent{}
+	c := NewClaudeAgent()
 	for _, ev := range []string{"UserPromptSubmit", "Stop", "SessionEnd", "ConfigChange", "Elicitation", "InstructionsLoaded"} {
 		data, err := c.FormatLifecycleResponse(ev, "allow", "", "")
 		if err != nil {
@@ -153,7 +153,7 @@ func TestClaudeAgent_FormatLifecycleResponse_Silent(t *testing.T) {
 // TestClaudeAgent_GenerateHooksConfigMap asserts the shape matches what the
 // install merge loop expects.
 func TestClaudeAgent_GenerateHooksConfigMap(t *testing.T) {
-	c := &ClaudeAgent{}
+	c := NewClaudeAgent()
 	cfg := mustHooksConfigMap(t, c, "/usr/local/bin/sir", "guard")
 	hooks, ok := cfg["hooks"].(map[string]interface{})
 	if !ok {
@@ -190,7 +190,7 @@ func TestClaudeAgent_GenerateHooksConfigMap(t *testing.T) {
 // TestClaudeAgent_DetectInstallation is a smoke test that returns without
 // asserting anything specific: it only verifies the method runs.
 func TestClaudeAgent_DetectInstallation(t *testing.T) {
-	c := &ClaudeAgent{}
+	c := NewClaudeAgent()
 	_ = c.DetectInstallation() // smoke — may be true or false
 	// ConfigPath must be non-empty unless UserHomeDir failed (very unlikely in tests).
 	if c.ConfigPath() == "" {
@@ -223,7 +223,7 @@ func TestForID_Defaults(t *testing.T) {
 // pkg/hooks/post_evaluate.go's stderr fallback at the same time so
 // non-allow decisions still reach the developer.
 func TestClaudeFormatPostToolUseResponse_ReturnsNil(t *testing.T) {
-	c := &ClaudeAgent{}
+	c := NewClaudeAgent()
 	for _, decision := range []string{"allow", "deny", "ask"} {
 		b, err := c.FormatPostToolUseResponse(decision, "some reason")
 		if err != nil {
