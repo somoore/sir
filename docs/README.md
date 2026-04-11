@@ -9,6 +9,7 @@ sir — Sandbox in Reverse — is an experimental security runtime for AI coding
 - Runtime behavior: [docs/user/runtime-security-overview.md](user/runtime-security-overview.md)
 - Claude / Gemini / Codex details: [docs/user/claude-code-hooks-integration.md](user/claude-code-hooks-integration.md), [docs/user/gemini-support.md](user/gemini-support.md), [docs/user/codex-support.md](user/codex-support.md)
 - Troubleshooting and daily commands: [docs/user/faq.md](user/faq.md)
+- SIEM integration and OTLP attribute reference: [docs/user/siem-integration.md](user/siem-integration.md)
 - Contributor setup, subsystem ownership, and visible backlog tracks: [CONTRIBUTING.md](../CONTRIBUTING.md)
 - Fast contributor orientation: [docs/contributor/first-30-minutes.md](contributor/first-30-minutes.md)
 - Architecture and invariants: [ARCHITECTURE.md](../ARCHITECTURE.md), [docs/contributor/security-engineering-core.md](contributor/security-engineering-core.md)
