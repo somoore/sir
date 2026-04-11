@@ -11,6 +11,7 @@ import (
 	"github.com/somoore/sir/pkg/hooks"
 	"github.com/somoore/sir/pkg/lease"
 	"github.com/somoore/sir/pkg/ledger"
+	"github.com/somoore/sir/pkg/policy"
 	"github.com/somoore/sir/pkg/posture"
 	"github.com/somoore/sir/pkg/session"
 )
@@ -185,6 +186,19 @@ func runInvariantMCPTaintedSinkGate(t *testing.T, fixture securityInvariantFixtu
 	}
 	if got, want := string(secretSessionResp.Decision), fixture.Expected["secret_session_decision"]; got != want {
 		t.Fatalf("secret-session MCP decision = %q, want %q (reason=%s)", got, want, secretSessionResp.Reason)
+	}
+	unapprovedResp, err := hooks.ExportEvaluatePayload(&hooks.HookPayload{
+		ToolName:  "mcp__rogue__create_issue",
+		ToolInput: fixture.ToolInput,
+	}, l, state, env.projectRoot)
+	if err != nil {
+		t.Fatalf("evaluate unapproved MCP call: %v", err)
+	}
+	if got := string(unapprovedResp.Decision); got != string(policy.VerdictAsk) {
+		t.Fatalf("unapproved MCP decision = %q, want ask (reason=%s)", got, unapprovedResp.Reason)
+	}
+	if !strings.Contains(unapprovedResp.Reason, "sir hasn't seen before") {
+		t.Fatalf("expected unapproved MCP call to use the existing unapproved-server path, got %q", unapprovedResp.Reason)
 	}
 	if err := state.Save(); err != nil {
 		t.Fatalf("save state after secret-session MCP call: %v", err)
