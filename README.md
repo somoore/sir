@@ -7,6 +7,7 @@
 
 [![Build](https://github.com/somoore/sir/actions/workflows/post-merge.yml/badge.svg?branch=main)](https://github.com/somoore/sir/actions/workflows/post-merge.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/somoore/sir/badge)](https://securityscorecards.dev/viewer/?uri=github.com/somoore/sir)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12462/badge)](https://www.bestpractices.dev/projects/12462)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Status: experimental](https://img.shields.io/badge/status-experimental-orange)](#hard-limits)
 
