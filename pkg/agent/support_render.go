@@ -5,6 +5,82 @@ import (
 	"strings"
 )
 
+func supportDocPath(m SupportManifest) string {
+	switch m.ID {
+	case Claude:
+		return "docs/user/claude-code-hooks-integration.md"
+	case Gemini:
+		return "docs/user/gemini-support.md"
+	case Codex:
+		return "docs/user/codex-support.md"
+	default:
+		return ""
+	}
+}
+
+func supportThreatModelDocPath(m SupportManifest) string {
+	switch m.ID {
+	case Claude:
+		return "../user/claude-code-hooks-integration.md"
+	case Gemini:
+		return "../user/gemini-support.md"
+	case Codex:
+		return "../user/codex-support.md"
+	default:
+		return ""
+	}
+}
+
+func supportRuntimeName(m SupportManifest) string {
+	if m.ID == Codex {
+		return "codex-cli"
+	}
+	return m.Name
+}
+
+func supportLifecycleMitigationDescription(event string) string {
+	switch event {
+	case "SubagentStart":
+		return "SubagentStart delegation gating"
+	case "ConfigChange":
+		return "ConfigChange tamper detection at the moment of change"
+	case "InstructionsLoaded":
+		return "InstructionsLoaded pre-read scanning"
+	case "Elicitation":
+		return "Elicitation interception"
+	default:
+		return event
+	}
+}
+
+func formatJoinedItems(items []string) string {
+	switch len(items) {
+	case 0:
+		return ""
+	case 1:
+		return items[0]
+	case 2:
+		return items[0] + " and " + items[1]
+	default:
+		return strings.Join(items[:len(items)-1], ", ") + ", and " + items[len(items)-1]
+	}
+}
+
+func missingLifecycleHooks(m SupportManifest) string {
+	return formatJoinedItems(m.UnsupportedSIREvents)
+}
+
+func missingLifecycleMitigations(m SupportManifest) string {
+	if len(m.UnsupportedSIREvents) == 0 {
+		return ""
+	}
+	items := make([]string, 0, len(m.UnsupportedSIREvents))
+	for _, event := range m.UnsupportedSIREvents {
+		items = append(items, supportLifecycleMitigationDescription(event))
+	}
+	return formatJoinedItems(items)
+}
+
 func supportSurfaceNotes(spec *AgentSpec, key SupportSurfaceKey) string {
 	switch key {
 	case SurfaceInteractiveApproval:
@@ -152,6 +228,51 @@ func (m SupportManifest) surface(key SupportSurfaceKey) SupportSurface {
 	return SupportSurface{Key: key}
 }
 
+func (m SupportManifest) supportOverviewLine() string {
+	switch m.SupportTier {
+	case SupportTierReference:
+		return fmt.Sprintf("- **%s** — **Reference support.** Full %d-hook lifecycle with native interactive approval and complete tool-path coverage.",
+			m.Name, m.HookEventCount)
+	case SupportTierNearParity:
+		return fmt.Sprintf("- **%s** — **Near-parity support.** %d hook events fire on %s %s+, with full tool-path coverage for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: %s. See [%s](%s).",
+			m.Name, m.HookEventCount, m.Name, m.MinimumVersion, missingLifecycleHooks(m), supportDocPath(m), supportDocPath(m))
+	case SupportTierLimited:
+		return fmt.Sprintf("- **%s** — **Limited support.** %d hook events fire on `%s` %s+ after enabling the `%s` feature flag (`%s`), and the upstream hook surface is Bash-only. Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools stay outside PreToolUse; sir relies on sentinel hashing plus a final `Stop` sweep as the backstop. See [%s](%s).",
+			m.Name, m.HookEventCount, supportRuntimeName(m), m.MinimumVersion, m.RequiredFeatureFlag, m.FeatureFlagEnableCommand, supportDocPath(m), supportDocPath(m))
+	default:
+		return fmt.Sprintf("- **%s** — **%s.** %d hook events fire.", m.Name, strings.Title(m.TierLabel()), m.HookEventCount)
+	}
+}
+
+func (m SupportManifest) faqLine() string {
+	switch m.SupportTier {
+	case SupportTierReference:
+		parts := make([]string, 0, 5)
+		if m.surface(SurfaceInteractiveApproval).Supported {
+			parts = append(parts, "native interactive approval")
+		}
+		if m.surface(SurfaceMCPToolHooks).Supported {
+			parts = append(parts, "MCP scanning")
+		}
+		if m.surface(SurfaceSubagentStart).Supported {
+			parts = append(parts, "delegation gating")
+		}
+		if m.surface(SurfaceConfigChange).Supported {
+			parts = append(parts, "config change detection")
+		}
+		if m.surface(SurfaceElicitation).Supported {
+			parts = append(parts, "elicitation coverage")
+		}
+		return fmt.Sprintf("- **%s:** %d hook events — reference support with %s.", m.Name, m.HookEventCount, formatJoinedItems(parts))
+	case SupportTierNearParity:
+		return fmt.Sprintf("- **%s %s+:** %d hook events — near-parity support for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: %s. See [gemini-support.md](gemini-support.md).", m.Name, m.MinimumVersion, m.HookEventCount, missingLifecycleHooks(m))
+	case SupportTierLimited:
+		return fmt.Sprintf("- **%s %s+:** %d hook events — limited support with a **Bash-only** upstream hook surface. Requires enabling `%s` (`%s`). Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools still bypass PreToolUse; sir relies on PostToolUse sentinel hashing plus a final `Stop` sweep as the backstop. See [codex-support.md](codex-support.md).", m.Name, m.MinimumVersion, m.HookEventCount, m.RequiredFeatureFlag, m.FeatureFlagEnableCommand)
+	default:
+		return fmt.Sprintf("- **%s:** %d hook events — %s.", m.Name, m.HookEventCount, m.TierLabel())
+	}
+}
+
 func (m SupportManifest) featureFlagRow() string {
 	if m.RequiredFeatureFlag == "" {
 		return ""
@@ -210,42 +331,17 @@ func RenderClaudeSupportMatrixBlock() string {
 	return renderSupportMatrixTable(m, false)
 }
 
-func renderSupportOverviewLine(m SupportManifest) string {
-	switch m.ID {
-	case Claude:
-		return fmt.Sprintf("- **Claude Code** — **Reference support.** Full %d-hook lifecycle with native interactive approval and complete tool-path coverage.",
-			m.HookEventCount)
-	case Gemini:
-		return fmt.Sprintf("- **Gemini CLI** — **Near-parity support.** %d hook events fire on Gemini CLI %s+, with full tool-path coverage for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: SubagentStart, ConfigChange, InstructionsLoaded, and Elicitation. See [docs/user/gemini-support.md](docs/user/gemini-support.md).",
-			m.HookEventCount, m.MinimumVersion)
-	case Codex:
-		return fmt.Sprintf("- **Codex** — **Limited support.** %d hook events fire on `codex-cli` %s+ after enabling the `%s` feature flag (`%s`), and the upstream hook surface is Bash-only. Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools stay outside PreToolUse; sir relies on sentinel hashing plus a final `Stop` sweep as the backstop. See [docs/user/codex-support.md](docs/user/codex-support.md).",
-			m.HookEventCount, m.MinimumVersion, m.RequiredFeatureFlag, m.FeatureFlagEnableCommand)
-	default:
-		return fmt.Sprintf("- **%s** — **%s.** %d hook events fire.", m.Name, strings.Title(m.TierLabel()), m.HookEventCount)
-	}
-}
-
 // RenderReadmeSupportBlock renders the generated support bullets for README.
 func RenderReadmeSupportBlock() string {
 	lines := make([]string, 0, len(orderedPublicSupportManifests()))
 	for _, manifest := range orderedPublicSupportManifests() {
-		lines = append(lines, renderSupportOverviewLine(manifest))
+		lines = append(lines, manifest.supportOverviewLine())
 	}
 	return strings.Join(lines, "\n")
 }
 
 func renderFAQLine(m SupportManifest) string {
-	switch m.ID {
-	case Claude:
-		return fmt.Sprintf("- **Claude Code:** %d hook events — reference support with native interactive approval, MCP scanning, delegation gating, config change detection, and elicitation coverage.", m.HookEventCount)
-	case Gemini:
-		return fmt.Sprintf("- **Gemini CLI %s+:** %d hook events — near-parity support for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: SubagentStart, ConfigChange, InstructionsLoaded, and Elicitation. See [gemini-support.md](gemini-support.md).", m.MinimumVersion, m.HookEventCount)
-	case Codex:
-		return fmt.Sprintf("- **Codex %s+:** %d hook events — limited support with a **Bash-only** upstream hook surface. Requires enabling `%s` (`%s`). Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools still bypass PreToolUse; sir relies on PostToolUse sentinel hashing plus a final `Stop` sweep as the backstop. See [codex-support.md](codex-support.md).", m.MinimumVersion, m.HookEventCount, m.RequiredFeatureFlag, m.FeatureFlagEnableCommand)
-	default:
-		return fmt.Sprintf("- **%s:** %d hook events — %s.", m.Name, m.HookEventCount, m.TierLabel())
-	}
+	return m.faqLine()
 }
 
 // RenderFAQSupportBlock renders the generated support block for docs/user/faq.md.
@@ -265,5 +361,18 @@ func RenderFAQSupportBlock() string {
 // the public threat model doc.
 func RenderThreatModelScopeBlock() string {
 	claude, _ := SupportManifestForID(Claude)
-	return fmt.Sprintf("**Scope note.** The threat model is written primarily against Claude Code because Claude Code is the **reference-support** target: it has the richest hook surface (%d events), native interactive approval, and the most complete sir coverage. Gemini CLI has **near-parity support** — full tool-path coverage for file IFC labeling, shell classification, MCP scanning, and credential output scanning — but four Claude-specific lifecycle mitigations are not available: SubagentStart delegation gating, ConfigChange tamper detection at the moment of change, InstructionsLoaded pre-read scanning, and Elicitation interception. Codex has **limited support** with a Bash-only hook surface: Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools bypass PreToolUse, so sir relies on sentinel hashing plus a final `Stop` sweep as the posture backstop. Wherever a mitigation below depends on one of the missing hooks, the threat is correspondingly wider on the affected agent. See [../user/codex-support.md](../user/codex-support.md) and [../user/gemini-support.md](../user/gemini-support.md) for the per-agent coverage matrices.", claude.HookEventCount)
+	gemini, _ := SupportManifestForID(Gemini)
+	codex, _ := SupportManifestForID(Codex)
+	return fmt.Sprintf("**Scope note.** The threat model is written primarily against %s because %s is the **reference-support** target: it has the richest hook surface (%d events), native interactive approval, and the most complete sir coverage. %s has **near-parity support** — full tool-path coverage for file IFC labeling, shell classification, MCP scanning, and credential output scanning — but four Claude-specific lifecycle mitigations are not available: %s. %s has **limited support** with a Bash-only hook surface: Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools bypass PreToolUse, so sir relies on sentinel hashing plus a final `Stop` sweep as the posture backstop. Wherever a mitigation below depends on one of the missing hooks, the threat is correspondingly wider on the affected agent. See [%s](%s) and [%s](%s) for the per-agent coverage matrices.",
+		claude.Name,
+		claude.Name,
+		claude.HookEventCount,
+		gemini.Name,
+		missingLifecycleMitigations(gemini),
+		codex.Name,
+		supportThreatModelDocPath(codex),
+		supportThreatModelDocPath(codex),
+		supportThreatModelDocPath(gemini),
+		supportThreatModelDocPath(gemini),
+	)
 }
