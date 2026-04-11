@@ -48,7 +48,7 @@ Use `sir mcp` to inventory servers, `sir mcp wrap` to harden raw command-based s
 
 By default, sir is local-only. State lives under `~/.sir/projects/<project-hash>/`. The ledger records paths, labels, hashes, and verdicts, not secret file contents.
 
-If `SIR_OTLP_ENDPOINT` is set, sir can export verdict metadata to your own collector. Secret-labeled file paths are hashed before emission. Set `SIR_LOG_TOOL_CONTENT=1` only when you need redacted investigation evidence.
+If `SIR_OTLP_ENDPOINT` is set, sir can export verdict metadata to your own collector. Secret-labeled file paths are hashed before emission. Set `SIR_LOG_TOOL_CONTENT=1` only when you need redacted investigation evidence. Full attribute reference and SIEM query examples live in [siem-integration.md](siem-integration.md).
 
 ## What if sir detects posture tamper or starts failing closed?
 
