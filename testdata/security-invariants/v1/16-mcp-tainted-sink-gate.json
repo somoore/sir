@@ -9,7 +9,9 @@
   "tool_name": "mcp__jira__create_issue",
   "tool_input": {
     "summary": "Publish report.txt",
-    "file_path": "report.txt"
+    "artifact": {
+      "path": "report.txt"
+    }
   },
   "expected": {
     "secret_session_decision": "ask",

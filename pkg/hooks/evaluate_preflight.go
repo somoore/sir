@@ -68,8 +68,12 @@ func evaluateTaintedMCPServer(payload *HookPayload, state *session.State) (*Hook
 
 // Approved MCP calls still need a gate when the session is secret or when the
 // payload points at a file already carrying secret lineage.
-func evaluateTaintedMCPInput(payload *HookPayload, state *session.State, projectRoot string) (*HookResponse, bool) {
+func evaluateTaintedMCPInput(payload *HookPayload, l *lease.Lease, state *session.State, projectRoot string) (*HookResponse, bool) {
 	if !isToolMCP(payload.ToolName) {
+		return nil, false
+	}
+	serverName := extractMCPServerName(payload.ToolName)
+	if !isApprovedMCPServer(serverName, l) {
 		return nil, false
 	}
 	if state.SecretSession {

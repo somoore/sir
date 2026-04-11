@@ -103,7 +103,7 @@ func evaluatePayload(payload *HookPayload, l *lease.Lease, state *session.State,
 		return resp, nil
 	}
 
-	if resp, handled := evaluateTaintedMCPInput(payload, state, projectRoot); handled {
+	if resp, handled := evaluateTaintedMCPInput(payload, l, state, projectRoot); handled {
 		return resp, nil
 	}
 
