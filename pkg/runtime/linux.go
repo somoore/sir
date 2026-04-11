@@ -218,6 +218,10 @@ func runAgentLinuxLifecycle(projectRoot, bin string, opts Options, plan linuxLau
 	unshareArgs = append(unshareArgs, "/bin/sh", "-c", script, "sh", bin)
 	unshareArgs = append(unshareArgs, opts.Passthrough...)
 
+	if err := enableLinuxContainmentSubreaper(); err != nil {
+		return 0, fmt.Errorf("enable linux containment subreaper: %w", err)
+	}
+
 	cmd := exec.Command("unshare", unshareArgs...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	baseEnv, scrubbedEnv := sanitizeContainmentEnv(os.Environ())
@@ -255,6 +259,9 @@ func runAgentLinuxLifecycle(projectRoot, bin string, opts Options, plan linuxLau
 	if err != nil {
 		return 0, err
 	}
+	if err := linuxTerminateAdoptedChildren(2 * time.Second); err != nil {
+		return 0, fmt.Errorf("reap linux containment descendants: %w", err)
+	}
 	if err := finalizeRuntimeContainment(projectRoot, runtimeInfo, exitCode); err != nil {
 		return 0, err
 	}
@@ -273,15 +280,5 @@ func signalLinuxContainmentReady(cmd *exec.Cmd, readyFile string, cleanup func()
 }
 
 func terminateLinuxContainment(cmd *exec.Cmd, childPID int) {
-	if childPID > 0 {
-		_ = syscall.Kill(childPID, syscall.SIGKILL)
-	}
-	if cmd == nil || cmd.Process == nil {
-		return
-	}
-	if cmd.Process.Pid > 0 {
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-	}
-	_ = cmd.Process.Kill()
-	_, _ = cmd.Process.Wait()
+	terminateLinuxContainmentTree(cmd, childPID)
 }
