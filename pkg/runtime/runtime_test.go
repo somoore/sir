@@ -27,6 +27,11 @@ import (
 
 type runtimeTestAgent struct{}
 
+const (
+	runtimeTestProxyShapedReason = "proxy-shaped enforcement: direct non-proxy sockets remain outside the exact-destination boundary on macOS"
+	runtimeTestScrubbedEnvReason = "launch inherited host-control env that had to be scrubbed before containment"
+)
+
 func (runtimeTestAgent) ID() agent.AgentID { return agent.AgentID("runtime-test") }
 func (runtimeTestAgent) Name() string      { return "Runtime Test Agent" }
 func (runtimeTestAgent) ParsePreToolUse([]byte) (*agent.HookPayload, error) {
@@ -52,7 +57,11 @@ func (runtimeTestAgent) GenerateHooksConfig(string, string) ([]byte, error) {
 func (runtimeTestAgent) DetectInstallation() bool { return true }
 func (runtimeTestAgent) MinVersion() string       { return "" }
 func (runtimeTestAgent) GetSpec() *agent.AgentSpec {
-	return &agent.AgentSpec{ID: agent.AgentID("runtime-test"), Name: "Runtime Test Agent"}
+	return &agent.AgentSpec{
+		ID:                agent.AgentID("runtime-test"),
+		Name:              "Runtime Test Agent",
+		RuntimeProxyHosts: []string{"localhost"},
+	}
 }
 
 func TestSelectLauncherMatchesPlatform(t *testing.T) {
@@ -77,9 +86,9 @@ func TestSelectLauncherMatchesPlatform(t *testing.T) {
 	}
 }
 
-func TestContainmentDirectSocketBoundaryKeepsNetworkOutboundLoopbackOnly(t *testing.T) {
+func TestContainmentLaunchScrubsProxyBypassEnvAndRecordsDegradation(t *testing.T) {
 	if runtime.GOOS != "darwin" {
-		t.Skip("Darwin launcher direct-socket proof is macOS-only")
+		t.Skip("Darwin launcher proof is macOS-only")
 	}
 	if _, err := exec.LookPath("sandbox-exec"); err != nil {
 		t.Skip("sandbox-exec not available")
@@ -91,121 +100,123 @@ func TestContainmentDirectSocketBoundaryKeepsNetworkOutboundLoopbackOnly(t *test
 
 	homeDir := t.TempDir()
 	projectRoot := t.TempDir()
+	proofDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
+	binDir := t.TempDir()
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("HTTP_PROXY", "http://caller.proxy.invalid:8080")
+	t.Setenv("HTTPS_PROXY", "https://caller.proxy.invalid:4443")
+	t.Setenv("ALL_PROXY", "socks5://caller.proxy.invalid:1080")
+	t.Setenv("NO_PROXY", "example.com")
+	t.Setenv("http_proxy", "http://caller.proxy.invalid:8080")
+	t.Setenv("https_proxy", "https://caller.proxy.invalid:4443")
+	t.Setenv("all_proxy", "socks5://caller.proxy.invalid:1080")
+	t.Setenv("no_proxy", "example.com")
+	t.Setenv("SSH_AUTH_SOCK", "/tmp/ssh-agent.sock")
+	t.Setenv("DOCKER_HOST", "tcp://docker.invalid:2375")
 
 	if err := os.MkdirAll(filepath.Join(homeDir, ".sir", "projects"), 0o755); err != nil {
 		t.Fatalf("mkdir .sir/projects: %v", err)
 	}
 	l := lease.DefaultLease()
-	l.ApprovedHosts = []string{"localhost", "127.0.0.1", "::1"}
+	l.ApprovedHosts = []string{"localhost"}
 	if err := l.Save(filepath.Join(session.DurableStateDir(projectRoot), "lease.json")); err != nil {
 		t.Fatalf("write loopback-only runtime lease: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(projectRoot, ".mcp.json"), []byte("{}"), 0o644); err != nil {
-		t.Fatalf("write .mcp.json: %v", err)
-	}
 
-	loopbackListener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen loopback: %v", err)
-	}
-	defer loopbackListener.Close()
-	loopbackPort := loopbackListener.Addr().(*net.TCPAddr).Port
-	accepted := make(chan struct{}, 1)
-	go func() {
-		conn, acceptErr := loopbackListener.Accept()
-		if acceptErr == nil {
-			_ = conn.Close()
-			accepted <- struct{}{}
-		}
-	}()
-
-	outputPath := filepath.Join(projectRoot, "direct-socket-proof.json")
-	exitCode, err := runAgentDarwin(projectRoot, pythonBin, Options{
-		Agent: runtimeTestAgent{},
-		Passthrough: []string{
-			"-c",
-			`import json, os, socket, sys
+	agentScript := filepath.Join(binDir, "runtime-test")
+	agentProgram := filepath.Join(binDir, "runtime-test.py")
+	if err := os.WriteFile(agentProgram, []byte(`import json, os, socket, sys
 output_path = sys.argv[1]
-loopback_port = int(sys.argv[2])
 result = {
-    "http_proxy": os.environ.get("HTTP_PROXY", ""),
-    "no_proxy": os.environ.get("NO_PROXY", ""),
+    key: os.environ.get(key, "")
+    for key in [
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "no_proxy",
+        "SSH_AUTH_SOCK",
+        "DOCKER_HOST",
+    ]
 }
-sock = socket.socket()
-sock.settimeout(2)
-try:
-    sock.connect(("127.0.0.1", loopback_port))
-    result["loopback_ok"] = True
-except OSError as exc:
-    result["loopback_ok"] = False
-    result["loopback_error"] = str(exc)
-finally:
-    sock.close()
-
-sock = socket.socket()
-sock.settimeout(1)
-try:
-    sock.connect(("203.0.113.10", 443))
-    result["non_loopback_error"] = "unexpected success"
-except OSError as exc:
-    result["non_loopback_error"] = str(exc)
-finally:
-    sock.close()
 
 with open(output_path, "w", encoding="utf-8") as fh:
     json.dump(result, fh)
+sys.exit(0)
+`), 0o755); err != nil {
+		t.Fatalf("write runtime-test.py: %v", err)
+	}
+	if err := os.WriteFile(agentScript, []byte(fmt.Sprintf("#!/bin/sh\nexec %q %q \"$@\"\n", pythonBin, agentProgram)), 0o755); err != nil {
+		t.Fatalf("write runtime-test launcher: %v", err)
+	}
 
-blocked = result["non_loopback_error"]
-if result["loopback_ok"] and ("Operation not permitted" in blocked or "Permission denied" in blocked):
-    sys.exit(0)
-sys.exit(1)
-`,
-			outputPath,
-			fmt.Sprintf("%d", loopbackPort),
-		},
+	outputPath := filepath.Join(proofDir, "launch-env.json")
+	exitCode, err := Launch(projectRoot, Options{
+		Agent:       runtimeTestAgent{},
+		Passthrough: []string{outputPath},
 	})
 	if err != nil {
-		t.Fatalf("runAgentDarwin: %v", err)
+		t.Fatalf("Launch: %v", err)
 	}
 	if exitCode != 0 {
 		data, _ := os.ReadFile(outputPath)
-		t.Fatalf("expected Darwin containment to allow loopback but block non-loopback direct socket, exit=%d output=%s", exitCode, string(data))
-	}
-	select {
-	case <-accepted:
-	case <-time.After(2 * time.Second):
-		t.Fatal("contained loopback direct socket never reached local listener")
+		t.Fatalf("expected Darwin launcher to succeed, exit=%d output=%s", exitCode, string(data))
 	}
 
-	var proof struct {
-		HTTPProxy        string `json:"http_proxy"`
-		NoProxy          string `json:"no_proxy"`
-		LoopbackOK       bool   `json:"loopback_ok"`
-		LoopbackError    string `json:"loopback_error"`
-		NonLoopbackError string `json:"non_loopback_error"`
-	}
+	var proof map[string]string
 	rawProof, err := os.ReadFile(outputPath)
 	if err != nil {
-		t.Fatalf("read direct-socket proof: %v", err)
+		t.Fatalf("read launch env proof: %v", err)
 	}
 	if err := json.Unmarshal(rawProof, &proof); err != nil {
-		t.Fatalf("unmarshal direct-socket proof: %v\n%s", err, string(rawProof))
+		t.Fatalf("unmarshal launch env proof: %v\n%s", err, string(rawProof))
 	}
-	if proof.HTTPProxy == "" {
-		t.Fatal("expected Darwin launcher to inject HTTP_PROXY into contained agent")
+	receipt, err := session.LoadLastRuntimeContainment(projectRoot)
+	if err != nil {
+		t.Fatalf("load runtime receipt: %v", err)
 	}
-	if proof.NoProxy != "localhost,127.0.0.1,::1" {
-		t.Fatalf("NO_PROXY = %q, want loopback-only list", proof.NoProxy)
+	if receipt.Mode != ContainmentModeDarwinProxy {
+		t.Fatalf("runtime mode = %q, want %q", receipt.Mode, ContainmentModeDarwinProxy)
 	}
-	if !proof.LoopbackOK {
-		t.Fatalf("expected direct loopback socket to be allowed, got %q", proof.LoopbackError)
+	reasons := receipt.EffectiveDegradedReasons()
+	if !slices.Contains(reasons, runtimeTestProxyShapedReason) {
+		t.Fatalf("runtime receipt missing proxy-shaped degradation reason: %v", reasons)
 	}
-	if strings.Contains(proof.NonLoopbackError, "unexpected success") || proof.NonLoopbackError == "" {
-		t.Fatalf("expected non-loopback direct socket to be blocked, got %q", proof.NonLoopbackError)
+	if !slices.Contains(reasons, runtimeTestScrubbedEnvReason) {
+		t.Fatalf("runtime receipt missing scrubbed-env degradation reason: %v", reasons)
 	}
-	if !strings.Contains(proof.NonLoopbackError, "Operation not permitted") && !strings.Contains(proof.NonLoopbackError, "Permission denied") {
-		t.Fatalf("expected sandbox-denied non-loopback direct socket, got %q", proof.NonLoopbackError)
+	if got, want := proof["HTTP_PROXY"], receipt.ProxyURL; got == "" || want == "" || got != want {
+		t.Fatalf("proxy env was not overridden consistently: HTTP_PROXY=%q receipt=%q", got, want)
+	}
+	if got, want := proof["http_proxy"], receipt.ProxyURL; got == "" || want == "" || got != want {
+		t.Fatalf("proxy env was not overridden consistently: http_proxy=%q receipt=%q", got, want)
+	}
+	if got, want := proof["HTTPS_PROXY"], receipt.ProxyURL; got == "" || want == "" || got != want {
+		t.Fatalf("HTTPS_PROXY = %q, want %q", got, want)
+	}
+	if got, want := proof["https_proxy"], receipt.ProxyURL; got == "" || want == "" || got != want {
+		t.Fatalf("https_proxy = %q, want %q", got, want)
+	}
+	if got, want := proof["ALL_PROXY"], receipt.SOCKSProxyURL; got == "" || want == "" || got != want {
+		t.Fatalf("ALL_PROXY = %q, want %q", got, want)
+	}
+	if got, want := proof["all_proxy"], receipt.SOCKSProxyURL; got == "" || want == "" || got != want {
+		t.Fatalf("all_proxy = %q, want %q", got, want)
+	}
+	if got, want := proof["NO_PROXY"], "localhost,127.0.0.1,::1"; got != want {
+		t.Fatalf("NO_PROXY = %q, want %q", got, want)
+	}
+	if got, want := proof["no_proxy"], "localhost,127.0.0.1,::1"; got != want {
+		t.Fatalf("no_proxy = %q, want %q", got, want)
+	}
+	for _, key := range []string{"SSH_AUTH_SOCK", "DOCKER_HOST"} {
+		if got := proof[key]; got != "" {
+			t.Fatalf("expected %s to be scrubbed from child env, got %q", key, got)
+		}
 	}
 }
 
