@@ -47,6 +47,8 @@ If those gaps matter for your workflow, prefer Claude Code.
 ## Install and verify
 
 ```bash
+sir install            # auto-detects Gemini when it is present
+# or:
 sir install --agent gemini
 sir status
 sir doctor

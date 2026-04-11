@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -79,36 +80,42 @@ func mcpScopesForAgent(explicitAgent string) map[mcpConfigScope]bool {
 	}
 }
 
-// selectAgentsForInstall resolves the set of agents to operate on for
-// install based on the --agent flag.
+func detectInstalledAgents() []agent.Agent {
+	var agents []agent.Agent
+	for _, reg := range agent.Registry() {
+		ag := reg.New()
+		if ag.DetectInstallation() {
+			agents = append(agents, ag)
+		}
+	}
+	return agents
+}
+
+// selectAgentsForInstall resolves the set of agents to operate on for install
+// based on the --agent flag.
 //
 // Rules:
 //  1. If --agent is given, use exactly that one adapter. Fail-closed if the
 //     adapter is unknown or not detected on this machine — never silently
 //     fall back to a different agent.
-//  2. Otherwise, Claude Code is always included (backward compatibility:
-//     sir install on a fresh machine has always created ~/.claude/settings.json
-//     whether or not Claude was already "detected"). Codex is additionally
-//     included if detected. This means the pre-Phase-3 behavior is
-//     preserved exactly when only Claude is present, and the multi-agent
-//     path is opportunistically engaged when Codex is also on the box.
-func selectAgentsForInstall(explicit string) []agent.Agent {
+//  2. Otherwise, auto-detect the supported agents already present on this
+//     machine in deterministic registry order. If nothing is detected, return
+//     an operator-facing error instead of silently manufacturing a Claude-only
+//     install surface that the docs never promised.
+func selectAgentsForInstall(explicit string) ([]agent.Agent, error) {
 	if explicit != "" {
 		ag := agent.ForID(agent.AgentID(explicit))
 		if ag == nil {
-			fatal("unknown agent: %s (supported: %s)", explicit, supportedAgentIDs())
+			return nil, fmt.Errorf("unknown agent: %s (supported: %s)", explicit, supportedAgentIDs())
 		}
 		if !ag.DetectInstallation() {
-			fatal("--agent %s requested but %s is not installed on this machine.\n  Install %s first, then re-run sir install.", explicit, ag.Name(), ag.Name())
+			return nil, fmt.Errorf("--agent %s requested but %s is not installed on this machine.\n  Install %s first, then re-run sir install.", explicit, ag.Name(), ag.Name())
 		}
-		return []agent.Agent{ag}
+		return []agent.Agent{ag}, nil
 	}
-	var agents []agent.Agent
-	for _, reg := range agent.Registry() {
-		ag := reg.New()
-		if reg.ID == agent.Claude || ag.DetectInstallation() {
-			agents = append(agents, ag)
-		}
+	agents := detectInstalledAgents()
+	if len(agents) == 0 {
+		return nil, fmt.Errorf("no supported agents detected on this machine.\n  Install Claude Code, Gemini CLI, or Codex, then re-run sir install.\n  To pin one surface explicitly later, use --agent <%s> once that agent is present.", supportedAgentIDs())
 	}
-	return agents
+	return agents, nil
 }

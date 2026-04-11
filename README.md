@@ -30,7 +30,8 @@ Fastest path:
 curl -sSL https://raw.githubusercontent.com/somoore/sir/main/install.sh | bash
 export PATH="$HOME/.local/bin:$PATH"
 cd /path/to/project
-sir install
+sir install            # auto-detect supported agents already on this machine
+# or: sir install --agent codex
 ```
 
 Build from source if you prefer:
@@ -41,7 +42,8 @@ Build from source if you prefer:
 make build
 make install
 cd /path/to/project
-sir install
+sir install            # auto-detect supported agents already on this machine
+# or: sir install --agent gemini
 ```
 
 Managed rollout:

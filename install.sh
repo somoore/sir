@@ -7,7 +7,7 @@ echo ""
 
 # Idempotent update path — if sir is already installed, this script will
 # rebuild the binaries and replace them, preserving lease and session state
-# at ~/.sir/. Hooks at ~/.claude/settings.json are re-registered.
+# at ~/.sir/. Supported agent hook configs are re-registered when they exist.
 #
 # There is no auto-updater, no background checker, and no `sir update`
 # subcommand. To update sir, the developer re-runs this install script
@@ -30,6 +30,60 @@ NC='\033[0m'
 info()  { echo -e "${GREEN}[+]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[!]${NC} $1"; }
 error() { echo -e "${RED}[x]${NC} $1"; exit 1; }
+
+INSTALL_ARGS=("$@")
+EXPLICIT_AGENT=""
+for ((i=0; i<${#INSTALL_ARGS[@]}; i++)); do
+    case "${INSTALL_ARGS[$i]}" in
+        --agent)
+            if (( i + 1 < ${#INSTALL_ARGS[@]} )); then
+                EXPLICIT_AGENT="${INSTALL_ARGS[$((i + 1))]}"
+            fi
+            ;;
+        --agent=*)
+            EXPLICIT_AGENT="${INSTALL_ARGS[$i]#--agent=}"
+            ;;
+    esac
+done
+
+agent_name() {
+    case "$1" in
+        claude) echo "Claude Code" ;;
+        gemini) echo "Gemini CLI" ;;
+        codex) echo "Codex" ;;
+        *) echo "$1" ;;
+    esac
+}
+
+agent_launch_command() {
+    case "$1" in
+        claude) echo "claude" ;;
+        gemini) echo "gemini" ;;
+        codex) echo "codex" ;;
+        *) echo "$1" ;;
+    esac
+}
+
+detect_agent() {
+    case "$1" in
+        claude)
+            command -v claude >/dev/null 2>&1 || [ -d "$HOME/.claude" ]
+            ;;
+        gemini)
+            command -v gemini >/dev/null 2>&1 || [ -d "$HOME/.gemini" ]
+            ;;
+        codex)
+            command -v codex >/dev/null 2>&1 || [ -d "$HOME/.codex" ]
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+declare -a DETECTED_AGENTS=()
+declare -a INSTALLED_AGENTS=()
+RUN_SIR_INSTALL=1
 
 # --- Downgrade guard ---
 # Refuse to install a version older than the one currently on disk.
@@ -136,19 +190,34 @@ else
     info "Go toolchain found: $(go version)"
 fi
 
-# Check for Claude Code
-if command -v claude &> /dev/null; then
-    CLAUDE_VERSION=$(claude --version 2>/dev/null || echo "unknown")
-    info "Claude Code found: $CLAUDE_VERSION"
+if [ -n "$EXPLICIT_AGENT" ]; then
+    case "$EXPLICIT_AGENT" in
+        claude|gemini|codex) ;;
+        *)
+            error "Unknown --agent value: $EXPLICIT_AGENT
+
+    Supported agents: claude, gemini, codex"
+            ;;
+    esac
+    if detect_agent "$EXPLICIT_AGENT"; then
+        info "$(agent_name "$EXPLICIT_AGENT") detected for explicit install."
+        DETECTED_AGENTS+=("$EXPLICIT_AGENT")
+    else
+        error "--agent $EXPLICIT_AGENT requested but $(agent_name "$EXPLICIT_AGENT") was not detected on this machine.
+
+    Install $(agent_name "$EXPLICIT_AGENT") first, then re-run this script."
+    fi
 else
-    error "Claude Code is not installed.
-
-    sir requires Claude Code to function — it integrates via Claude Code's hook system.
-
-    Install Claude Code first:
-      npm install -g @anthropic-ai/claude-code
-
-    Then re-run this script."
+    for agent_id in claude gemini codex; do
+        if detect_agent "$agent_id"; then
+            DETECTED_AGENTS+=("$agent_id")
+            info "$(agent_name "$agent_id") detected."
+        fi
+    done
+    if [ ${#DETECTED_AGENTS[@]} -eq 0 ]; then
+        warn "No supported agents detected. sir binaries will be installed, but hook setup is skipped for now."
+        RUN_SIR_INSTALL=0
+    fi
 fi
 
 # Build mister-core (Rust) — use --locked to enforce Cargo.lock
@@ -241,22 +310,31 @@ if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
     echo ""
 fi
 
-# Run sir install with --yes to skip the preview confirmation (user already consented by running install.sh)
-info "Setting up Claude Code hooks..."
-"$INSTALL_DIR/sir" install --yes
+if [ "$RUN_SIR_INSTALL" -eq 1 ]; then
+    info "Setting up sir hooks for detected agent surfaces..."
+    "$INSTALL_DIR/sir" install --yes "${INSTALL_ARGS[@]}"
 
-# Verify hooks are in place (Phase 2: hooks are in global settings, not per-project)
-GLOBAL_SETTINGS="$HOME/.claude/settings.json"
-if [ -f "$GLOBAL_SETTINGS" ] && grep -q "sir.*guard" "$GLOBAL_SETTINGS" 2>/dev/null; then
-    HOOK_COUNT=$(grep -c "sir.*guard" "$GLOBAL_SETTINGS" 2>/dev/null || echo "0")
-    info "Claude Code hooks installed in $GLOBAL_SETTINGS ($HOOK_COUNT hook commands)"
+    if [ -f "$HOME/.claude/settings.json" ] && grep -q "sir.*guard" "$HOME/.claude/settings.json" 2>/dev/null; then
+        INSTALLED_AGENTS+=("claude")
+        info "Claude Code hooks installed in $HOME/.claude/settings.json"
+    fi
+    if [ -f "$HOME/.gemini/settings.json" ] && grep -q "sir.*guard" "$HOME/.gemini/settings.json" 2>/dev/null; then
+        INSTALLED_AGENTS+=("gemini")
+        info "Gemini CLI hooks installed in $HOME/.gemini/settings.json"
+    fi
+    if [ -f "$HOME/.codex/hooks.json" ] && grep -q "sir.*guard" "$HOME/.codex/hooks.json" 2>/dev/null; then
+        INSTALLED_AGENTS+=("codex")
+        info "Codex hooks installed in $HOME/.codex/hooks.json"
+    fi
+    if [ -f "$HOME/.codex/config.toml" ] && grep -Eq '^\s*codex_hooks\s*=\s*true\b' "$HOME/.codex/config.toml" 2>/dev/null; then
+        info "Codex feature flag enabled in $HOME/.codex/config.toml"
+    fi
+
+    info "Verifying installation..."
+    "$INSTALL_DIR/sir" doctor 2>/dev/null || true
 else
-    warn "Hooks not found in $GLOBAL_SETTINGS. Run 'sir install' in your project directory."
+    warn "Skipping 'sir install --yes' because no supported agent is present yet."
 fi
-
-# Run sir doctor to verify everything
-info "Verifying installation..."
-"$INSTALL_DIR/sir" doctor 2>/dev/null || true
 
 echo ""
 info "sir installed successfully!"
@@ -268,14 +346,25 @@ else
 fi
 echo ""
 echo "    ┌─────────────────────────────────────────────────────┐"
-echo "    │  Just type 'claude' — sir is now watching.          │"
-echo "    │                                                     │"
-echo "    │  For other projects, run 'sir install' in each      │"
-echo "    │  project directory to activate hooks there too.     │"
+if [ ${#INSTALLED_AGENTS[@]} -gt 0 ]; then
+    if [ ${#INSTALLED_AGENTS[@]} -eq 1 ]; then
+        printf "    │  Just type '%-6s' — sir is now watching.        │\n" "$(agent_launch_command "${INSTALLED_AGENTS[0]}")"
+    else
+        echo "    │  Launch Claude, Gemini, or Codex — sir watches.  │"
+    fi
+    echo "    │                                                     │"
+    echo "    │  For other projects, run 'sir install' there to    │"
+    echo "    │  activate the detected agent hooks in that repo.   │"
+else
+    echo "    │  sir binaries are installed.                        │"
+    echo "    │                                                     │"
+    echo "    │  Install Claude Code, Gemini CLI, or Codex, then    │"
+    echo "    │  run 'sir install' in your project directory.       │"
+fi
 echo "    └─────────────────────────────────────────────────────┘"
 echo ""
 echo "    Commands:"
-echo "      sir status           Check sir status (10 hooks)"
+echo "      sir status           Check sir status"
 echo "      sir doctor           Verify configuration"
 echo "      sir trace            HTML timeline of session events"
 echo "      sir audit            Terminal security summary"
