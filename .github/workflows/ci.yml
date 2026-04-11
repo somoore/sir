@@ -208,10 +208,19 @@ jobs:
           if sudo sysctl kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
-          unshare --user --map-root-user --net --mount --mount-proc /bin/sh -c '
+          probe_log="$(mktemp)"
+          if unshare --fork --pid --user --map-root-user --net --mount --mount-proc /bin/sh -c '
             readlink /proc/self/ns/net
             readlink /proc/self/ns/mnt
-          '
+          ' >"${probe_log}" 2>&1; then
+            cat "${probe_log}"
+            echo "SIR_LINUX_NAMESPACE_PROOF_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            cat "${probe_log}"
+            printf 'SIR_LINUX_NAMESPACE_PROOF_AVAILABLE=false\n' >> "$GITHUB_ENV"
+            printf 'SIR_LINUX_NAMESPACE_PROOF_REASON=linux namespace proof unavailable on this runner: %s\n' "$(tr '\n' ' ' < "${probe_log}" | sed 's/[[:space:]]\\+/ /g')" >> "$GITHUB_ENV"
+            echo "::warning::Linux namespace proof unavailable on this runner; Go tests will report an explicit skip reason."
+          fi
 
       - name: Verify go.mod is tidy
         if: needs.changes.outputs.go == 'true'

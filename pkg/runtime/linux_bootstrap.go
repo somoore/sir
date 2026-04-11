@@ -32,7 +32,9 @@ func linuxContainmentAllowlistScript(projectRoot string, ag agent.Agent, setup l
 	lines := []string{"set -eu"}
 	if setup.PIDFile != "" {
 		lines = append(lines,
-			fmt.Sprintf("echo $$ > %s", shellQuote(setup.PIDFile)),
+			"ns_host_pid=$(awk '/^NSpid:/ {print $2; exit}' /proc/self/status 2>/dev/null || true)",
+			"if [ -z \"$ns_host_pid\" ]; then ns_host_pid=$$; fi",
+			fmt.Sprintf("echo \"$ns_host_pid\" > %s", shellQuote(setup.PIDFile)),
 			fmt.Sprintf("while [ ! -f %s ]; do sleep 0.05; done", shellQuote(setup.ReadyFile)),
 			fmt.Sprintf("rm -f %s", shellQuote(setup.ReadyFile)),
 		)

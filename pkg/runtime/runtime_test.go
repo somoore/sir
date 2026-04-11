@@ -326,7 +326,10 @@ func requireLinuxLaunchProofBinary(t *testing.T, name string) string {
 
 func requireLinuxLaunchNamespaces(t *testing.T) {
 	t.Helper()
-	cmd := exec.Command("unshare", "--user", "--map-root-user", "--net", "--mount", "--mount-proc", "/bin/sh", "-c", "readlink /proc/self/ns/net >/dev/null && readlink /proc/self/ns/mnt >/dev/null")
+	if reason := os.Getenv("SIR_LINUX_NAMESPACE_PROOF_REASON"); reason != "" && os.Getenv("SIR_LINUX_NAMESPACE_PROOF_AVAILABLE") != "true" {
+		t.Skip(reason)
+	}
+	cmd := exec.Command("unshare", "--fork", "--pid", "--user", "--map-root-user", "--net", "--mount", "--mount-proc", "/bin/sh", "-c", "readlink /proc/self/ns/net >/dev/null && readlink /proc/self/ns/mnt >/dev/null")
 	output, err := cmd.CombinedOutput()
 	if err == nil {
 		return
@@ -534,7 +537,9 @@ func TestLinuxContainmentAllowlistScriptIncludesHostsAndFirewallRules(t *testing
 		t.Fatalf("linuxContainmentAllowlistScript: %v", err)
 	}
 	for _, fragment := range []string{
-		"echo $$ >",
+		"ns_host_pid=$(awk '/^NSpid:/ {print $2; exit}' /proc/self/status 2>/dev/null || true)",
+		"if [ -z \"$ns_host_pid\" ]; then ns_host_pid=$$; fi",
+		"echo \"$ns_host_pid\" >",
 		"while [ ! -f ",
 		"hosts_override=$(mktemp",
 		"iptables -P OUTPUT DROP",

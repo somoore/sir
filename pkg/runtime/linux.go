@@ -29,9 +29,19 @@ func runAgentLinux(projectRoot, bin string, opts Options) (int, error) {
 
 func runAgentLinuxOffline(projectRoot, bin string, opts Options) (int, error) {
 	maskedSockets := linuxHostControlSockets()
+	syncDir, err := os.MkdirTemp("", "sir-run-linux-sync-*")
+	if err != nil {
+		return 0, fmt.Errorf("create linux containment sync dir: %w", err)
+	}
+	defer os.RemoveAll(syncDir)
+	pidFile := syncDir + "/child.pid"
+	readyFile := syncDir + "/ready"
+
 	return runAgentLinuxLifecycle(projectRoot, bin, opts, linuxLaunchPlan{
 		requiredBinaries: []string{"unshare", "mount"},
 		unshareArgs: []string{
+			"--fork",
+			"--pid",
 			"--user",
 			"--map-root-user",
 			"--net",
@@ -39,6 +49,8 @@ func runAgentLinuxOffline(projectRoot, bin string, opts Options) (int, error) {
 			"--mount-proc",
 		},
 		bootstrap: linuxAllowlistBootstrap{
+			PIDFile:       pidFile,
+			ReadyFile:     readyFile,
 			MaskedSockets: maskedSockets,
 		},
 		announce: func(maskedSockets, scrubbedEnv []string) {
@@ -53,6 +65,16 @@ func runAgentLinuxOffline(projectRoot, bin string, opts Options) (int, error) {
 			fmt.Fprintln(os.Stderr, "sir: run: write-deny list protects the current agent's real hook config, canonical backups, durable sir state, and shared posture files; general workspace writes remain allowed once those guarded paths exist")
 		},
 		buildRuntimeInfo: func(projectRoot string, opts Options, stateHome string, cmd *exec.Cmd, scrubbedEnv []string) (*session.RuntimeContainment, func(), error) {
+			childPID, err := waitForLinuxNamespacePID(pidFile, 2*time.Second)
+			if err != nil {
+				_ = cmd.Process.Kill()
+				_, _ = cmd.Process.Wait()
+				return nil, nil, fmt.Errorf("discover linux containment child pid: %w", err)
+			}
+			if err := signalLinuxContainmentReady(cmd, readyFile, nil); err != nil {
+				return nil, nil, err
+			}
+
 			return &session.RuntimeContainment{
 				AgentID:                 string(opts.Agent.ID()),
 				Mode:                    ContainmentModeLinuxNamespace,
@@ -64,7 +86,7 @@ func runAgentLinuxOffline(projectRoot, bin string, opts Options) (int, error) {
 				StartedAt:               time.Now(),
 				HeartbeatAt:             time.Now(),
 				LauncherPID:             os.Getpid(),
-				AgentPID:                cmd.Process.Pid,
+				AgentPID:                childPID,
 			}, nil, nil
 		},
 	})
@@ -96,6 +118,7 @@ func runAgentLinuxAllowlist(projectRoot, bin string, opts Options) (int, error) 
 		requiredBinaries: []string{"unshare", "mount", "slirp4netns", "iptables"},
 		unshareArgs: []string{
 			"--fork",
+			"--pid",
 			"--user",
 			"--map-root-user",
 			"--net",
