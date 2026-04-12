@@ -73,7 +73,7 @@ curl -fsSL https://raw.githubusercontent.com/somoore/sir/main/scripts/download.s
 curl -fsSL https://raw.githubusercontent.com/somoore/sir/main/scripts/download.sh | bash -s -- v0.0.2
 ```
 
-The installer verifies the tarball's SHA-256 checksum against the release's `checksums.txt` before installing. For full cryptographic verification (cosign signatures), see [`scripts/verify-release.sh`](scripts/verify-release.sh).
+The installer verifies cosign signatures on `checksums.txt` (when cosign is available) and the tarball's SHA-256 checksum before installing. Both install paths write `~/.sir/binary-manifest.json` so `sir verify` can detect post-install tampering. For full release verification, see [`scripts/verify-release.sh`](scripts/verify-release.sh).
 
 **Build from source** (requires cloning the repo):
 
@@ -98,6 +98,7 @@ Then in any project: `sir install            # auto-detect supported agents alre
 ```bash
 sir status       # hooks installed, session posture, last contained-run info
 sir doctor       # hook subtree intact, ledger chain verifies, sentinels unchanged
+sir verify       # binary integrity — sir and mister-core match install-time manifest
 sir log verify   # walk the hash chain and report first corruption, if any
 ```
 
@@ -117,6 +118,7 @@ sir is v1 and experimental. Shipped tradeoffs:
 - Default lease allows push to origin, commit, loopback, and delegation. Tighten with `sir trust`, `sir allow-host`, or managed policy.
 - Model-internal reasoning is out of scope. Codex is limited by the upstream Bash-only hook surface.
 - If `mister-core` is missing from `PATH`, Go falls back to a deliberately restrictive subset. Parity tests enforce the fallback is never more permissive.
+- `mister-core` is verified against the install-time manifest on first use per process. A tampered oracle triggers a hard deny on all tool calls.
 
 ## Day-to-day use
 
