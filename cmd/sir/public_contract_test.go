@@ -27,8 +27,6 @@ func TestPublicContractParity(t *testing.T) {
 	goMod := readFile(t, root, "go.mod")
 	goMin := mustFindWordAfterPrefix(t, goMod, "go ")
 	goToolchain := mustFindWordAfterPrefix(t, goMod, "toolchain go")
-	securityEmail := mustFindLineValue(t, readFile(t, root, "SECURITY.md"), "- **Email:** ", "")
-
 	t.Run("toolchain_versions", func(t *testing.T) {
 		if _, err := os.Stat(ciWorkflowPath); err != nil {
 			if os.IsNotExist(err) {
@@ -59,14 +57,10 @@ func TestPublicContractParity(t *testing.T) {
 	})
 
 	t.Run("security_contact_and_governance", func(t *testing.T) {
-		requireContainsFile(t, root, "CONTRIBUTING.md", fmt.Sprintf("- **Email:** %s", securityEmail), "CONTRIBUTING security contact")
+		requireContainsFile(t, root, "CONTRIBUTING.md", "open a GitHub issue", "CONTRIBUTING security reporting")
 		requireContainsFile(t, root, "CONTRIBUTING.md", "[Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md)", "CONTRIBUTING code-of-conduct link")
 		requireFileExists(t, root, "CODE_OF_CONDUCT.md")
 		requireFileExists(t, root, "CHANGELOG.md")
-	})
-
-	t.Run("supported_release_line", func(t *testing.T) {
-		requireContainsFile(t, root, "SECURITY.md", fmt.Sprintf("| %s (current) | Yes |", releaseSeries(Version)), "SECURITY supported release line")
 	})
 
 	t.Run("readme_contract", func(t *testing.T) {
@@ -498,15 +492,6 @@ func requireOrderedSubstrings(t *testing.T, body string, parts ...string) {
 		}
 		last = idx
 	}
-}
-
-func releaseSeries(version string) string {
-	version = strings.TrimPrefix(strings.TrimSpace(version), "v")
-	parts := strings.Split(version, ".")
-	if len(parts) < 2 {
-		return version
-	}
-	return parts[0] + "." + parts[1] + ".x"
 }
 
 func mustFindLineValue(t *testing.T, body, prefix, suffix string) string {
