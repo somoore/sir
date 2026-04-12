@@ -62,14 +62,29 @@ install -m 750 "${TMPDIR}/sir" "${TMPDIR}/mister-core" "$INSTALL_DIR/"
 
 info "Installed to ${INSTALL_DIR}/"
 
-# --- PATH check ---
+# --- PATH setup ---
 if [[ ":$PATH:" != *":${INSTALL_DIR}:"* ]]; then
-    echo ""
-    echo "    ${INSTALL_DIR} is not in your PATH. Add it:"
-    echo '    export PATH="$HOME/.local/bin:$PATH"'
-    echo ""
+    SHELL_PROFILE=""
+    [ -f "$HOME/.zshrc" ] && SHELL_PROFILE="$HOME/.zshrc"
+    [ -z "$SHELL_PROFILE" ] && [ -f "$HOME/.bashrc" ] && SHELL_PROFILE="$HOME/.bashrc"
+    [ -z "$SHELL_PROFILE" ] && [ -f "$HOME/.bash_profile" ] && SHELL_PROFILE="$HOME/.bash_profile"
+
+    if [ -n "$SHELL_PROFILE" ]; then
+        if ! grep -q '/.local/bin' "$SHELL_PROFILE" 2>/dev/null; then
+            echo '' >> "$SHELL_PROFILE"
+            echo '# sir - Sandbox in Reverse' >> "$SHELL_PROFILE"
+            echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_PROFILE"
+            info "Added ~/.local/bin to PATH in ${SHELL_PROFILE}"
+        fi
+    else
+        echo ""
+        echo "    Could not detect shell profile. Add this manually:"
+        echo '    export PATH="$HOME/.local/bin:$PATH"'
+        echo ""
+    fi
+    export PATH="${INSTALL_DIR}:$PATH"
 fi
 
-info "$(${INSTALL_DIR}/sir version)"
+info "$(sir version)"
 echo ""
 echo "Next: cd into a project and run 'sir install' to set up agent hooks."
