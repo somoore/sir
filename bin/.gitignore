@@ -1,3 +1,0 @@
-# Keep the local build output directory, but never commit its contents.
-*
-!.gitignore

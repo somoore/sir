@@ -1,9 +1,7 @@
 # Build artifacts
-/bin/*
-!/bin/.gitignore
+/bin/
 /sir
-/target/*
-!/target/.gitignore
+/target/
 *.exe
 *.dll
 *.so
