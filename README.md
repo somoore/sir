@@ -73,6 +73,8 @@ curl -fsSL https://raw.githubusercontent.com/somoore/sir/main/scripts/download.s
 curl -fsSL https://raw.githubusercontent.com/somoore/sir/main/scripts/download.sh | bash -s -- v0.0.2
 ```
 
+The installer verifies the tarball's SHA-256 checksum against the release's `checksums.txt` before installing. For full cryptographic verification (cosign signatures), see [`scripts/verify-release.sh`](scripts/verify-release.sh).
+
 **Build from source** (requires cloning the repo):
 
 ```bash

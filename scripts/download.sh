@@ -7,13 +7,28 @@
 #
 # Installs sir and mister-core to ~/.local/bin. Pass a version tag as
 # the first argument to pin a specific release; defaults to latest.
+#
+# Security: the downloaded tarball is verified against the SHA-256
+# checksum published in the release's checksums.txt before installation.
+# For full cryptographic verification (cosign signatures, SLSA provenance),
+# see scripts/verify-release.sh.
 set -euo pipefail
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
 NC='\033[0m'
 info()  { echo -e "${GREEN}[+]${NC} $1"; }
+warn()  { echo -e "${YELLOW}[!]${NC} $1"; }
 error() { echo -e "${RED}[x]${NC} $1"; exit 1; }
+
+sha256_of() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | awk '{print $1}'
+    else
+        shasum -a 256 "$1" | awk '{print $1}'
+    fi
+}
 
 # --- Version resolution ---
 VERSION="${1:-latest}"
@@ -21,9 +36,6 @@ REPO="somoore/sir"
 
 if [ "$VERSION" = "latest" ]; then
     info "Resolving latest release..."
-    # Use the releases endpoint and extract the first tag_name.
-    # The redirect from /releases/latest doesn't work for pre-releases,
-    # so we query the list and take the first entry.
     VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases?per_page=1" \
         | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
     [ -n "$VERSION" ] || error "Could not determine latest release."
@@ -41,16 +53,38 @@ case "${OS}-${ARCH}" in
 esac
 info "Platform: ${PLATFORM}"
 
-# --- Download and install ---
+# --- Download ---
 TARBALL="sir_${VERSION}_${PLATFORM}.tar.gz"
-URL="https://github.com/${REPO}/releases/download/${VERSION}/${TARBALL}"
+BASE_URL="https://github.com/${REPO}/releases/download/${VERSION}"
 INSTALL_DIR="$HOME/.local/bin"
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
-info "Downloading ${URL}..."
-curl -fsSL "$URL" -o "${TMPDIR}/${TARBALL}" || error "Download failed. Check that ${VERSION} exists at https://github.com/${REPO}/releases"
+info "Downloading ${TARBALL}..."
+curl -fsSL "${BASE_URL}/${TARBALL}" -o "${TMPDIR}/${TARBALL}" \
+    || error "Download failed. Check that ${VERSION} exists at https://github.com/${REPO}/releases"
 
+# --- Checksum verification ---
+info "Verifying checksum..."
+curl -fsSL "${BASE_URL}/checksums.txt" -o "${TMPDIR}/checksums.txt" \
+    || error "Could not download checksums.txt — cannot verify integrity."
+
+ACTUAL_SHA256=$(sha256_of "${TMPDIR}/${TARBALL}")
+EXPECTED_SHA256=$(grep "${TARBALL}" "${TMPDIR}/checksums.txt" | awk '{print $1}')
+
+if [ -z "$EXPECTED_SHA256" ]; then
+    error "Tarball ${TARBALL} not found in checksums.txt — cannot verify integrity."
+fi
+
+if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+    error "Checksum mismatch!
+    Expected: ${EXPECTED_SHA256}
+    Actual:   ${ACTUAL_SHA256}
+    The downloaded archive may have been tampered with. Do not install."
+fi
+info "Checksum verified: ${ACTUAL_SHA256}"
+
+# --- Extract and install ---
 info "Extracting..."
 tar -xzf "${TMPDIR}/${TARBALL}" -C "$TMPDIR"
 
@@ -88,3 +122,6 @@ fi
 info "$(sir version)"
 echo ""
 echo "Next: cd into a project and run 'sir install' to set up agent hooks."
+echo ""
+echo "For full cryptographic verification (cosign signatures):"
+echo "  https://github.com/${REPO}/blob/main/scripts/verify-release.sh"
