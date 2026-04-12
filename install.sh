@@ -375,6 +375,10 @@ cat > "$MANIFEST_DIR/binary-manifest.json" <<MANIFEST_EOF
 }
 MANIFEST_EOF
 chmod 600 "$MANIFEST_DIR/binary-manifest.json"
+# Sentinel records that a manifest has been written. If the manifest is later
+# deleted but the sentinel remains, sir treats it as tamper and fails closed.
+touch "$MANIFEST_DIR/.manifest-expected"
+chmod 600 "$MANIFEST_DIR/.manifest-expected"
 info "Binary manifest written to $MANIFEST_DIR/binary-manifest.json"
 
 # Check PATH — sir CLI commands (sir status, sir doctor, sir trace, etc.) need PATH.
