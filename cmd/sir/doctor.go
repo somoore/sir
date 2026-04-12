@@ -60,7 +60,7 @@ func cmdDoctor(projectRoot string) {
 		}
 		fatal("%v", repairErr)
 	}
-	l = repairedLease
+	_ = repairedLease
 	fixed := repair.fixed
 	printDoctorLines(repair.preAuditLines)
 

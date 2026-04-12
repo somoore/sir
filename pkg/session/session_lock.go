@@ -19,7 +19,7 @@ func WithSessionLock(projectRoot string, fn func() error) error {
 	if err != nil {
 		return fmt.Errorf("open session lock: %w", err)
 	}
-	defer lockFile.Close()
+	defer func() { _ = lockFile.Close() }()
 	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
 		return fmt.Errorf("acquire session lock: %w", err)
 	}
@@ -41,12 +41,12 @@ func LoadLocked(projectRoot string) (unlock func(), state *State, err error) {
 		return func() {}, nil, fmt.Errorf("open session lock: %w", openErr)
 	}
 	if flockErr := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); flockErr != nil {
-		lockFile.Close()
+		_ = lockFile.Close()
 		return func() {}, nil, fmt.Errorf("acquire session lock: %w", flockErr)
 	}
 	releaseFn := func() {
 		syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN) //nolint:errcheck
-		lockFile.Close()
+		_ = lockFile.Close()
 	}
 
 	s, loadErr := Load(projectRoot)

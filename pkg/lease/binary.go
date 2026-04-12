@@ -4,6 +4,7 @@ package lease
 import (
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 )
 
 // EncodeBinary encodes the lease into a length-prefixed JSON payload
@@ -13,8 +14,12 @@ func (l *Lease) EncodeBinary() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	buf := make([]byte, 4+len(data))
-	binary.BigEndian.PutUint32(buf[:4], uint32(len(data)))
+	n := uint64(len(data))
+	if n > 1<<30 {
+		return nil, fmt.Errorf("lease too large: %d bytes", n)
+	}
+	buf := make([]byte, 4+n)
+	binary.BigEndian.PutUint32(buf[:4], uint32(n))
 	copy(buf[4:], data)
 	return buf, nil
 }
