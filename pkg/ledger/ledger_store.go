@@ -19,7 +19,7 @@ func withLedgerLockMode(ledgerPath string, mode int, fn func() error) error {
 	if err != nil {
 		return fmt.Errorf("open lock file: %w", err)
 	}
-	defer lockFile.Close()
+	defer func() { _ = lockFile.Close() }()
 	if err := syscall.Flock(int(lockFile.Fd()), mode); err != nil {
 		return fmt.Errorf("acquire lock: %w", err)
 	}
@@ -68,7 +68,7 @@ func Append(projectRoot string, entry *Entry) error {
 		if err != nil {
 			return err
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 
 		_, err = f.Write(append(data, '\n'))
 		return err

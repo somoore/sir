@@ -68,7 +68,7 @@ func withHealthLock(projectRoot string, fn func() error) error {
 	if err != nil {
 		return fmt.Errorf("open telemetry health lock: %w", err)
 	}
-	defer lockFile.Close()
+	defer func() { _ = lockFile.Close() }()
 	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
 		return fmt.Errorf("acquire telemetry health lock: %w", err)
 	}
