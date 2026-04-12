@@ -14,12 +14,12 @@ func (l *Lease) EncodeBinary() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	n := len(data)
-	if n > 1<<30 { // guard against overflow on 32-bit
+	n := uint64(len(data))
+	if n > 1<<30 {
 		return nil, fmt.Errorf("lease too large: %d bytes", n)
 	}
 	buf := make([]byte, 4+n)
-	binary.BigEndian.PutUint32(buf[:4], uint32(len(data)))
+	binary.BigEndian.PutUint32(buf[:4], uint32(n))
 	copy(buf[4:], data)
 	return buf, nil
 }
