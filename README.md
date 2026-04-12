@@ -33,8 +33,6 @@ sir has three enforcement layers, not one. Each addresses a different evasion cl
 
 The honest answer to "what if the agent works around hooks" is: hooks are layer 1 of 3. A sophisticated evasion that bypasses intent classification still hits the IFC taint gate. An evasion that clears taint still hits runtime containment if `sir run` is active. Exfiltration requires beating all three.
 
-### The observability gap
-
 Provider audit logs today capture prompts and tool names but not tool responses, MCP arguments, or execution evidence — the data a defender needs for investigation and detection. sir records redacted evidence at all three tiers (governance, detection, investigation). See [docs/research/observability-design.md](docs/research/observability-design.md).
 
 ## What it is
@@ -139,8 +137,7 @@ sir is v1 and experimental. The following tradeoffs are shipped deliberately.
 
 - Install once per machine with `sir install`. Use your agent normally.
 - `sir log`, `sir explain --last`, `sir why`, and `sir doctor` are your investigation tools.
-- `sir mcp` and `sir mcp wrap` inspect or harden command-based MCP servers.
-- `sir unlock`, `sir allow-host`, `sir allow-remote`, and `sir trust` widen the lease — use them only when you intend to.
+- `sir mcp` and `sir mcp wrap` inspect or harden command-based MCP servers. `sir unlock`, `sir allow-host`, `sir allow-remote`, and `sir trust` widen the lease.
 
 ## Documentation
 
