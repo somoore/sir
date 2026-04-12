@@ -58,6 +58,7 @@ Expected result:
 
 ```bash
 which sir && which mister-core
+sir verify
 sir status
 sir doctor
 sir log verify
@@ -66,6 +67,7 @@ sir log verify
 Expected result:
 
 - Binaries resolve from your `PATH`.
+- `sir verify` reports both binaries match the install-time manifest.
 - `sir status` reports `INSTALLED`.
 - `sir doctor` reports intact posture.
 - `sir log verify` reports an intact chain.

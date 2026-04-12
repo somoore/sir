@@ -56,6 +56,10 @@ The only supported update path is `install.sh` from a vetted tree.
 - No `sir update`.
 - Downgrade protection in `install.sh`.
 - Controlled rollback via `SIR_ALLOW_DOWNGRADE=1`.
+- Both `install.sh` and `download.sh` write `~/.sir/binary-manifest.json` with SHA-256 hashes of both binaries at install time.
+- `download.sh` verifies cosign signatures on `checksums.txt` before trusting checksums (graceful fallback when cosign is absent).
+- `sir verify` re-hashes both binaries and compares against the manifest.
+- `mister-core` is hash-verified against the manifest on first `Evaluate()` call per process (`sync.Once`). Mismatch → hard deny on all tool calls.
 
 ## Branch and release hygiene
 
