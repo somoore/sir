@@ -219,18 +219,6 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     needs: [build, sbom, provenance]
-    # The provenance job uses slsa-framework/slsa-github-generator v2.1.0,
-    # which currently fails in this repo because the reusable workflow
-    # expects a go.sum for cache restoration (sir has zero external Go
-    # dependencies and no go.sum by design). Until slsa-github-generator
-    # v2.2.0 ships the fix, we let the provenance job report failure but
-    # still proceed with the release — build + sbom + cosign signatures +
-    # both SBOMs + AIBOM all land as usual. SLSA provenance will be
-    # restored in a follow-up PR when upstream is compatible with
-    # zero-dependency Go trees. The softprops step below uses
-    # fail_on_unmatched_files: false so sir.intoto.jsonl being missing
-    # does not block the release.
-    if: always() && needs.build.result == 'success' && needs.sbom.result == 'success'
     # Environment gating: the `release` environment is configured in GitHub
     # repo settings with required reviewers. No release publishes without a
     # human clicking approve — protects against accidental tag pushes,
@@ -253,17 +241,7 @@ jobs:
           name: sbom
           path: artifacts
 
-      # SLSA provenance is generated and signed by the `provenance` job using
-      # slsa-github-generator v2.1.0. Upstream has a compatibility issue
-      # with zero-dependency Go trees (expects go.sum for cache restoration)
-      # so the provenance job currently fails — see the release job's
-      # top-of-job comment for the full story. continue-on-error on this
-      # download step means a missing provenance artifact does not kill
-      # the release; softprops below also has fail_on_unmatched_files: false
-      # so sir.intoto.jsonl silently drops out of the asset list when
-      # provenance did not produce one.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
-        continue-on-error: true
         with:
           name: ${{ needs.provenance.outputs.provenance-name }}
           path: artifacts
@@ -355,11 +333,7 @@ jobs:
           name: sir ${{ github.ref_name }}
           generate_release_notes: true
           prerelease: ${{ startsWith(github.ref_name, 'v0.') }}
-          # Tolerate missing sir.intoto.jsonl when the provenance job is
-          # skipped due to the slsa-github-generator compatibility issue
-          # documented on the release job above. Every other asset in the
-          # list below is always present when build + sbom succeed.
-          fail_on_unmatched_files: false
+          fail_on_unmatched_files: true
           files: |
             artifacts/sir_*.tar.gz
             artifacts/sir_*.sig
@@ -419,77 +393,27 @@ jobs:
             fi
           done
 
-  # SLSA provenance — temporarily deferred.
+  # SLSA provenance via slsa-github-generator.
+  # Workaround: sir has zero external Go dependencies but the generator
+  # expects a go.sum for cache restoration. An empty go.sum at repo root
+  # satisfies this requirement without adding any actual dependencies.
   #
-  # Background: this job used to call
-  #   slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
-  # which fails against zero-dependency Go trees because its reusable
-  # workflow expects a go.sum for Go-module cache restoration. sir has
-  # no go.sum by design — Cargo.lock is the only lockfile, and Go here
-  # is standard-library only. The nested detect-workflow-js action
-  # inside the generator is also tag-pinned upstream, which additionally
-  # trips repo-level sha_pinning_required. Net effect: the final step
-  # of the reusable workflow exits 27 and paints the run red even
-  # though every other release artifact (cosign-signed binaries,
-  # checksums, both SBOMs, AIBOM + attestations) lands correctly.
-  #
-  # Restore path: when slsa-github-generator v2.2+ ships a fix for
-  # zero-dependency Go trees, revert this block to:
-  #
-  #   provenance:
-  #     needs: [collect-subjects]
-  #     permissions:
-  #       actions: read
-  #       id-token: write
-  #       contents: write
-  #     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@<new-sha>  # v2.2+
-  #     with:
-  #       base64-subjects: "${{ needs.collect-subjects.outputs.subjects }}"
-  #       provenance-name: "sir.intoto.jsonl"
-  #       upload-assets: false
-  #       private-repository: false
-  #
-  # and remove the if: always() guard on the release job.
-  #
-  # Verification (when restored):
+  # Verification:
   #   slsa-verifier verify-artifact sir_v1.0.0_linux_amd64.tar.gz \
   #     --provenance-path sir.intoto.jsonl \
   #     --source-uri github.com/somoore/sir --source-tag v1.0.0
-  #
-  # The contract test requires both this provenance: job key and the
-  # "Verify SLSA provenance on every archive" step (further down in
-  # smoke-verify) to exist in the workflow file. The stub below keeps
-  # the job key green so the workflow summary is clean, while the
-  # smoke-verify step keeps the verification-recipe documentation
-  # in place for when the real provenance job is restored.
   provenance:
-    name: SLSA provenance (deferred — see block comment above)
     needs: [collect-subjects]
-    runs-on: ubuntu-latest
     permissions:
-      contents: read
-    outputs:
-      # Keep the output shape identical to what the real slsa-github-generator
-      # job produced so downstream ${{ needs.provenance.outputs.provenance-name }}
-      # references still resolve. The release job's download-artifact step
-      # that fetches this name has continue-on-error: true, and the softprops
-      # upload step has fail_on_unmatched_files: false — together those let
-      # sir.intoto.jsonl silently drop out of the release asset list while
-      # the provenance stub is in place.
-      provenance-name: sir.intoto.jsonl
-    steps:
-      - name: Note the deferral
-        run: |
-          echo "SLSA provenance generation is temporarily deferred."
-          echo ""
-          echo "slsa-framework/slsa-github-generator v2.1.0 is incompatible with"
-          echo "zero-dependency Go trees: its reusable workflow expects a go.sum"
-          echo "for module cache restoration, which sir does not have by design."
-          echo ""
-          echo "Restore path and full rationale: see the block comment above"
-          echo "this job in .github/workflows/release.yml. The release still"
-          echo "ships cosign-signed binaries, checksums, CycloneDX and SPDX"
-          echo "SBOMs, and an AIBOM, each with in-toto attestations."
+      actions: read
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: "${{ needs.collect-subjects.outputs.subjects }}"
+      provenance-name: "sir.intoto.jsonl"
+      upload-assets: false
+      private-repository: false
 
   # Post-release self-verification smoke test.
   # Downloads the just-published artifacts and runs the exact cosign and
@@ -572,11 +496,6 @@ jobs:
       - name: Verify SLSA provenance on every archive
         run: |
           set -euo pipefail
-          if [ ! -f verify/sir.intoto.jsonl ]; then
-            echo "sir.intoto.jsonl not present — SLSA provenance is deferred."
-            echo "See .github/workflows/release.yml provenance job comment."
-            exit 0
-          fi
           for archive in verify/sir_*.tar.gz; do
             echo "=== SLSA verify ${archive} ==="
             slsa-verifier verify-artifact "${archive}" \
