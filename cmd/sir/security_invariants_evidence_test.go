@@ -41,7 +41,7 @@ func runInvariantEvidenceRedaction(t *testing.T, fixture securityInvariantFixtur
 	if strings.Contains(last.Evidence, testsecrets.AWSAccessKey()) || strings.Contains(last.Evidence, "sk_live_") {
 		t.Fatalf("raw secret leaked in evidence: %s", last.Evidence)
 	}
-	for _, needle := range []string{"[REDACTED:aws_access_key]", "[REDACTED:high_entropy_token]"} {
+	for _, needle := range []string{"[REDACTED:aws_access_key]", "[REDACTED:stripe_live]"} {
 		if !strings.Contains(last.Evidence, needle) {
 			t.Fatalf("expected evidence to contain %s: %s", needle, last.Evidence)
 		}
