@@ -52,7 +52,7 @@ func TestPublicContractParity(t *testing.T) {
 		requireContainsFile(t, root, ".github/workflows/release.yml", fmt.Sprintf("GO_VERSION: \"%s\"", goToolchain), "release Go pin")
 		requireContainsFile(t, root, "CONTRIBUTING.md", fmt.Sprintf("- **Rust** (%s+): [rustup.rs](https://rustup.rs/)", rustVersion), "CONTRIBUTING Rust prerequisite")
 		requireContainsFile(t, root, "CONTRIBUTING.md", fmt.Sprintf("- **Go** (%s+): [go.dev/dl](https://go.dev/dl/)", goMin), "CONTRIBUTING Go prerequisite")
-		requireContainsFile(t, root, "README.md", fmt.Sprintf("# Requires [Rust %s+](https://rustup.rs/)", rustVersion), "README Rust prerequisite")
+		requireContainsFile(t, root, "README.md", fmt.Sprintf("# Requires [Rust %s](https://rustup.rs/) (pinned in rust-toolchain.toml)", rustVersion), "README Rust prerequisite")
 		requireContainsFile(t, root, "README.md", fmt.Sprintf("# Requires [Go %s+](https://go.dev/dl/) with toolchain auto-fetch to go%s", goMin, goToolchain), "README Go prerequisite")
 		requireContainsFile(t, root, "docs/contributor/supply-chain-policy.md", fmt.Sprintf("| Rust | %s |", rustVersion), "supply-chain Rust row")
 		requireContainsFile(t, root, "docs/contributor/supply-chain-policy.md", fmt.Sprintf("| Go | %s minimum / %s toolchain |", goMin, goToolchain), "supply-chain Go row")
@@ -107,8 +107,8 @@ func TestPublicContractParity(t *testing.T) {
 
 	t.Run("runtime_and_managed_contract", func(t *testing.T) {
 		requireContainsFile(t, root, "README.md", "SIR_MANAGED_POLICY_PATH", "README managed mode activation")
-		requireContainsFile(t, root, "README.md", "`sir run <agent>`", "README runtime containment mention")
-		requireContainsFile(t, root, "README.md", "measured preview", "README measured-preview runtime note")
+		requireContainsFile(t, root, "README.md", "`sir run`", "README runtime containment mention")
+		requireContainsFile(t, root, "README.md", "experimental", "README experimental runtime note")
 		requireContainsFile(t, root, "docs/user/runtime-security-overview.md", "measured preview", "runtime overview measured-preview note")
 		requireContainsFile(t, root, "docs/research/validation-summary.md", "measured preview", "validation summary measured-preview note")
 		requireContainsFile(t, root, "docs/user/runtime-security-overview.md", "blocked/allowed egress counts", "runtime overview receipt visibility")
