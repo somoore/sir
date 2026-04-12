@@ -219,13 +219,6 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     needs: [build, sbom, provenance]
-    # The provenance generator step succeeds and uploads sir.intoto.jsonl,
-    # but the slsa-github-generator v2.1.0 final status-reporting step
-    # exits 27 on zero-dependency Go trees. The provenance artifact is
-    # present; only the job-level status is wrong. Allow the release to
-    # proceed when build + sbom succeed and provenance ran (even if its
-    # final step reported failure).
-    if: always() && needs.build.result == 'success' && needs.sbom.result == 'success'
     # Environment gating: the `release` environment is configured in GitHub
     # repo settings with required reviewers. No release publishes without a
     # human clicking approve — protects against accidental tag pushes,
@@ -248,9 +241,6 @@ jobs:
           name: sbom
           path: artifacts
 
-      # The provenance generator uploads sir.intoto.jsonl but the job-level
-      # status may report failure (slsa-github-generator v2.1.0 exit-27 bug).
-      # continue-on-error so a missing artifact doesn't block the release.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
         continue-on-error: true
         with:
@@ -344,8 +334,6 @@ jobs:
           name: sir ${{ github.ref_name }}
           generate_release_notes: true
           prerelease: ${{ startsWith(github.ref_name, 'v0.') }}
-          # sir.intoto.jsonl may be absent if the provenance final step
-          # hits the slsa-github-generator v2.1.0 exit-27 bug.
           fail_on_unmatched_files: false
           files: |
             artifacts/sir_*.tar.gz
@@ -406,27 +394,51 @@ jobs:
             fi
           done
 
-  # SLSA provenance via slsa-github-generator.
-  # Workaround: sir has zero external Go dependencies but the generator
-  # expects a go.sum for cache restoration. An empty go.sum at repo root
-  # satisfies this requirement without adding any actual dependencies.
+  # SLSA provenance — deferred until upstream fix.
   #
-  # Verification:
+  # slsa-framework/slsa-github-generator v2.1.0 has two blockers for
+  # this repo:
+  #   1. The final status-reporting step exits 27 on zero-dependency Go
+  #      trees, which marks the job as failed even though the generator
+  #      step succeeds and uploads signed provenance. The job-level
+  #      failure prevents the artifact from being downloadable by the
+  #      release job — so the provenance is generated but undeliverable.
+  #   2. Internal actions within the reusable workflow use tag refs
+  #      (@v2.1.0), which trips GitHub's sha_pinning_required policy.
+  #
+  # Net effect: every release would show a red X with no provenance
+  # artifact in the release assets. Reverted to a green stub until
+  # slsa-github-generator ships a fix.
+  #
+  # Restore path: replace this stub with:
+  #   provenance:
+  #     needs: [collect-subjects]
+  #     permissions:
+  #       actions: read
+  #       id-token: write
+  #       contents: write
+  #     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@<new-sha>
+  #     with:
+  #       base64-subjects: "${{ needs.collect-subjects.outputs.subjects }}"
+  #       provenance-name: "sir.intoto.jsonl"
+  #       upload-assets: false
+  #       private-repository: false
+  #
+  # Verification (when restored):
   #   slsa-verifier verify-artifact sir_v1.0.0_linux_amd64.tar.gz \
   #     --provenance-path sir.intoto.jsonl \
   #     --source-uri github.com/somoore/sir --source-tag v1.0.0
   provenance:
+    name: SLSA provenance (deferred — see comment above)
     needs: [collect-subjects]
+    runs-on: ubuntu-latest
     permissions:
-      actions: read
-      id-token: write
-      contents: write
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a # v2.1.0
-    with:
-      base64-subjects: "${{ needs.collect-subjects.outputs.subjects }}"
-      provenance-name: "sir.intoto.jsonl"
-      upload-assets: false
-      private-repository: false
+      contents: read
+    outputs:
+      provenance-name: sir.intoto.jsonl
+    steps:
+      - name: Note
+        run: echo "SLSA provenance deferred — slsa-github-generator v2.1.0 exit-27 bug."
 
   # Post-release self-verification smoke test.
   # Downloads the just-published artifacts and runs the exact cosign and
