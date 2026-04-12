@@ -10,7 +10,7 @@
 # CI/CD and supply chain
 /.github/                @somoore
 /deny.toml               @somoore
-/go-supply-chain.sh      @somoore
+/scripts/go-supply-chain.sh @somoore
 /install.sh              @somoore
 /Makefile                @somoore
 /scripts/checksum.sh     @somoore
