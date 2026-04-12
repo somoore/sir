@@ -78,7 +78,6 @@ curl -fsSL https://raw.githubusercontent.com/somoore/sir/main/scripts/download.s
 Then set up hooks in your project:
 
 ```bash
-export PATH="$HOME/.local/bin:$PATH"
 cd /path/to/project
 sir install            # auto-detect supported agents already on this machine
 ```
