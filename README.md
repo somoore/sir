@@ -70,7 +70,7 @@ Exfiltration requires beating all three. Provider audit logs stop at governance;
 ```bash
 curl -fsSL https://raw.githubusercontent.com/somoore/sir/main/scripts/download.sh | bash
 # or pin a specific version:
-curl -fsSL https://raw.githubusercontent.com/somoore/sir/main/scripts/download.sh | bash -s -- v0.0.2
+curl -fsSL https://raw.githubusercontent.com/somoore/sir/main/scripts/download.sh | bash -s -- v0.0.3
 ```
 
 The installer verifies cosign signatures on `checksums.txt` (when cosign is available) and the tarball's SHA-256 checksum before installing. Both install paths write `~/.sir/binary-manifest.json` so `sir verify` can detect post-install tampering. For full release verification, see [`scripts/verify-release.sh`](scripts/verify-release.sh).

@@ -3,7 +3,7 @@
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/somoore/sir/main/scripts/download.sh | bash
-#   curl -fsSL https://raw.githubusercontent.com/somoore/sir/main/scripts/download.sh | bash -s -- v0.0.2
+#   curl -fsSL https://raw.githubusercontent.com/somoore/sir/main/scripts/download.sh | bash -s -- v0.0.3
 #
 # Installs sir and mister-core to ~/.local/bin. Pass a version tag as
 # the first argument to pin a specific release; defaults to latest.
