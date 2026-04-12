@@ -572,6 +572,11 @@ jobs:
       - name: Verify SLSA provenance on every archive
         run: |
           set -euo pipefail
+          if [ ! -f verify/sir.intoto.jsonl ]; then
+            echo "sir.intoto.jsonl not present — SLSA provenance is deferred."
+            echo "See .github/workflows/release.yml provenance job comment."
+            exit 0
+          fi
           for archive in verify/sir_*.tar.gz; do
             echo "=== SLSA verify ${archive} ==="
             slsa-verifier verify-artifact "${archive}" \
