@@ -171,9 +171,4 @@ Open an issue first for protocol changes, lease-format changes, enforcement-grad
 
 This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md).
 
-> **Warning:** Do not open public issues for vulnerabilities.
-
-- **Email:** security@somoore.dev
-- **GitHub Security Advisories:** use the "Report a vulnerability" button on the Security tab.
-
-See [SECURITY.md](SECURITY.md) for the full reporting policy.
+To report a vulnerability, [open a GitHub issue](https://github.com/somoore/sir/issues/new) using the disclosure template in [SECURITY.md](SECURITY.md).
