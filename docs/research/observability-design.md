@@ -3,9 +3,22 @@
 > [!WARNING]
 > **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
 
-A useful way to frame AI coding agent observability is to separate three tiers of value: **governance** (checkbox compliance — "we have logs"), **investigation** (backward-looking — "we can reconstruct what happened"), and **detection** (real-time — "we catch bad things as they happen"). Most AI coding agent providers today stop at tier 1. Provider audit logs capture the user prompt and which tools ran, but not tool response content, not MCP arguments, and not the reasoning chain — so an investigator cannot reconstruct why an agent introduced a vulnerability, and a detector cannot catch a malicious MCP response because the response text was never logged.
+A useful way to frame AI coding agent observability is to separate three tiers of value: **governance** (checkbox compliance — "we have logs"), **detection** (real-time — "we catch bad things as they happen"), and **investigation** (backward-looking — "we can reconstruct what happened"). Most AI coding agent providers today stop at tier 1. Provider audit logs capture the user prompt and which tools ran, but not tool response content, not MCP arguments, and not the reasoning chain — so an investigator cannot reconstruct why an agent introduced a vulnerability, and a detector cannot catch a malicious MCP response because the response text was never logged.
+
+The framing of this observability gap — the space between what providers log and what defenders need — was sharpened by [Zack Korman](https://youtu.be/9vzEIsqRRmY?si=kqFalWP8BX0kWkay) (co-founder, Embroidery.io), whose analysis of AI agent audit log shortfalls informed how sir structures its three tiers.
 
 sir is architected for all three tiers at the tool-call boundary. This document lays out how each tier is wired, which code paths are load-bearing, and where sir intentionally does *not* try to help.
+
+## Tier 1 — governance
+
+When `SIR_OTLP_ENDPOINT` is set, the policy-decision code paths emit their ledger entries to an operator-controlled SIEM collector via OTLP/HTTP JSON. The exporter uses only the Go standard library, never calls home, and redacts every attribute before serialization. The full attribute taxonomy and the query examples live in [`docs/user/siem-integration.md`](../user/siem-integration.md). The short version:
+
+- `sir.ledger.index` and `sir.ledger.hash` give the SIEM a chain-of-custody signal without shipping the raw ledger file.
+- `sir.alert.type` carries the alert taxonomy (`credential_in_output`, `mcp_credential`, `mcp_injection`, `hook_tamper`, `sentinel_mutation`, `config_change_posture`, `posture_change`, `posture_change_session_end`, `elicitation_harvesting`) so a governance query can count alerts by class without parsing reason strings.
+- `sir.evidence` is populated only when `SIR_LOG_TOOL_CONTENT=1` is set, and carries the double-redacted content.
+- `sir.session.secret`, `sir.posture.state`, `sir.posture.mcp_taint`, and `sir.posture.injection_alert` give the SIEM enough context to distinguish "routine allow" from "allow under tainted posture" without re-deriving state.
+
+Not every ledger append site is wired into the exporter. Hook-lifecycle telemetry (PreToolUse / PostToolUse / hook-tamper / credential / injection / sentinel-mutation) is emitted; a few non-hook append sites — session-summary rollups, CLI allowlist changes, and some config-change bookkeeping — are recorded in the local ledger but not in the OTLP stream. When a compliance dashboard needs 100% coverage, the authoritative source is the local hash-chained ledger file, with OTLP as the live-tailing fan-out.
 
 ## Tier 3 — detection
 
@@ -30,17 +43,6 @@ sir records enough evidence for an investigator to reconstruct what happened, wi
 - **`sir explain --last`.** The explain formatter surfaces the redacted evidence block for any ledger entry that carries it, alert or trace. See [`cmd/sir/explain.go`](../../cmd/sir/explain.go).
 
 Evidence logging is opt-in by design. Setting `SIR_LOG_TOOL_CONTENT=1` is a deliberate operator choice that trades a larger ledger for full tier-2 reconstruction. Without the flag, sir is silent on clean tool calls — the pre-existing privacy default.
-
-## Tier 1 — governance
-
-When `SIR_OTLP_ENDPOINT` is set, the policy-decision code paths emit their ledger entries to an operator-controlled SIEM collector via OTLP/HTTP JSON. The exporter uses only the Go standard library, never calls home, and redacts every attribute before serialization. The full attribute taxonomy and the query examples live in [`docs/user/siem-integration.md`](../user/siem-integration.md). The short version:
-
-- `sir.ledger.index` and `sir.ledger.hash` give the SIEM a chain-of-custody signal without shipping the raw ledger file.
-- `sir.alert.type` carries the alert taxonomy (`credential_in_output`, `mcp_credential`, `mcp_injection`, `hook_tamper`, `sentinel_mutation`, `config_change_posture`, `posture_change`, `posture_change_session_end`, `elicitation_harvesting`) so a governance query can count alerts by class without parsing reason strings.
-- `sir.evidence` is populated only when `SIR_LOG_TOOL_CONTENT=1` is set, and carries the double-redacted content.
-- `sir.session.secret`, `sir.posture.state`, `sir.posture.mcp_taint`, and `sir.posture.injection_alert` give the SIEM enough context to distinguish "routine allow" from "allow under tainted posture" without re-deriving state.
-
-Not every ledger append site is wired into the exporter. Hook-lifecycle telemetry (PreToolUse / PostToolUse / hook-tamper / credential / injection / sentinel-mutation) is emitted; a few non-hook append sites — session-summary rollups, CLI allowlist changes, and some config-change bookkeeping — are recorded in the local ledger but not in the OTLP stream. When a compliance dashboard needs 100% coverage, the authoritative source is the local hash-chained ledger file, with OTLP as the live-tailing fan-out.
 
 ## Why evidence is opt-in
 
