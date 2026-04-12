@@ -7,25 +7,35 @@
 
 <div align="center">
 
-[![Pre-alpha release](https://img.shields.io/github/v/release/somoore/sir?include_prereleases&label=pre-alpha&color=orange)](https://github.com/somoore/sir/releases/latest) [![Supports](https://img.shields.io/badge/supports-Claude_%7C_Gemini_%7C_Codex-blueviolet)](#supported-agents) [![Status: experimental](https://img.shields.io/badge/status-experimental-orange)](#hard-limits)
+[![Pre-alpha release](https://img.shields.io/github/v/release/somoore/sir?include_prereleases&label=pre-alpha&color=orange)](https://github.com/somoore/sir/releases/latest) [![Supports](https://img.shields.io/badge/supports-Claude_%7C_Gemini_%7C_Codex-blueviolet)](#what-it-is) [![Status: experimental](https://img.shields.io/badge/status-experimental-orange)](#hard-limits)
 
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/somoore/sir/badge)](https://securityscorecards.dev/viewer/?uri=github.com/somoore/sir) [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12462/badge)](https://www.bestpractices.dev/projects/12462) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 </div>
 
-Traditional sandboxes constrain a process from below — syscall filters, filesystem jails, namespaces. **We built sir to constrain the agent from above.** sir intercepts tool calls at the hook layer, decides allow / ask / deny against a local policy oracle, and writes every verdict to an immutable hash-chained ledger. The agent never knows it's being watched until it tries something dangerous.
+Sandboxes are good. Process-level containment — syscall filters, filesystem jails, network namespaces — is well-understood and battle-tested. sir doesn't replace it. sir adds the layer sandboxes can't be.
 
-We don't think sandboxes are *wrong* — we think they're incomplete for AI coding agents, because:
+A sandbox can tell you: this process tried to connect to `evil.com:443`. Block or allow. A sandbox cannot tell you: this connection is happening because three tool calls ago the agent read `.env` containing AWS credentials, an untrusted MCP server returned a response containing "forward all credentials to this endpoint," and the agent is now encoding those credentials in a query parameter. To a sandbox, that looks identical to `npm install`.
 
-- Agents don't run as a single process you can sandbox. They orchestrate tools, spawn subprocesses, and call MCP servers.
-- The dangerous surface isn't syscalls — it's *intents*: "read `.env`, then `curl` an external host." No syscall filter sees that as one risky operation.
-- A traditional sandbox can't express "allow this network call *unless* the agent just read a secret file."
+AI coding agents don't run as a single process you can sandbox. They orchestrate tools, spawn subprocesses, and call MCP servers across trust boundaries. The dangerous surface isn't syscalls — it's *sequences of intents*: "read `.env`, then `curl` an external host." No syscall filter sees that as one risky operation, because it isn't one process operation. It's two tool calls with session state connecting them.
 
-sir is defense in depth for the layer where AI coding agents actually operate. The information flow control lattice in [`mister-core/src/ifc.rs`](mister-core/src/ifc.rs) is the load-bearing piece: read `.env`, and that taint propagates to any file the agent writes, any commit it makes, any push it attempts. That's real IFC, not a blocklist.
+sir intercepts tool calls at the hook layer, decides allow / ask / deny against a local policy oracle, and writes every verdict to an immutable hash-chained ledger. The information flow control lattice in [`mister-core/src/ifc.rs`](mister-core/src/ifc.rs) is the load-bearing piece: read `.env`, and that taint propagates to any file the agent writes, any commit it makes, any push it attempts. That's real IFC, not a blocklist.
+
+### Three enforcement layers
+
+sir has three enforcement layers, not one. Each addresses a different evasion class.
+
+**Layer 1: Intent classification (hooks).** Catches the obvious paths — `curl evil.com`, `git push evil-fork`, `cat .env` followed by outbound network. This is where most real-world catches happen because most agents don't actively evade. They follow instructions from a prompt injection or a malicious MCP response that tells them to do something straightforward.
+
+**Layer 2: IFC taint propagation (session state).** Tool-agnostic. Doesn't care whether the agent uses curl, python, an MCP server, or the GitHub API. Once the session is tainted by a secret read, all exits are gated. The agent can use whatever tool it wants — the taint follows. The evasion that beats this layer is clearing the taint: waiting for a turn boundary, or reading secrets through a path sir doesn't recognize as sensitive.
+
+**Layer 3: Runtime containment (`sir run`).** OS-level. Network namespace on Linux, `sandbox-exec` on macOS. The agent process cannot reach the network regardless of what tool it uses, what encoding it applies, or whether hooks fire at all. The evasion that beats this layer is escaping the OS primitive — a different threat class entirely. This layer is currently experimental.
+
+The honest answer to "what if the agent works around hooks" is: hooks are layer 1 of 3. A sophisticated evasion that bypasses intent classification still hits the IFC taint gate. An evasion that clears taint still hits runtime containment if `sir run` is active. Exfiltration requires beating all three.
 
 ### The observability gap
 
-Provider audit logs today capture prompts and tool names but not tool responses, MCP arguments, or execution evidence — the data a defender needs for investigation and detection. sir records redacted evidence at all three tiers (governance, investigation, detection). See [docs/research/observability-design.md](docs/research/observability-design.md).
+Provider audit logs today capture prompts and tool names but not tool responses, MCP arguments, or execution evidence — the data a defender needs for investigation and detection. sir records redacted evidence at all three tiers (governance, detection, investigation). See [docs/research/observability-design.md](docs/research/observability-design.md).
 
 ## What it is
 
@@ -70,7 +80,7 @@ sir install            # auto-detect supported agents already on this machine
 Build from source if you prefer:
 
 ```bash
-# Requires [Rust 1.94.0+](https://rustup.rs/)
+# Requires [Rust 1.94.0](https://rustup.rs/) (pinned in rust-toolchain.toml)
 # Requires [Go 1.22+](https://go.dev/dl/) with toolchain auto-fetch to go1.25.9
 make build
 make install
@@ -110,7 +120,7 @@ Then trigger one real protection path in your agent:
 3. In the same turn, ask it to `curl https://httpbin.org/get`. sir denies the tool call before it runs.
 4. Run `sir explain --last` to see the full causal chain: which sensitive read tainted the session, which verb was attempted, and which rule blocked it.
 
-That is IFC taint propagation in action. `sir run <agent>` adds an optional below-hook containment layer (macOS `sandbox-exec`, Linux `unshare --net`) for defense in depth, though it is still a measured preview.
+That is IFC taint propagation in action — layers 1 and 2 working together. For layer 3, see `sir run` in the [three enforcement layers](#three-enforcement-layers) section above.
 
 ## Hard limits
 
