@@ -1,3 +1,0 @@
-# Keep the local Rust build output directory, but never commit its contents.
-*
-!.gitignore
