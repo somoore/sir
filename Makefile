@@ -89,7 +89,7 @@ verify: lint
 	cargo deny check
 	@echo ""
 	@echo "=== Running Go supply chain checks ==="
-	bash go-supply-chain.sh
+	bash scripts/go-supply-chain.sh
 	@echo ""
 	@echo "=== Generating checksums ==="
 	bash scripts/checksum.sh ./bin 2>/dev/null || bash scripts/checksum.sh target/release 2>/dev/null || echo "No artifacts to checksum (run 'make build' first)"

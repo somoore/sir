@@ -80,7 +80,7 @@ jobs:
             [ -z "${file}" ] && continue
 
             case "${file}" in
-              .github/workflows/ci.yml|cmd/*|pkg/*|internal/*|tests/*|testdata/*|go.mod|go.sum|go-supply-chain.sh|install.sh)
+              .github/workflows/ci.yml|cmd/*|pkg/*|internal/*|tests/*|testdata/*|go.mod|go.sum|scripts/go-supply-chain.sh|install.sh)
                 go=true
                 ;;
             esac
@@ -266,7 +266,7 @@ jobs:
 
       - name: Go supply chain check
         if: needs.changes.outputs.go == 'true'
-        run: bash go-supply-chain.sh
+        run: bash scripts/go-supply-chain.sh
 
   sast:
     # OpenSSF Scorecard SAST walks recent merged PRs and looks for a SAST
