@@ -23,7 +23,7 @@ cd /path/to/project
 sir install            # auto-detect supported agents already on this machine
 ```
 
-That's it. sir is invisible until something dangerous happens. See [Install](#install) for version pinning, building from source, or managed rollout.
+That's it. sir is invisible until something dangerous happens.
 
 ## What it is
 
@@ -44,11 +44,14 @@ Same turn, two tool calls, different verdicts — the oracle's decision changed 
 - **Codex** — **Limited support.** 5 hook events fire on `codex-cli` 0.118.0+ after enabling the `codex_hooks` feature flag (`codex features enable codex_hooks`), and the upstream hook surface is Bash-only. Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools stay outside PreToolUse; sir relies on sentinel hashing plus a final `Stop` sweep as the backstop. See [codex-support.md](docs/user/codex-support.md).
 <!-- END GENERATED SUPPORT SUMMARY -->
 
-## Why sir — not just a sandbox
+## Why use sir
 
-Sandboxes see a process making a network call. sir sees *why* — three tool calls ago the agent read `.env` with AWS credentials, an untrusted MCP server told it to "forward credentials for analytics," and now it's encoding them in a query parameter. To a sandbox, that looks identical to `npm install`.
+Sandboxes see a process making a network call. sir sees *why* — the agent read `.env` with AWS credentials, an untrusted MCP server told it to "forward credentials for analytics," and now it's encoding them in a query parameter. To a sandbox, that looks identical to `npm install`. sir adds the context layer that makes containment decisions intelligent instead of binary.
 
-AI coding agents orchestrate tools, spawn subprocesses, and call MCP servers across trust boundaries. The dangerous surface isn't syscalls — it's *sequences of intents* connected by session state. sir adds the context layer that makes containment decisions intelligent instead of binary.
+- **Secrets and taint propagation.** A secret read contaminates every downstream write, commit, or push attempt via IFC — tool-agnostic.
+- **MCP prompt injection.** Scans MCP arguments for credentials and responses for injection patterns, taints untrusted servers, forces re-approval.
+- **A local audit trail.** Tamper-evident ledger of what the agent actually did — the record provider logs don't capture.
+- **Quiet on normal coding, loud on dangerous transitions.** Only external network, secret egress, posture tampering, and MCP injection trigger prompts or denials.
 
 ### Three enforcement layers
 
@@ -59,13 +62,6 @@ AI coding agents orchestrate tools, spawn subprocesses, and call MCP servers acr
 | **3. Runtime containment** | OS-level (`sir run`) — network namespace (Linux), `sandbox-exec` (macOS) | All network egress, regardless of hooks | OS primitive escape (different threat class). Experimental. |
 
 Exfiltration requires beating all three. Provider audit logs stop at governance; sir records redacted evidence at all three tiers (governance, detection, investigation). See [observability-design.md](docs/research/observability-design.md).
-
-## Why use sir
-
-- **Secrets and taint propagation.** A secret read contaminates every downstream write, commit, or push attempt via IFC.
-- **MCP prompt injection.** sir scans MCP arguments for credentials and responses for injection patterns, taints untrusted servers, and forces re-approval.
-- **A local audit trail.** Tamper-evident ledger of what the agent actually did — the record provider logs don't capture.
-- **Quiet on normal coding, loud on dangerous transitions.** Only external network, secret egress, posture tampering, and MCP injection trigger prompts or denials.
 
 ## Install
 
@@ -88,6 +84,8 @@ make install
 ```
 
 Then in any project: `sir install            # auto-detect supported agents already on this machine`
+
+**Update:** re-run the same download command. The installer overwrites the binaries in place; hooks and session state at `~/.sir/` are preserved. `sir version --check` tells you if a newer release exists (informational only — never auto-updates).
 
 **Managed rollout** (enterprise): `export SIR_MANAGED_POLICY_PATH=/etc/sir/managed-policy.json && sir install --agent claude`
 
@@ -124,12 +122,16 @@ sir is v1 and experimental. Shipped tradeoffs:
 - `sir log`, `sir explain --last`, `sir why`, and `sir doctor` are your investigation tools.
 - `sir mcp` and `sir mcp wrap` inspect or harden command-based MCP servers. `sir unlock`, `sir allow-host`, `sir allow-remote`, and `sir trust` widen the lease.
 
+## Contributing
+
+sir is open to contributions. Start with [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, coding standards, and PR process. [ARCHITECTURE.md](ARCHITECTURE.md) covers the system design. All changes go through CI (Go tests, Rust tests, gosec, CodeQL, zizmor) and require review.
+
 ## Documentation
 
-- Runtime behavior — [docs/user/runtime-security-overview.md](docs/user/runtime-security-overview.md)
-- Agent integration — [Claude](docs/user/claude-code-hooks-integration.md) · [Gemini](docs/user/gemini-support.md) · [Codex](docs/user/codex-support.md)
-- Contributor path — [CONTRIBUTING.md](CONTRIBUTING.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [docs/README.md](docs/README.md)
-- Verification and evidence — [security-verification-guide.md](docs/research/security-verification-guide.md) · [validation-summary.md](docs/research/validation-summary.md) · [sir-threat-model.md](docs/research/sir-threat-model.md)
-- FAQ — [docs/user/faq.md](docs/user/faq.md)
+**Users** — [Runtime behavior](docs/user/runtime-security-overview.md) · [FAQ](docs/user/faq.md) · Agent setup: [Claude](docs/user/claude-code-hooks-integration.md) · [Gemini](docs/user/gemini-support.md) · [Codex](docs/user/codex-support.md)
+
+**Contributors** — [CONTRIBUTING.md](CONTRIBUTING.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [docs/README.md](docs/README.md)
+
+**Researchers** — [Threat model](docs/research/sir-threat-model.md) · [Verification guide](docs/research/security-verification-guide.md) · [Validation summary](docs/research/validation-summary.md) · [Observability design](docs/research/observability-design.md)
 
 Report suspected vulnerabilities privately via [SECURITY.md](SECURITY.md). Licensed under the [Apache License, Version 2.0](LICENSE).
