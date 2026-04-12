@@ -80,8 +80,8 @@
     "optional": []
   },
   "attestation": {
-    "slsa_level": 3,
-    "provenance_file": "sir.intoto.jsonl",
+    "slsa_level": 0,
+    "provenance_file": "sir.intoto.jsonl (deferred — slsa-github-generator exit-27 bug)",
     "cosign_signed": true,
     "cosign_identity": "https://github.com/somoore/sir/.github/workflows/release.yml@refs/tags/v0.0.2",
     "cosign_oidc_issuer": "https://token.actions.githubusercontent.com",

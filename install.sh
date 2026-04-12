@@ -359,6 +359,24 @@ if [ "$BUILT_CORE" != "$INST_CORE" ] || [ "$BUILT_SIR" != "$INST_SIR" ]; then
 fi
 info "Installed binaries verified."
 
+# Write binary integrity manifest — used by `sir verify` and the mister-core
+# launch-time integrity check to detect binary tampering after installation.
+MANIFEST_DIR="$HOME/.sir"
+mkdir -p "$MANIFEST_DIR"
+cat > "$MANIFEST_DIR/binary-manifest.json" <<MANIFEST_EOF
+{
+  "version": "${TARGET_VERSION:-unknown}",
+  "installed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "install_method": "source",
+  "sir_sha256": "${INST_SIR}",
+  "mister_core_sha256": "${INST_CORE}",
+  "sir_path": "${INSTALL_DIR}/sir",
+  "mister_core_path": "${INSTALL_DIR}/mister-core"
+}
+MANIFEST_EOF
+chmod 600 "$MANIFEST_DIR/binary-manifest.json"
+info "Binary manifest written to $MANIFEST_DIR/binary-manifest.json"
+
 # Check PATH — sir CLI commands (sir status, sir doctor, sir trace, etc.) need PATH.
 # Hook commands use absolute paths (set during `sir install`) so PATH is not required
 # for hook execution, but the CLI must be findable for developer use.
