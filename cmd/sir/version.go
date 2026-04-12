@@ -22,8 +22,10 @@ import (
 const Version = "v0.0.2"
 
 // latestReleaseURL is the GitHub Releases API endpoint queried by `sir version --check`.
-// No authentication is sent. The request is a single GET with a 5-second timeout.
-const latestReleaseURL = "https://api.github.com/repos/somoore/sir/releases/latest"
+// Uses /releases?per_page=1 instead of /releases/latest because GitHub's /latest
+// endpoint excludes prereleases, and all v0.x tags are marked prerelease by the
+// release workflow. No authentication is sent.
+const latestReleaseURL = "https://api.github.com/repos/somoore/sir/releases?per_page=1"
 
 // cmdVersion handles `sir version` and `sir version --check`.
 //
@@ -143,11 +145,15 @@ func fetchLatestRelease(url string, timeout time.Duration) (releaseInfo, error) 
 		return releaseInfo{}, fmt.Errorf("github api status %d", resp.StatusCode)
 	}
 
-	var release releaseInfo
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+	// The endpoint returns an array (per_page=1). Decode the first element.
+	var releases []releaseInfo
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
 		return releaseInfo{}, err
 	}
-	return release, nil
+	if len(releases) == 0 {
+		return releaseInfo{}, fmt.Errorf("no releases found")
+	}
+	return releases[0], nil
 }
 
 // fetchLatestReleaseTag is the legacy helper used by tests. It delegates to
