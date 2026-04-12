@@ -57,8 +57,11 @@ fi
 
 need_cmd gh
 need_cmd cosign
-need_cmd slsa-verifier
 need_cmd python3
+# slsa-verifier is optional — used only when sir.intoto.jsonl is present
+if [[ -z "$(command -v slsa-verifier 2>/dev/null)" ]]; then
+  echo "Note: slsa-verifier not found. SLSA provenance check will be skipped if present."
+fi
 
 mkdir -p "${DEST_DIR}"
 gh release download "${TAG}" --repo "${REPO}" --dir "${DEST_DIR}"
@@ -71,7 +74,7 @@ if [[ ${#archives[@]} -eq 0 ]]; then
   exit 1
 fi
 
-for required in checksums.txt checksums.txt.sig checksums.txt.pem aibom.json aibom.json.sig aibom.json.pem sir.intoto.jsonl; do
+for required in checksums.txt checksums.txt.sig checksums.txt.pem aibom.json aibom.json.sig aibom.json.pem; do
   if [[ ! -f "${DEST_DIR}/${required}" ]]; then
     echo "Missing required release artifact: ${DEST_DIR}/${required}" >&2
     exit 1
@@ -107,13 +110,18 @@ cosign verify-blob \
   --certificate-oidc-issuer "${OIDC_ISSUER}" \
   "${DEST_DIR}/aibom.json"
 
-echo "==> Verifying SLSA provenance"
-for archive in "${archives[@]}"; do
-  slsa-verifier verify-artifact "${archive}" \
-    --provenance-path "${DEST_DIR}/sir.intoto.jsonl" \
-    --source-uri "${SOURCE_URI}" \
-    --source-tag "${TAG}"
-done
+if [[ -f "${DEST_DIR}/sir.intoto.jsonl" ]]; then
+  echo "==> Verifying SLSA provenance"
+  for archive in "${archives[@]}"; do
+    slsa-verifier verify-artifact "${archive}" \
+      --provenance-path "${DEST_DIR}/sir.intoto.jsonl" \
+      --source-uri "${SOURCE_URI}" \
+      --source-tag "${TAG}"
+  done
+else
+  echo "==> SLSA provenance (sir.intoto.jsonl) not present — skipping."
+  echo "    This is expected while slsa-github-generator v2.1.0 exit-27 bug is unresolved."
+fi
 
 echo "==> Verifying checksums manifest against downloaded archives"
 (
