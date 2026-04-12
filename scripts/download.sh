@@ -74,8 +74,8 @@ curl -fsSL "${BASE_URL}/checksums.txt" -o "${TMPDIR}/checksums.txt" \
 # If cosign is available, verify the signature before trusting the checksums.
 # If cosign is not available, fall back to SHA-256 only (warn the user).
 COSIGN_VERIFIED=0
-curl -fsSL "${BASE_URL}/checksums.txt.sig" -o "${TMPDIR}/checksums.txt.sig" 2>/dev/null
-curl -fsSL "${BASE_URL}/checksums.txt.pem" -o "${TMPDIR}/checksums.txt.pem" 2>/dev/null
+curl -fsSL "${BASE_URL}/checksums.txt.sig" -o "${TMPDIR}/checksums.txt.sig" 2>/dev/null || true
+curl -fsSL "${BASE_URL}/checksums.txt.pem" -o "${TMPDIR}/checksums.txt.pem" 2>/dev/null || true
 
 if [ -f "${TMPDIR}/checksums.txt.sig" ] && [ -f "${TMPDIR}/checksums.txt.pem" ]; then
     if command -v cosign >/dev/null 2>&1; then

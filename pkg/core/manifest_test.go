@@ -151,6 +151,23 @@ func TestVerifyMisterCoreOnce_HashMismatch(t *testing.T) {
 	}
 }
 
+func TestVerifyMisterCoreOnce_ShortManifestHash(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	ResetIntegrityCache()
+
+	binaryPath := filepath.Join(dir, "mister-core")
+	os.WriteFile(binaryPath, []byte("fake-mister-core-binary"), 0o755)
+
+	// Write a manifest with a malformed short hash — must not panic.
+	writeTestManifest(t, dir, "abc")
+
+	err := verifyMisterCoreOnce(binaryPath)
+	if err == nil {
+		t.Fatal("expected error for mismatched short hash")
+	}
+}
+
 func TestVerifyMisterCoreOnce_CachedResult(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)

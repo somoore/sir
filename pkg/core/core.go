@@ -50,7 +50,7 @@ func verifyMisterCoreOnce(binaryPath string) error {
 		if diskHash != manifest.MisterCoreSHA256 {
 			misterCoreIntegrity.err = fmt.Errorf(
 				"mister-core binary integrity mismatch (manifest: %s, disk: %s)",
-				manifest.MisterCoreSHA256[:16]+"...", diskHash[:16]+"...",
+				truncateHash(manifest.MisterCoreSHA256), truncateHash(diskHash),
 			)
 		}
 	})
@@ -64,6 +64,16 @@ func ResetIntegrityCache() {
 		once sync.Once
 		err  error
 	}{}
+}
+
+// truncateHash returns the first 16 hex chars of a hash with "..." suffix,
+// or the full string if shorter than 16 chars. Prevents panics on malformed
+// manifest values.
+func truncateHash(h string) string {
+	if len(h) > 16 {
+		return h[:16] + "..."
+	}
+	return h
 }
 
 // Evaluate sends a request to mister-core and returns the verdict.
