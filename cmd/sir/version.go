@@ -4,13 +4,15 @@
 // checker, and does NOT have a self-update subcommand. The update path is
 // external — re-run install.sh, or use a package manager. `sir version --check`
 // is informational only: it queries the GitHub Releases API and prints whether
-// a newer tag exists. It never downloads, never replaces, and always exits 0.
+// a newer tag exists, along with release notes and checksums. It never
+// downloads, never replaces, and always exits 0.
 package main
 
 import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -43,47 +45,117 @@ func cmdVersion(args []string) {
 		return
 	}
 
-	latest, err := fetchLatestReleaseTag(latestReleaseURL, 5*time.Second)
-	if err != nil || latest == "" {
+	release, err := fetchLatestRelease(latestReleaseURL, 5*time.Second)
+	if err != nil || release.TagName == "" {
 		fmt.Printf("sir %s (could not check for updates)\n", Version)
 		return
 	}
 
-	if latest == Version {
+	if release.TagName == Version {
 		fmt.Printf("sir %s (up to date)\n", Version)
 		return
 	}
-	fmt.Printf("sir %s (latest: %s — re-run install.sh to update)\n", Version, latest)
+
+	fmt.Printf("sir %s → %s available\n", Version, release.TagName)
+	fmt.Println()
+
+	// Release date
+	if release.PublishedAt != "" {
+		if t, err := time.Parse(time.RFC3339, release.PublishedAt); err == nil {
+			fmt.Printf("  released:  %s\n", t.Format("2006-01-02"))
+		}
+	}
+
+	// Release URL
+	if release.HTMLURL != "" {
+		fmt.Printf("  details:   %s\n", release.HTMLURL)
+	}
+	fmt.Println()
+
+	// Changelog (release body) — show first ~20 lines, trimmed
+	if body := strings.TrimSpace(release.Body); body != "" {
+		fmt.Println("  Changelog:")
+		lines := strings.Split(body, "\n")
+		limit := 20
+		if len(lines) < limit {
+			limit = len(lines)
+		}
+		for _, line := range lines[:limit] {
+			fmt.Printf("    %s\n", line)
+		}
+		if len(lines) > limit {
+			fmt.Printf("    ... (%d more lines — see details link above)\n", len(lines)-limit)
+		}
+		fmt.Println()
+	}
+
+	// Checksums — find checksums.txt in release assets
+	for _, asset := range release.Assets {
+		if asset.Name == "checksums.txt" {
+			fmt.Printf("  checksums: %s\n", asset.DownloadURL)
+			fmt.Println()
+			break
+		}
+	}
+
+	// Update instructions
+	fmt.Println("  Update (pre-built binary):")
+	fmt.Printf("    curl -fsSL https://raw.githubusercontent.com/somoore/sir/main/scripts/download.sh | bash -s -- %s\n", release.TagName)
+	fmt.Println()
+	fmt.Println("  Update (from source):")
+	fmt.Printf("    cd sir && git fetch && git checkout %s && ./install.sh\n", release.TagName)
 }
 
-// fetchLatestReleaseTag queries the GitHub Releases API and extracts the
-// `tag_name` field from the JSON response. Returns ("", err) on any failure.
-// Uses a bounded http.Client with the supplied timeout — no retries, no
-// keep-alives, no follow-up requests.
-func fetchLatestReleaseTag(url string, timeout time.Duration) (string, error) {
+// releaseInfo holds the fields we care about from the GitHub Releases API.
+type releaseInfo struct {
+	TagName     string        `json:"tag_name"`
+	PublishedAt string        `json:"published_at"`
+	HTMLURL     string        `json:"html_url"`
+	Body        string        `json:"body"`
+	Assets      []releaseAsset `json:"assets"`
+}
+
+// releaseAsset holds a single release asset's metadata.
+type releaseAsset struct {
+	Name        string `json:"name"`
+	DownloadURL string `json:"browser_download_url"`
+	Size        int64  `json:"size"`
+}
+
+// fetchLatestRelease queries the GitHub Releases API and returns the parsed
+// release info. Returns a zero struct and error on any failure.
+func fetchLatestRelease(url string, timeout time.Duration) (releaseInfo, error) {
 	client := &http.Client{Timeout: timeout}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return "", err
+		return releaseInfo{}, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "sir-version-check/"+Version)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return releaseInfo{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("github api status %d", resp.StatusCode)
+		return releaseInfo{}, fmt.Errorf("github api status %d", resp.StatusCode)
 	}
 
-	var payload struct {
-		TagName string `json:"tag_name"`
+	var release releaseInfo
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return releaseInfo{}, err
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+	return release, nil
+}
+
+// fetchLatestReleaseTag is the legacy helper used by tests. It delegates to
+// fetchLatestRelease and returns just the tag name.
+func fetchLatestReleaseTag(url string, timeout time.Duration) (string, error) {
+	release, err := fetchLatestRelease(url, timeout)
+	if err != nil {
 		return "", err
 	}
-	return payload.TagName, nil
+	return release.TagName, nil
 }
