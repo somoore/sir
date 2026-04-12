@@ -67,17 +67,18 @@ Same turn, two tool calls, different verdicts — the oracle's decision changed 
 
 > **Supported platforms:** macOS (Apple Silicon) and Linux (amd64, arm64). Intel Mac and Windows are not yet supported.
 
-**Pre-built binary (recommended).** Downloads the latest release, or pin a version by changing `latest` to a tag like `v0.0.2`:
+**Pre-built binary (recommended).** Detects your platform, downloads the release, and installs to `~/.local/bin`:
 
 ```bash
-# Install latest (or replace "latest" with e.g. "v0.0.2" to pin a version)
-VERSION=latest; V=$([ "$VERSION" = "latest" ] && gh release list --repo somoore/sir --limit 1 --json tagName -q '.[0].tagName' || echo "$VERSION") && \
-ARCH=$(uname -m | sed 's/x86_64/linux_amd64/;s/aarch64/linux_arm64/;s/arm64/darwin_arm64/') && \
-gh release download "$V" --repo somoore/sir --pattern "sir_${V}_${ARCH}.tar.gz" --dir /tmp/sir && \
-tar -xzf "/tmp/sir/sir_${V}_${ARCH}.tar.gz" -C /tmp/sir && \
-install -m 750 /tmp/sir/sir /tmp/sir/mister-core ~/.local/bin/ && rm -rf /tmp/sir
+curl -fsSL https://raw.githubusercontent.com/somoore/sir/main/scripts/download.sh | bash
+# or pin a specific version:
+curl -fsSL https://raw.githubusercontent.com/somoore/sir/main/scripts/download.sh | bash -s -- v0.0.2
+```
+
+Then set up hooks in your project:
+
+```bash
 export PATH="$HOME/.local/bin:$PATH"
-sir version
 cd /path/to/project
 sir install            # auto-detect supported agents already on this machine
 ```
