@@ -63,35 +63,50 @@ Same turn, two tool calls, different verdicts — the oracle's decision changed 
 - **A local audit trail.** Provider logs stop at the governance layer. sir writes a tamper-evident record of what the agent actually did on your machine — the same chain a forensic review would trust.
 - **Quiet on normal coding, loud on dangerous transitions.** Reads, edits, tests, commits, and loopback traffic stay silent. Only external network, secret egress, posture tampering, and MCP injection trigger prompts or denials.
 
-## Install in 3 minutes
+## Install
 
-Fastest path — `install.sh` drops `sir` into `~/.local/bin`, preserves any existing `~/.sir/` state, and is the only supported update path. There is no self-updater.
+> **Supported platforms:** macOS (Apple Silicon) and Linux (amd64, arm64). Intel Mac and Windows are not yet supported.
+
+**Pre-built binary (recommended).** Downloads the latest release, or pin a version by changing `latest` to a tag like `v0.0.2`:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/somoore/sir/main/install.sh | bash
+# Install latest (or replace "latest" with e.g. "v0.0.2" to pin a version)
+VERSION=latest; V=$([ "$VERSION" = "latest" ] && gh release list --repo somoore/sir --limit 1 --json tagName -q '.[0].tagName' || echo "$VERSION") && \
+ARCH=$(uname -m | sed 's/x86_64/linux_amd64/;s/aarch64/linux_arm64/;s/arm64/darwin_arm64/') && \
+gh release download "$V" --repo somoore/sir --pattern "sir_${V}_${ARCH}.tar.gz" --dir /tmp/sir && \
+tar -xzf "/tmp/sir/sir_${V}_${ARCH}.tar.gz" -C /tmp/sir && \
+install -m 750 /tmp/sir/sir /tmp/sir/mister-core ~/.local/bin/ && rm -rf /tmp/sir
 export PATH="$HOME/.local/bin:$PATH"
+sir version
 cd /path/to/project
 sir install            # auto-detect supported agents already on this machine
-# or: sir install --agent codex
 ```
 
-Build from source if you prefer:
+**Build from source** if you prefer (requires cloning the repo):
 
 ```bash
+git clone https://github.com/somoore/sir.git && cd sir
 # Requires [Rust 1.94.0](https://rustup.rs/) (pinned in rust-toolchain.toml)
 # Requires [Go 1.22+](https://go.dev/dl/) with toolchain auto-fetch to go1.25.9
 make build
 make install
 cd /path/to/project
 sir install            # auto-detect supported agents already on this machine
-# or: sir install --agent gemini
 ```
 
-Managed rollout:
+**Managed rollout** (enterprise):
 
 ```bash
 export SIR_MANAGED_POLICY_PATH=/etc/sir/managed-policy.json
 sir install --agent claude
+```
+
+## Uninstall
+
+```bash
+sir uninstall          # remove hooks from all detected agents
+rm -f ~/.local/bin/sir ~/.local/bin/mister-core
+# Optional: rm -rf ~/.sir   (removes ledger, session state, and lease data)
 ```
 
 ## Prove it works
