@@ -7,6 +7,29 @@ sir is experimental. Each release listed here is a snapshot of the "sandbox in r
 
 This file tracks shipped releases only. Historical planning notes, launch copy, and exploratory findings live in git history rather than on the production repo surface.
 
+## v0.0.3 — 2026-04-12 — supply chain hardening and false positive fix
+
+**Binary integrity verification**
+
+- `sir verify` — on-demand binary integrity check against install-time manifest.
+- mister-core is hash-verified before first execution per process. Tampered oracle triggers hard deny on all tool calls.
+- Both `install.sh` and `download.sh` write `~/.sir/binary-manifest.json` with SHA-256 hashes at install time.
+- Sentinel file detects manifest deletion as tamper (fail closed).
+- `download.sh` verifies cosign signatures on `checksums.txt` when cosign is available.
+
+**High-entropy scanner false positive fix**
+
+- Fixed `high_entropy_token` credential scanner falsely triggering on JSON-wrapped tool output, markdown badge URLs, and structured text. This caused spurious secret-session activation that blocked all subagent delegation during normal coding — the root cause of the "sir blocks subagents" usability bug.
+- Named credential patterns (AWS keys, GitHub PATs, OpenAI keys, etc.) are unaffected and still detect credentials inside any wrapper format.
+
+**Other changes**
+
+- `sir version --check` now shows changelog, checksums link, and copy-paste update commands when a newer release exists. Fixed prerelease version detection.
+- `aibom.json` SLSA level corrected from 3 to 0 (provenance job deferred pending upstream fix).
+- SECURITY.md rewritten with GitHub issue disclosure template.
+- CODE_OF_CONDUCT.md updated to use GitHub issues for reporting.
+- Fixed false `go.sum` claim in SECURITY.md (zero Go deps = no go.sum).
+
 ## v0.0.1 — 2026-04-11 — pre-alpha, first public release
 
 This is the first tagged public release of sir. The project is **pre-alpha**: the core "sandbox in reverse" model ships end to end, but the threat model is narrow, several detections are heuristic, and the public API (both CLI and policy verbs) is expected to change without notice. Do not deploy on production infrastructure.
