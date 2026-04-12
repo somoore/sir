@@ -30,8 +30,20 @@ func ManifestPath() (string, error) {
 	return filepath.Join(home, ".sir", "binary-manifest.json"), nil
 }
 
+// ManifestSentinelPath returns the path to the sentinel file that records
+// whether a manifest has ever been written. When the sentinel exists but
+// the manifest does not, the manifest was deleted — treat as tamper.
+func ManifestSentinelPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home dir: %w", err)
+	}
+	return filepath.Join(home, ".sir", ".manifest-expected"), nil
+}
+
 // LoadManifest reads and parses the binary manifest from ~/.sir/binary-manifest.json.
-// Returns (nil, nil) if the file does not exist (pre-upgrade installs).
+// Returns (nil, nil) if neither the manifest nor the sentinel exist (pre-upgrade installs).
+// Returns an error if the sentinel exists but the manifest does not (tamper).
 func LoadManifest() (*BinaryManifest, error) {
 	path, err := ManifestPath()
 	if err != nil {
@@ -40,7 +52,7 @@ func LoadManifest() (*BinaryManifest, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return nil, checkManifestSentinel()
 		}
 		return nil, fmt.Errorf("read manifest: %w", err)
 	}
@@ -49,6 +61,20 @@ func LoadManifest() (*BinaryManifest, error) {
 		return nil, fmt.Errorf("parse manifest: %w", err)
 	}
 	return &m, nil
+}
+
+// checkManifestSentinel distinguishes "never had a manifest" (pre-upgrade)
+// from "manifest was deleted" (tamper). Returns nil if no sentinel exists,
+// or an error if the sentinel is present without a manifest.
+func checkManifestSentinel() error {
+	sentinelPath, err := ManifestSentinelPath()
+	if err != nil {
+		return nil // can't resolve path → treat as pre-upgrade
+	}
+	if _, err := os.Stat(sentinelPath); err == nil {
+		return fmt.Errorf("binary manifest deleted — sentinel exists at %s but manifest is missing (possible tamper)", sentinelPath)
+	}
+	return nil // no sentinel → pre-upgrade install, skip check
 }
 
 // HashFile returns the lowercase hex SHA-256 digest of a file.

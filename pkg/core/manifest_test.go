@@ -50,6 +50,40 @@ func TestLoadManifest_NotFound(t *testing.T) {
 	}
 }
 
+func TestLoadManifest_DeletedWithSentinel(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+
+	// Sentinel exists but manifest does not — tamper.
+	sirDir := filepath.Join(dir, ".sir")
+	os.MkdirAll(sirDir, 0o700)
+	os.WriteFile(filepath.Join(sirDir, ".manifest-expected"), []byte{}, 0o600)
+
+	m, err := LoadManifest()
+	if err == nil {
+		t.Fatal("expected error when sentinel exists but manifest is missing")
+	}
+	if m != nil {
+		t.Fatalf("expected nil manifest, got: %+v", m)
+	}
+}
+
+func TestLoadManifest_NoSentinelNoManifest(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+
+	// Neither sentinel nor manifest — pre-upgrade, no error.
+	os.MkdirAll(filepath.Join(dir, ".sir"), 0o700)
+
+	m, err := LoadManifest()
+	if err != nil {
+		t.Fatalf("expected nil error for pre-upgrade (no sentinel), got: %v", err)
+	}
+	if m != nil {
+		t.Fatalf("expected nil manifest, got: %+v", m)
+	}
+}
+
 func TestLoadManifest_Valid(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
@@ -107,10 +141,26 @@ func TestVerifyMisterCoreOnce_NoManifest(t *testing.T) {
 	t.Setenv("HOME", dir)
 	ResetIntegrityCache()
 
-	// No manifest → should pass (nil error).
+	// No manifest, no sentinel → should pass (nil error).
 	err := verifyMisterCoreOnce("/some/binary")
 	if err != nil {
 		t.Fatalf("expected nil error with no manifest, got: %v", err)
+	}
+}
+
+func TestVerifyMisterCoreOnce_DeletedManifestWithSentinel(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	ResetIntegrityCache()
+
+	// Sentinel exists but manifest deleted → fail closed.
+	sirDir := filepath.Join(dir, ".sir")
+	os.MkdirAll(sirDir, 0o700)
+	os.WriteFile(filepath.Join(sirDir, ".manifest-expected"), []byte{}, 0o600)
+
+	err := verifyMisterCoreOnce("/some/binary")
+	if err == nil {
+		t.Fatal("expected error when sentinel exists but manifest is deleted")
 	}
 }
 
