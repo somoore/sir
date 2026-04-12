@@ -114,12 +114,29 @@ func RedactStructuredText(s string) string {
 }
 
 // IsHighEntropyString returns true if s looks like a random secret token:
-// at least 32 chars, no whitespace, and Shannon entropy >4.5 bits/char.
+// at least 32 chars, no whitespace, no URL/markup syntax, and Shannon
+// entropy >4.5 bits/char.
+//
+// Real credential tokens are alphanumeric with limited special characters
+// (dashes, underscores, dots, slashes for JWT segments). Tokens containing
+// URL indicators (://), markdown/HTML brackets ([]()<>), query strings (?&=),
+// or pipe characters are not credentials — they are URLs, badge markup,
+// env var examples, or similar structured text that happens to be long and
+// varied. Filtering these out prevents false positives on README badge URLs,
+// config examples, and markdown link syntax.
 func IsHighEntropyString(s string) bool {
 	if len(s) < 32 {
 		return false
 	}
 	if strings.ContainsAny(s, " \t\n\r") {
+		return false
+	}
+	// Exclude URL, markup, and structured-data syntax — real API keys/tokens
+	// are alphanumeric with limited special characters (dashes, underscores,
+	// dots, slashes for JWT segments). They never contain JSON braces, HTML
+	// brackets, URL query parameters, or similar structural characters.
+	if strings.Contains(s, "://") ||
+		strings.ContainsAny(s, "[]()<>{}|?&=:,\"") {
 		return false
 	}
 	return shannonEntropy(s) > 4.5
