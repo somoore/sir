@@ -42,9 +42,10 @@ sir assumes an attacker **can**:
 
 sir does **not** assume the attacker can:
 
-- Modify sir binaries directly.
 - Gain kernel-level control of the host.
 - Bypass the host agent and write arbitrary state under `~/.sir/`.
+
+sir **does** detect post-install binary tampering: `mister-core` is hash-verified against the install-time manifest on first use per process, and `sir verify` checks both binaries on demand. A swapped policy oracle triggers a hard deny on all tool calls.
 
 ## In-scope threats
 

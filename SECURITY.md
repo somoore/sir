@@ -82,7 +82,7 @@ sir's supply chain posture is documented in [docs/contributor/supply-chain-polic
 - All CI actions are pinned to SHA hashes
 - All toolchain versions are pinned
 - Release artifacts include SHA-256 and SHA-512 checksums
-- `Cargo.lock` and `go.sum` are committed to the repository
+- `Cargo.lock` is committed to the repository (no `go.sum` — zero Go dependencies)
 - `download.sh` verifies cosign signatures on `checksums.txt` when cosign is available
 - Both install paths write `~/.sir/binary-manifest.json` with SHA-256 hashes
 - `sir verify` checks installed binaries against the manifest on demand

@@ -22,7 +22,7 @@ This is the first tagged public release of sir. The project is **pre-alpha**: th
 - **Optional below-hook containment** via `sir run <agent>` — macOS `sandbox-exec` proxy, Linux `unshare --net` namespace. Measured preview, not the primary shipped boundary.
 - **Operator surface**: `sir status`, `sir doctor`, `sir explain`, `sir why`, `sir log`, `sir audit`, `sir trace`, `sir mcp`, `sir unlock`, `sir allow-host`, `sir allow-remote`, `sir trust`.
 - **Install and update discipline**: `install.sh` is idempotent and the only supported update path, with a downgrade guard gated on `SIR_ALLOW_DOWNGRADE=1`. `rustup-init` is pinned by SHA-256 across Linux x86_64, Linux arm64, macOS x86_64, and macOS arm64.
-- **Release trust**: reproducible-build verification, signed artifacts via Sigstore cosign (keyless OIDC), SLSA provenance, CycloneDX and SPDX SBOMs, and an AIBOM zero-ML declaration.
+- **Release trust**: reproducible-build verification, signed artifacts via Sigstore cosign (keyless OIDC), CycloneDX and SPDX SBOMs, and an AIBOM zero-ML declaration. SLSA provenance is wired but deferred pending an upstream `slsa-github-generator` fix.
 - **CI hygiene**: GitHub Actions pinned by commit SHA, least-privilege permissions, `persist-credentials: false`, CodeQL Go SAST on every PR and push, gosec on every PR and every main commit, `cargo-deny`, `govulncheck`, reproducible-build diff check, OpenSSF Scorecard workflow, and zizmor Actions linting.
 
 **Known limitations**
