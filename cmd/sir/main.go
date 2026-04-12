@@ -89,6 +89,8 @@ func main() {
 		cmdAudit(projectRoot)
 	case "run":
 		cmdRun(projectRoot, os.Args[2:])
+	case "verify":
+		cmdVerify()
 	case "version":
 		cmdVersion(os.Args[2:])
 	case "help", "--help", "-h":
@@ -129,6 +131,7 @@ Review a session
 
 Maintenance
   sir doctor                     Check sir's health and auto-repair
+  sir verify                     Verify binary integrity against install-time manifest
   sir uninstall [--agent <id>]   Remove sir hooks from one or all installed agents
   sir version [--check]          Show sir's version (--check compares with GitHub Releases)
 

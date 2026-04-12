@@ -69,6 +69,40 @@ info "Verifying checksum..."
 curl -fsSL "${BASE_URL}/checksums.txt" -o "${TMPDIR}/checksums.txt" \
     || error "Could not download checksums.txt — cannot verify integrity."
 
+# --- Cosign signature verification of checksums.txt ---
+# The release workflow signs checksums.txt with Sigstore keyless cosign.
+# If cosign is available, verify the signature before trusting the checksums.
+# If cosign is not available, fall back to SHA-256 only (warn the user).
+COSIGN_VERIFIED=0
+curl -fsSL "${BASE_URL}/checksums.txt.sig" -o "${TMPDIR}/checksums.txt.sig" 2>/dev/null || true
+curl -fsSL "${BASE_URL}/checksums.txt.pem" -o "${TMPDIR}/checksums.txt.pem" 2>/dev/null || true
+
+if [ -f "${TMPDIR}/checksums.txt.sig" ] && [ -f "${TMPDIR}/checksums.txt.pem" ]; then
+    if command -v cosign >/dev/null 2>&1; then
+        CERT_IDENTITY="https://github.com/${REPO}/.github/workflows/release.yml@refs/tags/${VERSION}"
+        OIDC_ISSUER="https://token.actions.githubusercontent.com"
+        if cosign verify-blob \
+            --certificate "${TMPDIR}/checksums.txt.pem" \
+            --signature "${TMPDIR}/checksums.txt.sig" \
+            --certificate-identity "${CERT_IDENTITY}" \
+            --certificate-oidc-issuer "${OIDC_ISSUER}" \
+            "${TMPDIR}/checksums.txt" >/dev/null 2>&1; then
+            info "Cosign signature verified — checksums.txt is authentic."
+            COSIGN_VERIFIED=1
+        else
+            error "Cosign signature verification FAILED for checksums.txt.
+    The checksums manifest may have been tampered with. Do not install.
+    Verify manually: scripts/verify-release.sh ${VERSION}"
+        fi
+    else
+        warn "cosign not found — checksums verified by SHA-256 only."
+        warn "Install cosign for full cryptographic verification:"
+        warn "  https://docs.sigstore.dev/cosign/system_config/installation/"
+    fi
+else
+    warn "Cosign signature files not found in release — SHA-256 verification only."
+fi
+
 ACTUAL_SHA256=$(sha256_of "${TMPDIR}/${TARBALL}")
 EXPECTED_SHA256=$(grep "${TARBALL}" "${TMPDIR}/checksums.txt" | awk '{print $1}')
 
@@ -93,6 +127,26 @@ tar -xzf "${TMPDIR}/${TARBALL}" -C "$TMPDIR"
 
 mkdir -p "$INSTALL_DIR"
 install -m 750 "${TMPDIR}/sir" "${TMPDIR}/mister-core" "$INSTALL_DIR/"
+
+# Write binary integrity manifest — used by `sir verify` and the mister-core
+# launch-time integrity check to detect binary tampering after installation.
+SIR_SHA256=$(sha256_of "${INSTALL_DIR}/sir")
+MC_SHA256=$(sha256_of "${INSTALL_DIR}/mister-core")
+MANIFEST_DIR="$HOME/.sir"
+mkdir -p "$MANIFEST_DIR"
+cat > "$MANIFEST_DIR/binary-manifest.json" <<MANIFEST_EOF
+{
+  "version": "${VERSION}",
+  "installed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "install_method": "download",
+  "sir_sha256": "${SIR_SHA256}",
+  "mister_core_sha256": "${MC_SHA256}",
+  "sir_path": "${INSTALL_DIR}/sir",
+  "mister_core_path": "${INSTALL_DIR}/mister-core"
+}
+MANIFEST_EOF
+chmod 600 "$MANIFEST_DIR/binary-manifest.json"
+info "Binary manifest written to $MANIFEST_DIR/binary-manifest.json"
 
 info "Installed to ${INSTALL_DIR}/"
 
