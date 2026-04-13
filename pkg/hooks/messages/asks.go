@@ -82,7 +82,7 @@ func FormatAskMCPUnapproved(toolName string) string {
 	return FormatAsk(
 		fmt.Sprintf("MCP tool: %s", toolName),
 		"This tool comes from a server sir hasn't seen before.",
-		"Run `sir trust <server>` to always allow it.",
+		"Approve this call once, or add the server to your MCP config and re-run `sir install` to refresh approved MCP servers.",
 	)
 }
 

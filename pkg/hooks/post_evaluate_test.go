@@ -359,6 +359,36 @@ func TestPostToolUseExcludedPathNoTaint(t *testing.T) {
 	}
 }
 
+func TestPostToolUsePathHeavyBashOutputDoesNotMarkSecretSession(t *testing.T) {
+	projectRoot := t.TempDir()
+	l := lease.DefaultLease()
+
+	stateDir := session.StateDir(projectRoot)
+	os.MkdirAll(stateDir, 0o700)
+
+	state := session.NewState(projectRoot)
+	state.Save()
+
+	payload := &PostHookPayload{
+		ToolName: "Bash",
+		ToolInput: map[string]interface{}{
+			"command": "wc -l findings/*.md",
+		},
+		ToolOutput: `=== File sizes ===
+82 /Users/scottmoore/github/apfelbauer/findings/FM-03-supply-chain-delivery.md
+304 /Users/scottmoore/github/apfelbauer/findings/FM-04-full-attack-chain.md
+`,
+	}
+
+	_, err := postEvaluatePayload(payload, l, state, projectRoot)
+	if err != nil {
+		t.Fatalf("postEvaluatePayload: %v", err)
+	}
+	if state.SecretSession {
+		t.Fatal("path-heavy Bash output should not mark the session secret")
+	}
+}
+
 func TestPostEvaluatePayload_RestoresAllTamperedHookFilesBeforeDeny(t *testing.T) {
 	projectRoot := t.TempDir()
 	tmpHome := t.TempDir()
