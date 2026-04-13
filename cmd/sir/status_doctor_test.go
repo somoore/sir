@@ -385,6 +385,34 @@ func TestCmdDoctor_ClearsDenyAll(t *testing.T) {
 	}
 }
 
+func TestCmdDoctor_SecretSessionDoesNotReportAllClear(t *testing.T) {
+	env := newTestEnv(t)
+	env.writeDefaultLease()
+
+	state := session.NewState(env.projectRoot)
+	state.MarkSecretSession()
+	env.writeSession(state)
+
+	out := captureStdout(t, func() {
+		cmdDoctor(env.projectRoot)
+	})
+
+	for _, want := range []string{
+		"Session state:      locked by secret-session",
+		"Run 'sir unlock' to lift the secret-session lock.",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("doctor output missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Session state:      normal") {
+		t.Fatalf("doctor output should not claim a normal session:\n%s", out)
+	}
+	if strings.Contains(out, "sir is operational. Type 'claude' to resume.") {
+		t.Fatalf("doctor output should not claim the session is fully operational while locked:\n%s", out)
+	}
+}
+
 func TestCmdDoctor_CodexFeatureFlagWarningUsesManifest(t *testing.T) {
 	env := newTestEnv(t)
 	env.writeDefaultLease()
