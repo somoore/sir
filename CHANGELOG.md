@@ -7,6 +7,23 @@ sir is experimental. Each release listed here is a snapshot of the "sandbox in r
 
 This file tracks shipped releases only. Historical planning notes, launch copy, and exploratory findings live in git history rather than on the production repo surface.
 
+## v0.0.4 — 2026-04-13 — subagent false-positive fix and MCP lease refresh
+
+**Subagent false-positive fix**
+
+- Fixed `high_entropy_token` false positives that were re-marking sessions secret on path-heavy Bash output and reproduced research-document reads. This was the recurring root cause behind normal Claude subagent launches being blocked even after `sir unlock`.
+- Verified against the reproduced `apfelbauer` cases: the path-heavy Bash output no longer taints the session, the `VULN-02` read no longer taints the session, and a follow-on `SubagentStart` for a write-capable worker is allowed as a clean session.
+
+**MCP approval drift**
+
+- `approved_mcp_servers` now refreshes from discovered unmanaged MCP config on hook load, so legitimate project MCP servers stop prompting as "unknown" after lease drift or post-install MCP changes.
+- The MCP approval guidance now points to refreshing approvals via MCP config plus `sir install`, rather than incorrectly suggesting `sir trust <server>` for this path.
+
+**Operator ergonomics**
+
+- `sir doctor` no longer claims the session is normal while a secret-session lock is still active.
+- The public-contract parity test now treats ignored local workspace files as untracked-only, so developer-local `.claude/settings.local.json` state does not make `./cmd/sir` fail.
+
 ## v0.0.3 — 2026-04-12 — supply chain hardening and false positive fix
 
 **Binary integrity verification**
