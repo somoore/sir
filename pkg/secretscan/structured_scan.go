@@ -139,6 +139,9 @@ func IsHighEntropyString(s string) bool {
 		strings.ContainsAny(s, "[]()<>{}|?&=:,\"") {
 		return false
 	}
+	if looksLikePathishToken(s) {
+		return false
+	}
 	return shannonEntropy(s) > 4.5
 }
 
@@ -146,6 +149,41 @@ func OutputPatterns() []Pattern {
 	out := make([]Pattern, len(outputPatterns))
 	copy(out, outputPatterns)
 	return out
+}
+
+func looksLikePathishToken(s string) bool {
+	switch {
+	case strings.HasPrefix(s, "/"),
+		strings.HasPrefix(s, "./"),
+		strings.HasPrefix(s, "../"),
+		strings.HasPrefix(s, "~/"),
+		strings.HasPrefix(s, ".\\"),
+		strings.HasPrefix(s, "..\\"),
+		strings.HasPrefix(s, "~\\"):
+		return true
+	}
+
+	// Windows drive-letter absolute paths (C:\foo or C:/foo).
+	if len(s) >= 3 &&
+		((s[0] >= 'A' && s[0] <= 'Z') || (s[0] >= 'a' && s[0] <= 'z')) &&
+		s[1] == ':' &&
+		(s[2] == '\\' || s[2] == '/') {
+		return true
+	}
+
+	// Relative path-like tokens with multiple segments and a filename suffix,
+	// e.g. detection/splunk/apfelbauer-rules.spl
+	if strings.Count(s, "/") >= 2 {
+		lastSlash := strings.LastIndex(s, "/")
+		if lastSlash >= 0 {
+			base := s[lastSlash+1:]
+			if strings.Contains(base, ".") {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func ValidateLuhn(s string) bool {

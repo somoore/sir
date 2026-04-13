@@ -221,8 +221,8 @@ on:
 			t.Fatalf("active doc allowlist drifted\nwant: %v\n got: %v", want, got)
 		}
 
-		requireNotExists(t, root, ".claude/settings.local.json")
-		requireNotExists(t, root, "sir.code-workspace")
+		requireNotTracked(t, root, ".claude/settings.local.json")
+		requireNotTracked(t, root, "sir.code-workspace")
 
 		for _, rel := range []string{
 			"docs/user/README.md",
@@ -388,6 +388,15 @@ func requireNotExists(t *testing.T, root, rel string) {
 	t.Helper()
 	if _, err := os.Stat(filepath.Join(root, rel)); err == nil {
 		t.Fatalf("expected %s to stay absent", rel)
+	}
+}
+
+func requireNotTracked(t *testing.T, root, rel string) {
+	t.Helper()
+	cmd := exec.Command("git", "ls-files", "--error-unmatch", "--", rel)
+	cmd.Dir = root
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("expected %s to stay untracked, but git ls-files matched it: %s", rel, strings.TrimSpace(string(out)))
 	}
 }
 

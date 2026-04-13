@@ -84,9 +84,27 @@ func cmdDoctor(projectRoot string) {
 
 	fmt.Println()
 	if fixed {
-		fmt.Println("sir doctor — recovery complete")
+		if state.SecretSession {
+			fmt.Println("sir doctor — recovery complete, but session still locked")
+			fmt.Println()
+			fmt.Println("  Hook configuration: repaired where needed")
+			fmt.Println("  Lease integrity:    verified")
+			fmt.Println("  Session state:      locked by secret-session")
+			fmt.Println()
+			fmt.Println("Run 'sir unlock' to lift the secret-session lock.")
+		} else {
+			fmt.Println("sir doctor — recovery complete")
+			fmt.Println()
+			fmt.Println("sir is operational. Type 'claude' to resume.")
+		}
+	} else if state.SecretSession {
+		fmt.Println("sir doctor — attention needed")
 		fmt.Println()
-		fmt.Println("sir is operational. Type 'claude' to resume.")
+		fmt.Println("  Hook configuration: intact")
+		fmt.Println("  Lease integrity:    verified")
+		fmt.Println("  Session state:      locked by secret-session")
+		fmt.Println()
+		fmt.Println("Run 'sir unlock' to lift the secret-session lock.")
 	} else {
 		fmt.Println("sir doctor — all clear")
 		fmt.Println()

@@ -101,6 +101,14 @@ func TestIsHighEntropyString_FalsePositives(t *testing.T) {
 			"json_object",
 			`{"version":"v0.0.2","installed_at":"2026-04-12T20:07:45Z","install_method":"source"}`,
 		},
+		{
+			"absolute_file_path",
+			"/Users/scottmoore/github/apfelbauer/findings/FM-03-supply-chain-delivery.md",
+		},
+		{
+			"relative_file_path",
+			"detection/splunk/apfelbauer-rules.spl",
+		},
 		// Short tokens (below 32 chars)
 		{"short_token", "abc123def456ghi789"},
 	}
@@ -159,5 +167,18 @@ func TestScanOutputForCredentials_NamedPatternsWorkInJSON(t *testing.T) {
 	matches := ScanOutputForCredentials(output)
 	if !hasPattern(matches, "aws_access_key") {
 		t.Fatalf("AWS key in JSON value was not detected — patterns: %+v", matches)
+	}
+}
+
+func TestScanOutputForCredentials_NoFalsePositiveOnFilePathHeavyOutput(t *testing.T) {
+	output := `=== Checking platform line updated ===
+/Users/scottmoore/github/apfelbauer/findings/FM-03-supply-chain-delivery.md:1
+/Users/scottmoore/github/apfelbauer/findings/FM-04-full-attack-chain.md:1
+`
+	matches := ScanOutputForCredentials(output)
+	for _, m := range matches {
+		if m.PatternName == "high_entropy_token" {
+			t.Fatalf("file path output triggered high_entropy_token false positive — this should not taint the session")
+		}
 	}
 }

@@ -60,7 +60,7 @@ func localEvaluateCommandRisk(req *Request) *Response {
 	case policy.VerbRunEphemeral:
 		return &Response{Decision: policy.VerdictAsk, Reason: fmt.Sprintf("npx downloads and runs remote code. Approve to proceed. (%s)", req.Intent.Target)}
 	case policy.VerbMcpUnapproved:
-		return &Response{Decision: policy.VerdictAsk, Reason: fmt.Sprintf("This tool comes from a server sir hasn't seen before (%s). Run `sir trust <server>` to always allow it.", req.Intent.Target)}
+		return &Response{Decision: policy.VerdictAsk, Reason: fmt.Sprintf("This tool comes from a server sir hasn't seen before (%s). Approve this call once, or add the server to your MCP config and re-run `sir install` to refresh approved MCP servers.", req.Intent.Target)}
 	case policy.VerbEnvRead:
 		return &Response{Decision: policy.VerdictAsk, Reason: fmt.Sprintf("Environment variables may contain credentials. Approve to proceed. (%s)", req.Intent.Target)}
 	case policy.VerbPersistence:
