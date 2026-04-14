@@ -243,6 +243,10 @@ func evaluateMCPOnboarding(intent Intent, payload *HookPayload, l *lease.Lease, 
 // Only fires when:
 //   - tool is mcp__*
 //   - server is approved
+//   - intent.Verb is VerbExecuteDryRun (silent-allow path) — earlier
+//     verbs like VerbMcpNetworkUnapproved or VerbMcpUnapproved already
+//     surfaced a more specific concern with its own remediation hint
+//     (`sir allow-host <host>`), so drift must not short-circuit them
 //   - MCPApprovals[name] carries a non-empty CommandHash
 //     (empty hash means "could not pin at approval time" — documented
 //      limitation, honest about what we cannot verify)
@@ -252,8 +256,11 @@ func evaluateMCPOnboarding(intent Intent, payload *HookPayload, l *lease.Lease, 
 // catch content-equivalent-but-different binaries (e.g., recompile with
 // same output), and it does not apply to npx/uvx/PATH-only servers
 // whose binary identity cannot be pinned.
-func evaluateMCPBinaryDrift(payload *HookPayload, l *lease.Lease, state *session.State, projectRoot string) (*HookResponse, bool) {
+func evaluateMCPBinaryDrift(intent Intent, payload *HookPayload, l *lease.Lease, state *session.State, projectRoot string) (*HookResponse, bool) {
 	if !isToolMCP(payload.ToolName) {
+		return nil, false
+	}
+	if intent.Verb != policy.VerbExecuteDryRun {
 		return nil, false
 	}
 	serverName := extractMCPServerName(payload.ToolName)

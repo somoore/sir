@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -40,6 +41,28 @@ func TestLoad_FailClosedOnCorrupt(t *testing.T) {
 	_, _, err := Load()
 	if err == nil {
 		t.Fatal("expected error on corrupt config, got nil")
+	}
+}
+
+// TestLoad_RejectsUnknownPosture pins the codex P1 fix: an invalid
+// posture value (typo, corruption) must NOT silently fall through the
+// install switch's default branch and widen MCP trust. Load fails
+// closed and the install path will refuse to proceed.
+func TestLoad_RejectsUnknownPosture(t *testing.T) {
+	home := withHome(t)
+	dir := filepath.Join(home, ".sir")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"mcp_trust_posture":"strcit"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := Load()
+	if err == nil {
+		t.Fatal("expected error on unknown posture value, got nil")
+	}
+	if !strings.Contains(err.Error(), "strcit") {
+		t.Errorf("error should mention the offending value, got %q", err.Error())
 	}
 }
 

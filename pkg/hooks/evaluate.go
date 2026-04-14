@@ -126,7 +126,7 @@ func evaluatePayload(payload *HookPayload, l *lease.Lease, state *session.State,
 		return resp, nil
 	}
 
-	if resp, handled := evaluateMCPBinaryDrift(payload, l, state, projectRoot); handled {
+	if resp, handled := evaluateMCPBinaryDrift(intent, payload, l, state, projectRoot); handled {
 		overlayPendingInjectionWarning(resp, pendingInjectionDetail)
 		return resp, nil
 	}

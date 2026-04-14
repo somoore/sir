@@ -143,6 +143,15 @@ func Load() (*Config, bool, error) {
 	}
 	if c.MCPTrustPosture == "" {
 		c.MCPTrustPosture = PostureStandard
+	} else if !IsValidPosture(string(c.MCPTrustPosture)) {
+		// Fail closed on unknown posture values. Without this check, a
+		// typo like "strcit" would slip through to install's switch
+		// default (treated as "standard" → auto-approve), silently
+		// widening MCP trust. Force the user to fix the config.
+		return Defaults(), false, fmt.Errorf(
+			"parse config: unknown mcp_trust_posture %q (valid: strict, standard, permissive)",
+			string(c.MCPTrustPosture),
+		)
 	}
 	if c.MCPOnboardingWindowHours == 0 {
 		c.MCPOnboardingWindowHours = defaultOnboardingWindowHours
