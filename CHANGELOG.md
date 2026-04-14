@@ -7,7 +7,7 @@ sir is experimental. Each release listed here is a snapshot of the "sandbox in r
 
 This file tracks shipped releases only. Historical planning notes, launch copy, and exploratory findings live in git history rather than on the production repo surface.
 
-## Unreleased — MCP trust tuning
+## v0.0.6 — 2026-04-14 — MCP trust tuning
 
 Four-part expansion of the MCP gating surface, ordered least-risk to most-opt-in. Details and scope caveats live in `docs/contributor/security-engineering-core.md`.
 
@@ -46,6 +46,13 @@ Four-part expansion of the MCP gating surface, ordered least-risk to most-opt-in
 
 - `sir install` now appends the absolute path of `~/.sir/config.json` to the lease's `PostureFiles`. Agent-initiated `Write`/`Edit` calls against it route through the posture-file ask gate. A compromised agent cannot silently flip `mcp_trust_posture` from strict to permissive or disable onboarding/drift gates.
 - Manual edits in a terminal outside the agent remain possible — consistent with the threat model.
+
+**Hook + posture fixes (surfaced by live-agent E2E)**
+
+- `isSirHookCommand` previously matched only the current process's binary path; re-running `sir install` from a different absolute path (symlink swap, brew→source migration, dev build at a different location) failed to recognize prior entries and appended a duplicate. Fix: structural match (basename `sir`/`sir.exe` + second token `guard`) catches stale entries from any prior install path. Idempotent re-installs and one-shot dedupe of pre-existing duplicates.
+- `HashSentinelFiles` previously hashed the whole file for every posture file, including agent settings (`~/.claude/settings.json`, `~/.gemini/settings.json`, `~/.codex/hooks.json`). Agents legitimately rewrite those during a session — Gemini in particular updates oauth/session metadata — which tripped `posture_tamper → deny` on the first tool call. Fix: agent settings hash only the managed hooks subtree (matching `HashGlobalHooksFile`'s narrowing). Non-agent posture files (CLAUDE.md, .env) still use whole-file hashing. **Note:** existing sessions baselined under the old algorithm need a one-time `sir doctor` after upgrade to re-baseline.
+- `Load()` in `pkg/config/global.go` previously accepted any string for `mcp_trust_posture`, so a typo (`"strcit"`) silently fell through `cmdInstall`'s switch default and widened MCP trust. Fix: validate via `IsValidPosture` and return an explicit error naming the offending value.
+- `evaluateMCPBinaryDrift` fired before the URL-host gate's policy evaluation, so an MCP call with both a tampered binary and an unapproved URL host surfaced only the drift prompt — the user lost the host-allow remediation hint. Fix: drift now only fires for `VerbExecuteDryRun` intents (matching the onboarding gate), so `VerbMcpNetworkUnapproved` and `VerbMcpUnapproved` retain precedence with their own messages.
 
 **Non-goals / what this does NOT add**
 
