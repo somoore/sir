@@ -184,11 +184,12 @@ func ClassifyProxy(command string, args []string) ProxySpec {
 	if !isSirBinaryCommand(command) || len(args) == 0 || args[0] != "mcp-proxy" {
 		return ProxySpec{}
 	}
-	allowedHosts, innerCommand, innerArgs, malformed := ParseProxyInvocation(args[1:])
+	allowedHosts, noSandbox, innerCommand, innerArgs, malformed := ParseProxyInvocation(args[1:])
 	return ProxySpec{
 		Wrapped:      true,
 		SirCommand:   command,
 		AllowedHosts: allowedHosts,
+		NoSandbox:    noSandbox,
 		InnerCommand: innerCommand,
 		InnerArgs:    innerArgs,
 		Malformed:    malformed,
@@ -202,18 +203,34 @@ func isSirBinaryCommand(command string) bool {
 }
 
 // ParseProxyInvocation parses sir mcp-proxy flags and the wrapped command.
-func ParseProxyInvocation(args []string) ([]string, string, []string, bool) {
-	var allowedHosts []string
+//
+// Recognized leading flags (in any order, may repeat):
+//
+//	--allow-host HOST      — add HOST to the sandbox allowlist
+//	--no-sandbox           — disable sandbox-exec / unshare for this invocation
+//
+// The leading-flags region ends at the first token that is not one of these
+// flags; that token is the wrapped command and everything after it becomes
+// its argv. Tokens after the command are NOT scanned — so `--no-sandbox`
+// passed as a child-program argument is preserved for the child and does not
+// affect sir's sandbox decision. This matches cmd/sir's stripLeadingNoSandboxFlag
+// semantics so inventory/AssessProxyRuntime classify the same invocation the
+// runtime would actually run.
+func ParseProxyInvocation(args []string) (allowedHosts []string, noSandbox bool, command string, commandArgs []string, malformed bool) {
 	for i := 0; i < len(args); {
-		if args[i] == "--allow-host" {
+		switch args[i] {
+		case "--allow-host":
 			if i+1 >= len(args) {
-				return allowedHosts, "", nil, true
+				return allowedHosts, noSandbox, "", nil, true
 			}
 			allowedHosts = append(allowedHosts, args[i+1])
 			i += 2
-			continue
+		case "--no-sandbox":
+			noSandbox = true
+			i++
+		default:
+			return allowedHosts, noSandbox, args[i], args[i+1:], false
 		}
-		return allowedHosts, args[i], args[i+1:], false
 	}
-	return allowedHosts, "", nil, true
+	return allowedHosts, noSandbox, "", nil, true
 }
