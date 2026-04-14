@@ -136,11 +136,28 @@ import json
 import sys
 
 path = sys.argv[1]
-doc = json.load(open(path, "r", encoding="utf-8"))
-for field in ("ml_components", "model_weights", "training_data", "prompts", "embeddings", "fine_tuning", "model_dependencies"):
+with open(path, "r", encoding="utf-8") as fh:
+    doc = json.load(fh)
+
+for field in ("ml_components", "model_weights", "training_data", "prompts", "embeddings", "fine_tuning"):
     value = doc.get(field, [])
+    if not isinstance(value, list):
+        raise SystemExit(f"{path}: expected {field} to be a list, found {type(value).__name__}")
     if value:
         raise SystemExit(f"{path}: expected empty {field}, found {value!r}")
+
+deps = doc.get("model_dependencies", {})
+if not isinstance(deps, dict):
+    raise SystemExit(f"{path}: expected model_dependencies to be an object, found {type(deps).__name__}")
+for field in ("build_time", "runtime", "optional"):
+    value = deps.get(field, [])
+    if not isinstance(value, list):
+        raise SystemExit(
+            f"{path}: expected model_dependencies.{field} to be a list, found {type(value).__name__}"
+        )
+    if value:
+        raise SystemExit(f"{path}: expected empty model_dependencies.{field}, found {value!r}")
+
 print(f"{path}: zero-ML declaration verified")
 PY
 
