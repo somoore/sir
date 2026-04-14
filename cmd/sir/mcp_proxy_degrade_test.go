@@ -2,7 +2,10 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"testing"
@@ -10,29 +13,25 @@ import (
 
 // TestRunMCPProxyDarwin_AutoDegradesMacAppHelper checks that a command
 // matching the Mac-app-helper heuristic skips sandbox-exec entirely and
-// falls through to monitored mode. We verify by running a real child that
-// writes a marker to stderr and comparing that stderr also contains the
-// degradation notice. If sandbox-exec ran, the notice wouldn't appear AND
-// the child wouldn't execute (the path is synthetic, sandbox-exec would
-// fail to locate the binary and exit non-zero).
+// falls through to monitored mode. The helper classifier now requires the
+// target path to exist (so we can resolve symlinks before classification);
+// synthetic paths no longer match. Use a real /Applications helper if one
+// is present on this machine; otherwise skip — the CI matrix covers the
+// classifier's unit tests directly.
 func TestRunMCPProxyDarwin_AutoDegradesMacAppHelper(t *testing.T) {
-	// We can't actually put a binary under /Applications/*.app in a test,
-	// so instead we exercise the branch by calling runMCPProxyDarwin with
-	// a Mac-app-helper-shaped command that resolves to a known-good
-	// executable. The degradation notice prints before Start(); if the
-	// sandbox path had run, the notice wouldn't be emitted.
-	opts := mcpProxyOpts{
-		command: "/Applications/Fake.app/Contents/MacOS/PretendHelper",
-		args:    nil,
+	if runtime.GOOS != "darwin" {
+		t.Skip("darwin-only code path")
 	}
+	realHelper := findRealAppHelper(t)
+	if realHelper == "" {
+		t.Skip("no /Applications/*.app/Contents/MacOS/* helper available on this host")
+	}
+	opts := mcpProxyOpts{command: realHelper}
 
 	stderr := &bytes.Buffer{}
 	restore := redirectStderr(t, stderr)
 	defer restore()
 
-	// The synthetic command doesn't exist, so runProxyChild will fail at
-	// Start(). We only care that we took the monitored branch — detected
-	// by the "running in monitored mode" notice printed before Start().
 	_ = runMCPProxyDarwin(opts)
 
 	restore()
@@ -42,6 +41,34 @@ func TestRunMCPProxyDarwin_AutoDegradesMacAppHelper(t *testing.T) {
 	if !strings.Contains(stderr.String(), "macOS .app helper") {
 		t.Errorf("expected Mac-app-helper reason in notice; got:\n%s", stderr.String())
 	}
+}
+
+// findRealAppHelper walks /Applications looking for a regular-file helper
+// under any .app bundle we can use in the auto-degrade integration test.
+// Returns "" if none found (uncommon but possible in sparse CI images).
+func findRealAppHelper(t *testing.T) string {
+	t.Helper()
+	entries, err := os.ReadDir("/Applications")
+	if err != nil {
+		return ""
+	}
+	for _, e := range entries {
+		if !e.IsDir() || filepath.Ext(e.Name()) != ".app" {
+			continue
+		}
+		macosDir := filepath.Join("/Applications", e.Name(), "Contents", "MacOS")
+		helpers, err := os.ReadDir(macosDir)
+		if err != nil {
+			continue
+		}
+		for _, h := range helpers {
+			if h.IsDir() {
+				continue
+			}
+			return filepath.Join(macosDir, h.Name())
+		}
+	}
+	return ""
 }
 
 // TestRunMCPProxyDarwin_NoSandboxFlagDegrades verifies the explicit opt-out
@@ -92,26 +119,14 @@ func TestRunMCPProxyDarwin_NonHelperStillSandboxed(t *testing.T) {
 	}
 }
 
-// TestCmdMCPProxy_StripsNoSandboxBeforeParse ensures the --no-sandbox flag
-// is consumed in cmdMCPProxy and not passed through to the shared proxy
-// parser (which only knows --allow-host). We can't invoke cmdMCPProxy
-// directly without fork/exec, so we test the stripping inline using a
-// helper that mirrors the logic in mcp_proxy.go.
-func TestCmdMCPProxy_StripsNoSandboxBeforeParse(t *testing.T) {
+// TestStripLeadingNoSandboxFlag_LeadingRegion confirms the flag is picked up
+// when it appears among sir-local flags before the wrapped command.
+func TestStripLeadingNoSandboxFlag_LeadingRegion(t *testing.T) {
 	args := []string{"--no-sandbox", "--allow-host", "api.example.com", "node", "server.js"}
-
-	noSandbox := false
-	filtered := make([]string, 0, len(args))
-	for _, a := range args {
-		if a == "--no-sandbox" {
-			noSandbox = true
-			continue
-		}
-		filtered = append(filtered, a)
-	}
+	noSandbox, filtered := stripLeadingNoSandboxFlag(args)
 
 	if !noSandbox {
-		t.Fatal("--no-sandbox should be captured")
+		t.Fatal("--no-sandbox in leading region should be captured")
 	}
 	allowedHosts, command, cmdArgs, malformed := parseMCPProxyInvocation(filtered)
 	if malformed {
@@ -125,6 +140,47 @@ func TestCmdMCPProxy_StripsNoSandboxBeforeParse(t *testing.T) {
 	}
 	if len(cmdArgs) != 1 || cmdArgs[0] != "server.js" {
 		t.Errorf("cmdArgs = %v, want [server.js]", cmdArgs)
+	}
+}
+
+// TestStripLeadingNoSandboxFlag_AfterCommandIsChildArg is the security
+// regression for the injection bypass codex caught: `--no-sandbox` passed
+// AFTER the wrapped command must NOT be consumed by sir; it belongs to
+// that command's argv. An attacker controlling an MCP config could
+// otherwise force monitored mode by adding `--no-sandbox` to the child's
+// args, and a globally-scoped strip loop would happily remove it.
+func TestStripLeadingNoSandboxFlag_AfterCommandIsChildArg(t *testing.T) {
+	args := []string{"/bin/sh", "-c", "/path/to/server", "--no-sandbox"}
+	noSandbox, filtered := stripLeadingNoSandboxFlag(args)
+
+	if noSandbox {
+		t.Error("--no-sandbox AFTER the wrapped command MUST NOT enable monitored mode")
+	}
+	// The trailing --no-sandbox must survive as a child argv entry.
+	if len(filtered) != 4 {
+		t.Fatalf("filtered len = %d, want 4 (full passthrough): %v", len(filtered), filtered)
+	}
+	if filtered[3] != "--no-sandbox" {
+		t.Errorf("trailing --no-sandbox was stripped; filtered = %v", filtered)
+	}
+}
+
+// TestStripLeadingNoSandboxFlag_AllowHostValueIsNotMistakenForCommand
+// checks that stripLeadingNoSandboxFlag correctly treats the argument to
+// --allow-host as a value, not as the wrapped command. Otherwise a
+// trailing `--no-sandbox` inside the leading region could be missed.
+func TestStripLeadingNoSandboxFlag_AllowHostValueIsNotMistakenForCommand(t *testing.T) {
+	args := []string{"--allow-host", "api.example.com", "--no-sandbox", "node", "server.js"}
+	noSandbox, filtered := stripLeadingNoSandboxFlag(args)
+
+	if !noSandbox {
+		t.Error("--no-sandbox after --allow-host VALUE is still in leading region; should be captured")
+	}
+	if filtered[0] != "--allow-host" || filtered[1] != "api.example.com" {
+		t.Errorf("--allow-host chunk was mangled: %v", filtered)
+	}
+	if filtered[len(filtered)-2] != "node" || filtered[len(filtered)-1] != "server.js" {
+		t.Errorf("wrapped command+args were mangled: %v", filtered)
 	}
 }
 

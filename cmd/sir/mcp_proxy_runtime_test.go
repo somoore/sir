@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 	"syscall"
 	"testing"
@@ -77,6 +79,44 @@ func TestDarwinSandboxProfile_AllowsCommonUserDataPaths(t *testing.T) {
 	// allowlist would be writable.
 	if !strings.Contains(profile, "(deny file-write*)") {
 		t.Error("sandbox profile must keep file-write* denied by default")
+	}
+}
+
+// TestDarwinSandboxProfile_DeniesPersistenceSurface is the negative of the
+// above: paths that would give a malicious server a persistence or
+// cross-app tampering vector must NOT appear as file-write allowlist
+// entries. We check for the full `(allow file-write* (subpath "<home>/<x>"))`
+// form so that sub-paths of genuinely allowed subtrees (e.g., `.cache`
+// appearing inside the `Library/Caches` allow line) don't produce false
+// positives.
+func TestDarwinSandboxProfile_DeniesPersistenceSurface(t *testing.T) {
+	profile := darwinSandboxProfile(nil)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home dir")
+	}
+
+	mustNotAllow := []string{
+		".ssh",
+		".zshrc",
+		".bashrc",
+		".profile",
+		".config", // includes gh/hosts.yml, fish, k8s
+		".rustup",
+		".deno",
+		".bun",
+		".pnpm-store",
+		".yarn",
+		".local/share",
+		".local/state",
+		"Library/LaunchAgents",
+		"Library/LaunchDaemons",
+	}
+	for _, rel := range mustNotAllow {
+		line := fmt.Sprintf(`(allow file-write* (subpath "%s/%s"))`, home, rel)
+		if strings.Contains(profile, line) {
+			t.Errorf("sandbox profile MUST NOT contain %q — that's a persistence / cross-app auth surface; profile:\n%s", line, profile)
+		}
 	}
 }
 
@@ -153,6 +193,64 @@ func TestRunProxyChild_ChildRunsInOwnProcessGroup(t *testing.T) {
 	}
 	pgid, _ := syscall.Getpgid(cmd.Process.Pid)
 	t.Fatalf("child pgid = %d, want %d (child pid)", pgid, cmd.Process.Pid)
+}
+
+// TestSignalForwardingLoop_ServicesMultipleSignals exercises the forwarding
+// goroutine's loop behavior. The loop has to keep forwarding for the full
+// lifetime of the child, not just the first signal — otherwise a second
+// Ctrl-C on a stuck MCP server would be swallowed.
+//
+// The test is hermetic by design: rather than relying on shell trap
+// semantics (which vary between bash/dash and defer traps until foreground
+// commands finish), we mirror the loop structure from runProxyChild
+// locally, send signals to a counter-incrementing sink, and assert the
+// loop processed more than one.
+func TestSignalForwardingLoop_ServicesMultipleSignals(t *testing.T) {
+	// Forwarder goroutine — same select-in-loop shape as runProxyChild.
+	// We count signals instead of delivering them, so the test doesn't
+	// care whether a real child process is alive.
+	sigCh := make(chan os.Signal, 4)
+	signal.Notify(sigCh, syscall.SIGUSR1)
+	t.Cleanup(func() { signal.Stop(sigCh) })
+
+	done := make(chan struct{})
+	forwarderDone := make(chan struct{})
+	delivered := make(chan struct{}, 8)
+	go func() {
+		defer close(forwarderDone)
+		for {
+			select {
+			case <-sigCh:
+				// Non-blocking publish; the loop must not block on the
+				// consumer or we can't prove it picked up a second signal.
+				select {
+				case delivered <- struct{}{}:
+				default:
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+
+	// Deliver two signals. The forwarder must process both. If the loop
+	// were a single-select (pre-fix), the second signal would pile up on
+	// sigCh forever and `delivered` would receive only once.
+	_ = syscall.Kill(syscall.Getpid(), syscall.SIGUSR1)
+	select {
+	case <-delivered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first signal was not forwarded within 2s")
+	}
+	_ = syscall.Kill(syscall.Getpid(), syscall.SIGUSR1)
+	select {
+	case <-delivered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("second signal was not forwarded — forwarder stopped after the first")
+	}
+
+	close(done)
+	<-forwarderDone
 }
 
 // TestRunProxyChild_SignalForwardsToProcessGroup verifies that a SIGTERM

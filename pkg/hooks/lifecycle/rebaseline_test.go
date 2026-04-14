@@ -145,15 +145,25 @@ func TestIsHookInducedDenyReason(t *testing.T) {
 		reason string
 		want   bool
 	}{
+		// Hook-induced — all emitted verbatim from pkg/hooks/*
 		{"posture file tampered: ~/.claude/settings.json", true},
 		{"posture file tampered: ~/.codex/hooks.json, ~/.gemini/settings.json", true},
 		{"posture tampered before delegation: [.claude/settings.json]", true},
 		{"managed hook baseline unavailable: policy missing", true},
-		{"managed hook", true},
-		{"managed hooks tampered: PreToolUse", true},
+		{"managed hook baseline unavailable during config change: policy missing", true},
+		{"global hooks file tampered: ~/.claude/settings.json", true},
+		{"global hooks modified during config change: ~/.claude/settings.json", true},
+
+		// Not hook-induced — install must preserve these denies
 		{"secret session: .env read without approval", false},
 		{"session.json modified outside sir", false},
+		{"lease.json modified outside approved write", false},
 		{"runtime containment stale", false},
+
+		// No match for historical / no-longer-emitted shapes
+		{"managed hooks tampered: PreToolUse", false}, // was in the old prefix list; never emitted
+		{"managed hook", false},                       // too-broad prefix removed
+
 		{"", false},
 		{"   ", false},
 	}

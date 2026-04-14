@@ -45,20 +45,17 @@ import (
 // broadens to general outbound network access there. Linux network namespaces
 // also do not support host-specific exceptions.
 func cmdMCPProxy(args []string) {
-	// --no-sandbox is a sir-local flag: strip it before handing the rest to
-	// the shared mcp-proxy parser, which only knows about --allow-host and
-	// the wrapped command. Users opt into monitored mode when the server is
-	// a macOS binary that sandbox-exec breaks but our Mac-app-helper
-	// heuristic doesn't match (e.g., a helper under ~/bin).
-	noSandbox := false
-	filtered := make([]string, 0, len(args))
-	for _, a := range args {
-		if a == "--no-sandbox" {
-			noSandbox = true
-			continue
-		}
-		filtered = append(filtered, a)
-	}
+	// --no-sandbox is a sir-local flag: consume it from the leading-flags
+	// region only (before the wrapped command), NOT from child argv. An
+	// attacker who controls an MCP config could otherwise pass
+	// `--no-sandbox` after the wrapped command — stripping it globally
+	// would silently disable sandbox-exec for their server.
+	//
+	// The leading-flags region ends at the first token that does not start
+	// with `--`. parseMCPProxyInvocation below uses the same convention for
+	// --allow-host, so any token after the wrapped command stays untouched
+	// and becomes part of that command's argv.
+	noSandbox, filtered := stripLeadingNoSandboxFlag(args)
 
 	allowedHosts, command, cmdArgs, malformed := parseMCPProxyInvocation(filtered)
 	if malformed || command == "" {
@@ -85,6 +82,49 @@ func cmdMCPProxy(args []string) {
 	os.Exit(code)
 }
 
+// stripLeadingNoSandboxFlag walks args and consumes `--no-sandbox` tokens
+// that appear in the leading-flags region only. Tokens after the first
+// non-flag token (the wrapped command) are copied verbatim so `--no-sandbox`
+// passed as a child-program argument is preserved for that program.
+//
+// "Leading-flags region" mirrors parseMCPProxyInvocation semantics:
+//
+//	[--allow-host HOST]... [--no-sandbox]... <command> [args...]
+//
+// --allow-host and its value are not consumed here — they stay in the
+// returned slice for parseMCPProxyInvocation to handle.
+func stripLeadingNoSandboxFlag(args []string) (noSandbox bool, rest []string) {
+	rest = make([]string, 0, len(args))
+	i := 0
+	for i < len(args) {
+		a := args[i]
+		if a == "--no-sandbox" {
+			noSandbox = true
+			i++
+			continue
+		}
+		if a == "--allow-host" {
+			// Pass --allow-host and its argument through untouched;
+			// parseMCPProxyInvocation will consume them. We still advance
+			// past the value so a subsequent `--no-sandbox` in the leading
+			// region is recognized.
+			rest = append(rest, a)
+			if i+1 < len(args) {
+				rest = append(rest, args[i+1])
+				i += 2
+				continue
+			}
+			i++
+			continue
+		}
+		// First non-sir-flag token — this is the wrapped command.
+		// Copy the remainder verbatim and stop scanning.
+		rest = append(rest, args[i:]...)
+		return noSandbox, rest
+	}
+	return noSandbox, rest
+}
+
 type mcpProxyOpts struct {
 	command      string
 	args         []string
@@ -97,15 +137,20 @@ type mcpProxyOpts struct {
 //
 // Two escape hatches exist before sandbox-exec is attempted:
 //
-//  1. --no-sandbox (explicit, user-initiated)
-//  2. Mac-app-helper auto-detect (implicit, path-based)
+//  1. --no-sandbox (explicit, user-initiated; only consumed from the sir
+//     leading-flags region — see stripLeadingNoSandboxFlag — so child argv
+//     cannot inject it from a server's own args)
+//  2. Mac-app-helper auto-detect (implicit, path-based). The classifier
+//     canonicalizes and symlink-resolves the candidate path before matching,
+//     so traversal (`.../MacOS/../../../../bin/sh`) and symlink swaps
+//     don't bypass it — see pkg/mcp/macapp.go.
 //
-// Both fall through to runMCPProxyMonitored, which still gives us credential
-// scanning + signal forwarding + process-group cleanup — just no network
-// or filesystem deny for that server. The user-visible notice and ledger
-// entry exist so this degradation is never silent: an attacker cannot slip
-// in unsandboxed by controlling a path match, and a developer auditing
-// `sir log` always sees which MCP servers ran in which mode.
+// Both fall through to runMCPProxyMonitored, which keeps credential scanning,
+// signal forwarding, and process-group cleanup — but drops the network and
+// filesystem deny for that server. The user-visible notice is always
+// printed; a ledger entry is written best-effort when the current working
+// directory hashes to a known sir project (it usually does — MCP clients
+// launch helpers from the project directory the developer is working in).
 func runMCPProxyDarwin(opts mcpProxyOpts) int {
 	if opts.noSandbox {
 		fmt.Fprintf(os.Stderr,
@@ -174,15 +219,19 @@ func runMCPProxyMonitored(opts mcpProxyOpts) int {
 //  1. stdout is passed through untouched — MCP JSON-RPC flows through this
 //     fd and any buffering or line-splitting would corrupt it.
 //  2. stderr is captured via a pipe, teed to the real stderr, and scanned
-//     for credential patterns. A WaitGroup gates cmd.Wait() until the scan
-//     goroutine has drained the pipe, avoiding the documented race in
-//     os/exec where Wait closes the pipe mid-read.
+//     for credential patterns. A WaitGroup drains the pipe AFTER cmd.Wait()
+//     returns and BEFORE runProxyChild returns, avoiding the documented
+//     race in os/exec where Wait closes the pipe mid-read. (Wait itself
+//     is not gated by the WaitGroup — it waits only on the child process.
+//     The WaitGroup just prevents us from exiting while the scan goroutine
+//     is still forwarding bytes from the just-closed pipe.)
 //  3. The child runs in its own process group so signals addressed to sir
 //     don't hit the grandchild twice, and so we can cleanly tear down the
 //     whole subtree on shutdown.
 //  4. SIGTERM / SIGINT / SIGHUP received by sir are forwarded to the child's
-//     process group, giving the MCP server a chance to emit a clean JSON-RPC
-//     shutdown before exit.
+//     process group in a loop for the full lifetime of the child. A second
+//     Ctrl-C from the terminal is therefore also forwarded; the loop only
+//     exits once cmd.Wait() returns.
 func runProxyChild(cmd *exec.Cmd, assessmentSummary string) int {
 	if cmd.Stdin == nil {
 		cmd.Stdin = os.Stdin
@@ -230,25 +279,34 @@ func runProxyChild(cmd *exec.Cmd, assessmentSummary string) int {
 		}()
 	}
 
-	// Forward SIGTERM/SIGINT/SIGHUP to the child process group. Stop after
-	// the first signal — a second Ctrl-C from the terminal, or a follow-up
-	// SIGKILL from the launcher, will still land on sir directly because
-	// signal.Stop restores default handling.
+	// Forward SIGTERM/SIGINT/SIGHUP to the child process group for the
+	// full lifetime of the child. Looping (vs. a single select) means a
+	// second Ctrl-C from the terminal is also forwarded: graceful shutdown
+	// on the first signal, harder kill on the second if the server is
+	// stuck. syscall.Kill with a negative PID targets the process group.
 	sigCh := make(chan os.Signal, 4)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 	done := make(chan struct{})
+	forwarderDone := make(chan struct{})
 	go func() {
-		select {
-		case sig := <-sigCh:
-			// syscall.Kill with a negative PID targets the process group.
-			_ = syscall.Kill(-pgid, sig.(syscall.Signal))
-		case <-done:
+		defer close(forwarderDone)
+		for {
+			select {
+			case sig := <-sigCh:
+				_ = syscall.Kill(-pgid, sig.(syscall.Signal))
+			case <-done:
+				return
+			}
 		}
 	}()
 
 	waitErr := cmd.Wait()
-	close(done)
+	// Stop delivery BEFORE telling the goroutine to exit so no further
+	// signals land on sigCh while the goroutine is winding down. Then
+	// close(done) lets the goroutine exit and we wait for its drain.
 	signal.Stop(sigCh)
+	close(done)
+	<-forwarderDone
 
 	// Drain any remaining stderr before exiting so credentials written just
 	// before the child died are still scanned + surfaced.
@@ -270,28 +328,44 @@ func runProxyChild(cmd *exec.Cmd, assessmentSummary string) int {
 
 // darwinSandboxProfile returns the sandbox-exec profile text that governs an
 // MCP child process. The profile follows a default-allow, explicit-deny model:
-// operations not listed are permitted (mach-lookup, kext access, signal
-// delivery, etc.) but the two categories we care about — outbound network and
-// filesystem writes — are constrained.
+// operations not listed are permitted (mach-lookup, signal delivery, etc.)
+// but the two categories we care about — outbound network and filesystem
+// writes — are constrained.
 //
 // Network: strict by default. Any --allow-host opts the developer into broad
 // outbound access (macOS sandbox-exec cannot express per-host allowlists).
 //
-// Filesystem writes: denied by default, then re-granted for the paths an MCP
-// server legitimately needs. The allowlist is deliberately broad enough that
-// real-world servers (Hopper, language servers, SDK-based tools) work out of
-// the box — a narrower list caused cryptic "intermittent stdio" failures when
-// a server's first plist/log write returned EPERM mid-JSON-RPC.
+// Filesystem writes: denied by default, then re-granted for the minimal set
+// of paths an MCP server legitimately needs to function. The allowlist is
+// deliberately narrow: each entry is a directory where macOS apps or their
+// helper processes are architecturally expected to write (per-app caches,
+// prefs, logs, containers) OR a scratch path (temp dirs). Anything broader
+// risks creating a persistence or cross-app tampering surface that the
+// sandbox was meant to prevent.
 //
-// What we still deny:
-//   - Arbitrary writes under ~/ (the user's home root and non-Library paths)
-//   - Anywhere under a project directory the user is currently working in
-//   - System paths (/etc, /usr, /Library/ outside of sandbox-provided temp)
+// What stays denied (notable cases):
+//   - ~/.ssh/, ~/.zshrc, ~/.bashrc, ~/.profile — credential and startup files
+//   - ~/.config/                                — includes gh/hosts.yml, k8s,
+//     fish, etc.; deliberately NOT added to the allowlist even though some
+//     legitimate tools would benefit, because this directory is a cross-app
+//     auth/persistence surface that we don't want MCP servers writing to
+//   - ~/.rustup, ~/.deno, ~/.bun, ~/.pnpm-store, ~/.yarn — toolchain roots
+//     where a malicious server could overwrite installers with shims
+//   - ~/Library/LaunchAgents, ~/Library/LaunchDaemons — login autostart
+//   - ~/Library/Preferences/ByHost and the wider /Library (system-wide)
+//   - Anywhere under the user's project directories
 //
-// This means an exfiltrating server cannot drop payloads into the project,
-// cannot write persistent backdoors to ~/.zshrc or ~/Library/LaunchAgents,
-// and cannot tamper with cross-app SSH or GPG material — while a legitimate
-// server can still cache state, write logs, and update its own prefs.
+// What is allowed:
+//   - Scratch: /tmp, /private/tmp, /var/folders, /private/var/folders, /dev
+//   - Per-app Library subpaths: Application Support, Caches, Preferences
+//     (the user-local subtree only), Logs, Containers, Group Containers,
+//     Saved Application State, WebKit
+//   - The specific dev-tool caches that frequently block normal MCP
+//     operation: ~/.npm, ~/.cache, ~/.node_modules, ~/.cargo/registry
+//     (note: NOT the whole ~/.cargo — just the registry cache subtree)
+//
+// Servers that need additional writes should be launched with --no-sandbox
+// (documented, ledger-audited) rather than expanded here ad-hoc.
 func darwinSandboxProfile(allowedHosts []string) string {
 	var profile strings.Builder
 	profile.WriteString("(version 1)\n")
@@ -308,16 +382,15 @@ func darwinSandboxProfile(allowedHosts []string) string {
 
 	profile.WriteString("(deny file-write*)\n")
 
-	// System temp directories — every long-running MCP server needs these
-	// for scratch files, atomic-rename patterns, and IPC.
+	// System scratch — every long-running MCP server needs these for
+	// temp files, atomic-rename patterns, and device-node writes.
 	for _, p := range []string{"/private/var/folders", "/var/folders", "/private/tmp", "/tmp", "/dev"} {
 		fmt.Fprintf(&profile, "(allow file-write* (subpath \"%s\"))\n", p)
 	}
 
-	// Per-user application data. The Library/* subpaths cover the locations
-	// macOS apps and their helper processes (Hopper, language servers,
-	// SDK-based MCPs) are architecturally expected to write to. Allowing
-	// them is what makes sir mcp-proxy "just work" on Darwin.
+	// Per-user application data. The Library/* subpaths cover locations
+	// macOS apps and their helper processes are architecturally expected
+	// to write to. Everything outside this explicit list stays denied.
 	homeDir, _ := os.UserHomeDir()
 	if homeDir != "" {
 		for _, rel := range []string{
@@ -331,16 +404,8 @@ func darwinSandboxProfile(allowedHosts []string) string {
 			"Library/WebKit",
 			".npm",
 			".cache",
-			".config",
-			".local/share",
-			".local/state",
 			".node_modules",
 			".cargo/registry",
-			".rustup",
-			".pnpm-store",
-			".yarn",
-			".deno",
-			".bun",
 		} {
 			fmt.Fprintf(&profile, "(allow file-write* (subpath \"%s/%s\"))\n", homeDir, rel)
 		}

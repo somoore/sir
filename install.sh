@@ -339,6 +339,14 @@ info "Installing binaries to $INSTALL_DIR..."
 # launching the new bytes fails integrity verification — exit 137 with no
 # output. `mv -f` atomically replaces the directory entry with a fresh
 # inode, so the kernel re-verifies the signature from scratch.
+#
+# A trap cleans up any `.sirtmp.*` residue if we fail between mktemp and mv
+# (disk full, signal during cp, etc.) so we don't leave zombie files under
+# ~/.local/bin. The trap runs on EXIT, so normal completion (all mvs done)
+# finds nothing to clean.
+_SIRTMP_GLOB="${INSTALL_DIR}/*.sirtmp.*"
+# shellcheck disable=SC2064  # single-quoted $_SIRTMP_GLOB would defer expansion past unset
+trap "rm -f ${_SIRTMP_GLOB}" EXIT
 _CORE_TMP="$(mktemp "${INSTALL_DIR}/mister-core.sirtmp.XXXXXX")"
 cp target/release/mister-core "$_CORE_TMP"
 chmod 0750 "$_CORE_TMP"
@@ -347,7 +355,8 @@ _SIR_TMP="$(mktemp "${INSTALL_DIR}/sir.sirtmp.XXXXXX")"
 cp bin/sir "$_SIR_TMP"
 chmod 0750 "$_SIR_TMP"
 mv -f "$_SIR_TMP" "$INSTALL_DIR/sir"
-unset _CORE_TMP _SIR_TMP
+trap - EXIT
+unset _CORE_TMP _SIR_TMP _SIRTMP_GLOB
 # Owner-executable only (0750): prevents other users on the machine from
 # reading or executing the binaries. Group access preserved for admin use.
 chmod 750 "$INSTALL_DIR/mister-core"

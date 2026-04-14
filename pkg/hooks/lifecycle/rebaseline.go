@@ -29,16 +29,26 @@ type RebaselineSkip struct {
 // hookInducedDenyPrefixes enumerates the deny_all reason strings produced by
 // hook/posture tamper detectors that a legitimate `sir install` invalidates.
 // Reasons outside this list (secret_session lock, session.json tamper,
-// runtime-containment stale, binary manifest mismatch, etc.) are preserved.
+// lease.json tamper, binary manifest mismatch, runtime-containment stale, etc.)
+// are preserved — those denies were not caused by install rewriting hooks.
 //
-// Keep this list aligned with the reason strings set via state.SetDenyAll in
-// pkg/hooks/post_evaluate_checks.go and pkg/hooks/session_end.go.
+// Each entry must match the exact leading text of a reason string set via
+// state.SetDenyAll somewhere in pkg/hooks. When adding a new tamper-based
+// deny reason, add its prefix here if install is expected to clear it.
+// Current set, traced from every non-test SetDenyAll call site:
+//
+//   - "posture file tampered: …"                   — post_evaluate_checks.go, session_end.go
+//   - "posture tampered before delegation: …"      — subagent.go
+//   - "managed hook baseline unavailable …"        — post_evaluate_checks.go, config_change.go
+//     (covers both the plain form and the "during config change" variant)
+//   - "global hooks file tampered: …"              — post_evaluate_checks.go
+//   - "global hooks modified during config change: …" — config_change.go
 var hookInducedDenyPrefixes = []string{
 	"posture file tampered",
 	"posture tampered before delegation",
 	"managed hook baseline unavailable",
-	"managed hooks tampered",
-	"managed hook",
+	"global hooks file tampered",
+	"global hooks modified during config change",
 }
 
 // RebaselineAllProjects walks every per-project state directory under

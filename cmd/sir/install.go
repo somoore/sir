@@ -241,10 +241,13 @@ func cmdInstall(projectRoot, mode string) {
 		fatal("session start: %v", err)
 	}
 
-	// Refresh posture baselines across every other project whose session
-	// pre-dates this install. Install rewrote the host-agent hook files, so
-	// any session started earlier is carrying a stale baseline and would
-	// trip the tamper detector on its next Bash call. `sir install` is
+	// Refresh posture baselines across every sir project state directory.
+	// Install rewrote the host-agent hook files, so any existing session
+	// carries a stale baseline and would trip the tamper detector on its
+	// next Bash call. RebaselineAllProjects walks ~/.sir/projects/* and
+	// rehashes against current on-disk state — this also re-covers the
+	// project we just initialized above (harmless: we just wrote those
+	// hashes) and any other projects on this machine. `sir install` is
 	// user-initiated from a terminal and out-of-band of any agent session,
 	// so the hook changes are legitimate by definition. Callers that want
 	// the old behavior (leave other sessions wedged, force a per-project
