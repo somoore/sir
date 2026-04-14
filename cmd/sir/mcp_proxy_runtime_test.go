@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"os/signal"
 	"strings"
 	"syscall"
 	"testing"
@@ -195,62 +194,159 @@ func TestRunProxyChild_ChildRunsInOwnProcessGroup(t *testing.T) {
 	t.Fatalf("child pgid = %d, want %d (child pid)", pgid, cmd.Process.Pid)
 }
 
-// TestSignalForwardingLoop_ServicesMultipleSignals exercises the forwarding
-// goroutine's loop behavior. The loop has to keep forwarding for the full
-// lifetime of the child, not just the first signal — otherwise a second
-// Ctrl-C on a stuck MCP server would be swallowed.
-//
-// The test is hermetic by design: rather than relying on shell trap
-// semantics (which vary between bash/dash and defer traps until foreground
-// commands finish), we mirror the loop structure from runProxyChild
-// locally, send signals to a counter-incrementing sink, and assert the
-// loop processed more than one.
-func TestSignalForwardingLoop_ServicesMultipleSignals(t *testing.T) {
-	// Forwarder goroutine — same select-in-loop shape as runProxyChild.
-	// We count signals instead of delivering them, so the test doesn't
-	// care whether a real child process is alive.
+// TestEscalatingSignalForwarder_FirstSignalForwards verifies that the
+// initial signal is forwarded to the child's process group verbatim and
+// the forwarder keeps waiting for the next event (no escalation yet).
+func TestEscalatingSignalForwarder_FirstSignalForwards(t *testing.T) {
 	sigCh := make(chan os.Signal, 4)
-	signal.Notify(sigCh, syscall.SIGUSR1)
-	t.Cleanup(func() { signal.Stop(sigCh) })
-
 	done := make(chan struct{})
 	forwarderDone := make(chan struct{})
-	delivered := make(chan struct{}, 8)
-	go func() {
-		defer close(forwarderDone)
-		for {
-			select {
-			case <-sigCh:
-				// Non-blocking publish; the loop must not block on the
-				// consumer or we can't prove it picked up a second signal.
-				select {
-				case delivered <- struct{}{}:
-				default:
-				}
-			case <-done:
-				return
-			}
-		}
-	}()
 
-	// Deliver two signals. The forwarder must process both. If the loop
-	// were a single-select (pre-fix), the second signal would pile up on
-	// sigCh forever and `delivered` would receive only once.
-	_ = syscall.Kill(syscall.Getpid(), syscall.SIGUSR1)
-	select {
-	case <-delivered:
-	case <-time.After(2 * time.Second):
-		t.Fatal("first signal was not forwarded within 2s")
+	var (
+		killCalls []killCall
+		exitCalls []int
+	)
+	killFn := func(pid int, sig syscall.Signal) error {
+		killCalls = append(killCalls, killCall{pid: pid, sig: sig})
+		return nil
 	}
-	_ = syscall.Kill(syscall.Getpid(), syscall.SIGUSR1)
-	select {
-	case <-delivered:
-	case <-time.After(2 * time.Second):
-		t.Fatal("second signal was not forwarded — forwarder stopped after the first")
+	exitFn := func(code int) { exitCalls = append(exitCalls, code) }
+
+	go escalatingSignalForwarder(sigCh, done, forwarderDone, 9999, killFn, exitFn)
+
+	sigCh <- syscall.SIGTERM
+	// Give the goroutine a tick to process the signal before we assert.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && len(killCalls) == 0 {
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	close(done)
 	<-forwarderDone
+
+	if len(killCalls) != 1 {
+		t.Fatalf("killFn called %d times, want 1: %+v", len(killCalls), killCalls)
+	}
+	if killCalls[0].pid != -9999 {
+		t.Errorf("killFn targeted pid %d, want -9999 (process group)", killCalls[0].pid)
+	}
+	if killCalls[0].sig != syscall.SIGTERM {
+		t.Errorf("killFn forwarded signal %v, want SIGTERM (verbatim)", killCalls[0].sig)
+	}
+	if len(exitCalls) != 0 {
+		t.Errorf("exitFn should NOT be called on first signal; was called with %v", exitCalls)
+	}
+}
+
+// TestEscalatingSignalForwarder_SecondSignalEscalatesToKill is the
+// regression for the Codex P1: second interrupt must force-kill the
+// child's process group AND exit the parent with 128+signal, so an
+// operator facing a stuck MCP server can always recover with a second
+// Ctrl-C.
+func TestEscalatingSignalForwarder_SecondSignalEscalatesToKill(t *testing.T) {
+	sigCh := make(chan os.Signal, 4)
+	done := make(chan struct{})
+	forwarderDone := make(chan struct{})
+
+	var (
+		killCalls []killCall
+		exitCalls []int
+	)
+	killFn := func(pid int, sig syscall.Signal) error {
+		killCalls = append(killCalls, killCall{pid: pid, sig: sig})
+		return nil
+	}
+	exitFn := func(code int) { exitCalls = append(exitCalls, code) }
+
+	go escalatingSignalForwarder(sigCh, done, forwarderDone, 1234, killFn, exitFn)
+
+	// First signal: SIGINT forwarded verbatim.
+	sigCh <- syscall.SIGINT
+	// Second signal: must escalate to SIGKILL + exit(128+2).
+	sigCh <- syscall.SIGINT
+
+	<-forwarderDone // escalation path calls close(forwarderDone) via defer
+
+	if len(killCalls) != 2 {
+		t.Fatalf("killFn called %d times, want 2: %+v", len(killCalls), killCalls)
+	}
+	if killCalls[0].sig != syscall.SIGINT {
+		t.Errorf("first kill: sig = %v, want SIGINT (verbatim forward)", killCalls[0].sig)
+	}
+	if killCalls[1].sig != syscall.SIGKILL {
+		t.Errorf("second kill: sig = %v, want SIGKILL (escalation)", killCalls[1].sig)
+	}
+	if killCalls[1].pid != -1234 {
+		t.Errorf("second kill: pid = %d, want -1234 (process group)", killCalls[1].pid)
+	}
+	if len(exitCalls) != 1 {
+		t.Fatalf("exitFn called %d times, want 1: %v", len(exitCalls), exitCalls)
+	}
+	// 128 + 2 (SIGINT) = 130, conventional shell exit code.
+	if exitCalls[0] != 130 {
+		t.Errorf("exit code = %d, want 130 (128+SIGINT)", exitCalls[0])
+	}
+}
+
+// TestEscalatingSignalForwarder_EscalationPerSignalType proves the exit
+// code reflects the second signal, not the first: if the operator sends
+// SIGINT then SIGTERM, we exit with 143 (the SIGTERM convention), not
+// 130. Whichever signal triggered the escalation is the one operators
+// expect to see reflected in the exit code.
+func TestEscalatingSignalForwarder_EscalationPerSignalType(t *testing.T) {
+	sigCh := make(chan os.Signal, 4)
+	done := make(chan struct{})
+	forwarderDone := make(chan struct{})
+
+	var exitCalls []int
+	killFn := func(int, syscall.Signal) error { return nil }
+	exitFn := func(code int) { exitCalls = append(exitCalls, code) }
+
+	go escalatingSignalForwarder(sigCh, done, forwarderDone, 1, killFn, exitFn)
+
+	sigCh <- syscall.SIGINT  // forwarded
+	sigCh <- syscall.SIGTERM // escalates
+	<-forwarderDone
+
+	if len(exitCalls) != 1 {
+		t.Fatalf("exit called %d times, want 1", len(exitCalls))
+	}
+	if exitCalls[0] != 128+int(syscall.SIGTERM) {
+		t.Errorf("exit code = %d, want %d (128+SIGTERM)", exitCalls[0], 128+int(syscall.SIGTERM))
+	}
+}
+
+// TestEscalatingSignalForwarder_DoneExitsCleanly confirms that the
+// normal teardown path (cmd.Wait returned, parent closes `done`) exits
+// the goroutine without forwarding or escalating.
+func TestEscalatingSignalForwarder_DoneExitsCleanly(t *testing.T) {
+	sigCh := make(chan os.Signal, 4)
+	done := make(chan struct{})
+	forwarderDone := make(chan struct{})
+
+	var (
+		killCalls int
+		exitCalls int
+	)
+	killFn := func(int, syscall.Signal) error { killCalls++; return nil }
+	exitFn := func(int) { exitCalls++ }
+
+	go escalatingSignalForwarder(sigCh, done, forwarderDone, 1, killFn, exitFn)
+
+	close(done)
+	<-forwarderDone
+
+	if killCalls != 0 {
+		t.Errorf("killFn called %d times on clean shutdown, want 0", killCalls)
+	}
+	if exitCalls != 0 {
+		t.Errorf("exitFn called %d times on clean shutdown, want 0", exitCalls)
+	}
+}
+
+type killCall struct {
+	pid int
+	sig syscall.Signal
 }
 
 // TestRunProxyChild_SignalForwardsToProcessGroup verifies that a SIGTERM

@@ -279,26 +279,18 @@ func runProxyChild(cmd *exec.Cmd, assessmentSummary string) int {
 		}()
 	}
 
-	// Forward SIGTERM/SIGINT/SIGHUP to the child process group for the
-	// full lifetime of the child. Looping (vs. a single select) means a
-	// second Ctrl-C from the terminal is also forwarded: graceful shutdown
-	// on the first signal, harder kill on the second if the server is
-	// stuck. syscall.Kill with a negative PID targets the process group.
+	// Forward SIGTERM/SIGINT/SIGHUP to the child process group. First
+	// signal is forwarded verbatim so the child can shut down gracefully
+	// (close connections, emit JSON-RPC shutdown). A second signal means
+	// the operator is telling us the child is stuck: escalate to SIGKILL
+	// on the group AND exit sir directly, so the terminal returns control
+	// even when the wrapped MCP server traps or ignores signals. Without
+	// this escalation a misbehaving server wedges sir indefinitely.
 	sigCh := make(chan os.Signal, 4)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 	done := make(chan struct{})
 	forwarderDone := make(chan struct{})
-	go func() {
-		defer close(forwarderDone)
-		for {
-			select {
-			case sig := <-sigCh:
-				_ = syscall.Kill(-pgid, sig.(syscall.Signal))
-			case <-done:
-				return
-			}
-		}
-	}()
+	go escalatingSignalForwarder(sigCh, done, forwarderDone, pgid, syscall.Kill, os.Exit)
 
 	waitErr := cmd.Wait()
 	// Stop delivery BEFORE telling the goroutine to exit so no further
@@ -411,6 +403,61 @@ func darwinSandboxProfile(allowedHosts []string) string {
 		}
 	}
 	return profile.String()
+}
+
+// escalatingSignalForwarder runs the signal-forwarding loop used by
+// runProxyChild. It is split out so tests can inject fake kill/exit
+// functions and observe escalation behavior without actually killing the
+// test process.
+//
+// Behavior:
+//
+//   - First signal received while the child is alive: forwarded as-is to
+//     the child's process group via killFn(-pgid, sig). Gives the wrapped
+//     MCP server a chance to shut down gracefully.
+//   - Second (and any subsequent) signal: escalate. killFn(-pgid, SIGKILL)
+//     to ensure the group dies even if the server traps TERM/INT, then
+//     exitFn(128+sig) to drop the parent immediately. This is the
+//     backstop that prevents a misbehaving or signal-ignoring child from
+//     wedging sir indefinitely. We log to stderr before exitFn so the
+//     operator sees why the second Ctrl-C went straight to kill.
+//   - done closes: return normally (cmd.Wait returned; cleanup path).
+//
+// Non-syscall.Signal values arriving on sigCh are discarded and do not
+// count toward the escalation threshold — they can't happen under
+// signal.Notify on Unix, but the type assertion guards against a future
+// signal.Notify implementation that boxes differently.
+func escalatingSignalForwarder(
+	sigCh <-chan os.Signal,
+	done <-chan struct{},
+	forwarderDone chan<- struct{},
+	pgid int,
+	killFn func(pid int, sig syscall.Signal) error,
+	exitFn func(int),
+) {
+	defer close(forwarderDone)
+	forwarded := 0
+	for {
+		select {
+		case sig := <-sigCh:
+			sysSig, ok := sig.(syscall.Signal)
+			if !ok {
+				continue
+			}
+			forwarded++
+			if forwarded == 1 {
+				_ = killFn(-pgid, sysSig)
+				continue
+			}
+			fmt.Fprintln(os.Stderr,
+				"sir: mcp-proxy: second interrupt — escalating to SIGKILL on child process group and exiting")
+			_ = killFn(-pgid, syscall.SIGKILL)
+			exitFn(128 + int(sysSig))
+			return
+		case <-done:
+			return
+		}
+	}
 }
 
 // recordMCPProxyDegradation appends a ledger entry noting that the proxy ran
