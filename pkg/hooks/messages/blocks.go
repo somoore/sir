@@ -112,7 +112,7 @@ func FormatBlockDNS(agentName, target string, secretReadTime time.Time) string {
 		fmt.Sprintf("You approved reading a credentials file at %s. DNS lookups can\n       leak data encoded in hostnames and are always blocked.", timestamp),
 		[]string{
 			"Use curl or wget to an approved host instead.",
-			"sir unlock                       (lifts the secret-session lock; DNS still blocked)",
+			"sir unlock                       (clears transient runtime restrictions; DNS still blocked)",
 		},
 	)
 }

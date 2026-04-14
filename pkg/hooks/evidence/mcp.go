@@ -84,6 +84,25 @@ var contextAwareKeywords = []string{
 	"restrictions", "limitations", "safety", "guideline", "safeguard", "constraint",
 }
 
+var directiveContextCues = []string{
+	"please ",
+	"you should",
+	"you must",
+	"you need to",
+	"you can",
+	"you could",
+	"help me",
+	"assist me",
+	"to complete",
+	"to proceed",
+	"best approach",
+	"execute ",
+	"run ",
+	"call the",
+	"use the tool",
+	"follow these instructions",
+}
+
 func ScanMCPResponseForInjection(output string) []InjectionSignal {
 	if output == "" {
 		return nil
@@ -181,6 +200,24 @@ func extractContext(input string, index, maxLen int) string {
 	return context
 }
 
+func hasDirectiveContext(lower string, matchIdx, matchLen int) bool {
+	windowStart := matchIdx - 120
+	if windowStart < 0 {
+		windowStart = 0
+	}
+	windowEnd := matchIdx + matchLen + 120
+	if windowEnd > len(lower) {
+		windowEnd = len(lower)
+	}
+	window := lower[windowStart:windowEnd]
+	for _, cue := range directiveContextCues {
+		if strings.Contains(window, cue) {
+			return true
+		}
+	}
+	return false
+}
+
 func checkSafetyNegationPhrase(lower string) (bool, string) {
 	negationVerbs := []string{
 		"bypass", "circumvent", "disable", "suppress", "remove",
@@ -202,6 +239,9 @@ func checkSafetyNegationPhrase(lower string) (bool, string) {
 		window := lower[index:windowEnd]
 		for _, object := range safetyObjects {
 			if strings.Contains(window, object) {
+				if !hasDirectiveContext(lower, index, len(verb)) {
+					continue
+				}
 				return true, "safety negation (" + verb + " " + object + ")"
 			}
 		}

@@ -8,20 +8,31 @@ import (
 	"github.com/somoore/sir/pkg/core"
 )
 
+type binaryIntegrityStatus struct {
+	manifest       *core.BinaryManifest
+	sirPath        string
+	sirHash        string
+	sirErr         error
+	misterCorePath string
+	misterCoreHash string
+	misterCoreErr  error
+}
+
 func cmdVerify() {
 	fmt.Println("sir verify")
 	fmt.Println()
 
-	manifest, err := core.LoadManifest()
+	status, err := inspectBinaryIntegrity()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  error: %v\n", err)
 		os.Exit(1)
 	}
-	if manifest == nil {
+	if status == nil {
 		fmt.Println("  No binary manifest found at ~/.sir/binary-manifest.json")
-		fmt.Println("  Re-run install.sh to generate the manifest.")
+		fmt.Println("  Reinstall sir to generate the manifest. For source trees, run 'make install' or './install.sh'.")
 		os.Exit(1)
 	}
+	manifest := status.manifest
 
 	fmt.Printf("  version:  %s\n", manifest.Version)
 	fmt.Printf("  method:   %s\n", manifest.InstallMethod)
@@ -31,32 +42,28 @@ func cmdVerify() {
 	allOK := true
 
 	// Verify sir binary
-	sirPath := resolveSirBinaryForVerify(manifest)
-	sirHash, err := core.HashFile(sirPath)
-	if err != nil {
-		fmt.Printf("  sir          ERROR  could not read: %v\n", err)
+	if status.sirErr != nil {
+		fmt.Printf("  sir          ERROR  could not read: %v\n", status.sirErr)
 		allOK = false
-	} else if sirHash == manifest.SirSHA256 {
+	} else if status.sirHash == manifest.SirSHA256 {
 		fmt.Printf("  sir          ok     sha256 matches manifest\n")
 	} else {
 		fmt.Printf("  sir          MISMATCH\n")
 		fmt.Printf("    manifest:  %s\n", manifest.SirSHA256)
-		fmt.Printf("    on disk:   %s\n", sirHash)
+		fmt.Printf("    on disk:   %s\n", status.sirHash)
 		allOK = false
 	}
 
 	// Verify mister-core binary
-	mcPath := resolveMisterCoreForVerify(manifest)
-	mcHash, err := core.HashFile(mcPath)
-	if err != nil {
-		fmt.Printf("  mister-core  ERROR  could not read: %v\n", err)
+	if status.misterCoreErr != nil {
+		fmt.Printf("  mister-core  ERROR  could not read: %v\n", status.misterCoreErr)
 		allOK = false
-	} else if mcHash == manifest.MisterCoreSHA256 {
+	} else if status.misterCoreHash == manifest.MisterCoreSHA256 {
 		fmt.Printf("  mister-core  ok     sha256 matches manifest\n")
 	} else {
 		fmt.Printf("  mister-core  MISMATCH\n")
 		fmt.Printf("    manifest:  %s\n", manifest.MisterCoreSHA256)
-		fmt.Printf("    on disk:   %s\n", mcHash)
+		fmt.Printf("    on disk:   %s\n", status.misterCoreHash)
 		allOK = false
 	}
 
@@ -65,9 +72,39 @@ func cmdVerify() {
 		fmt.Println("  Binaries verified against install-time manifest.")
 	} else {
 		fmt.Println("  WARNING: one or more binaries do not match the install-time manifest.")
-		fmt.Println("  This may indicate tampering. Re-run install.sh to rebuild from source.")
+		fmt.Println("  This may indicate tampering. Reinstall sir to refresh ~/.sir/binary-manifest.json.")
+		fmt.Println("  For source trees, run 'make install' or './install.sh'.")
 		os.Exit(1)
 	}
+}
+
+func inspectBinaryIntegrity() (*binaryIntegrityStatus, error) {
+	manifest, err := core.LoadManifest()
+	if err != nil {
+		return nil, err
+	}
+	if manifest == nil {
+		return nil, nil
+	}
+
+	status := &binaryIntegrityStatus{
+		manifest:       manifest,
+		sirPath:        resolveSirBinaryForVerify(manifest),
+		misterCorePath: resolveMisterCoreForVerify(manifest),
+	}
+	status.sirHash, status.sirErr = core.HashFile(status.sirPath)
+	status.misterCoreHash, status.misterCoreErr = core.HashFile(status.misterCorePath)
+	return status, nil
+}
+
+func (s *binaryIntegrityStatus) allOK() bool {
+	if s == nil {
+		return false
+	}
+	return s.sirErr == nil &&
+		s.sirHash == s.manifest.SirSHA256 &&
+		s.misterCoreErr == nil &&
+		s.misterCoreHash == s.manifest.MisterCoreSHA256
 }
 
 // resolveSirBinaryForVerify returns the path to the sir binary to verify.

@@ -14,6 +14,8 @@ import (
 	"github.com/somoore/sir/pkg/agent"
 	"github.com/somoore/sir/pkg/lease"
 	"github.com/somoore/sir/pkg/ledger"
+	"github.com/somoore/sir/pkg/policy"
+	"github.com/somoore/sir/pkg/posture"
 	"github.com/somoore/sir/pkg/session"
 )
 
@@ -368,6 +370,46 @@ func TestDiscoverMCPInventory_GeminiGlobalSettings(t *testing.T) {
 	}
 }
 
+func TestDiscoverMCPServers_ClaudeLegacyGlobalConfig(t *testing.T) {
+	env := newTestEnv(t)
+
+	legacyPath := filepath.Join(env.home, ".claude.json")
+	if err := os.WriteFile(legacyPath, []byte(`{"mcpServers":{"legacy-server":{"command":"node","args":["legacy.js"]}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	servers := discoverMCPServers(env.projectRoot)
+	if len(servers) != 1 || servers[0] != "legacy-server" {
+		t.Fatalf("expected [legacy-server], got %v", servers)
+	}
+}
+
+func TestDiscoverMCPInventory_ClaudeNestedMCPConfig(t *testing.T) {
+	env := newTestEnv(t)
+
+	nestedPath := filepath.Join(env.home, ".claude", ".mcp.json")
+	if err := os.MkdirAll(filepath.Dir(nestedPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(nestedPath, []byte(`{"mcpServers":{"nested-server":{"command":"node","args":["nested.js"]}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	report := discoverMCPInventory(env.projectRoot)
+	if len(report.Errors) != 0 {
+		t.Fatalf("expected no parse errors, got %v", report.Errors)
+	}
+	found := false
+	for _, server := range report.Servers {
+		if server.Name == "nested-server" && server.SourceLabel == "~/.claude/.mcp.json" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected nested Claude MCP server in inventory, got %+v", report.Servers)
+	}
+}
+
 func TestDiscoverMCPServers_NoConfig(t *testing.T) {
 	env := newTestEnv(t)
 	servers := discoverMCPServers(env.projectRoot)
@@ -400,6 +442,36 @@ func TestCmdClearSession_ClearsSecretFlag(t *testing.T) {
 	}
 }
 
+func TestCmdClearSession_ClearsTransientRestrictions(t *testing.T) {
+	env := newTestEnv(t)
+
+	state := session.NewState(env.projectRoot)
+	state.RaisePosture(policy.PostureStateElevated)
+	state.AddTaintedMCPServer("hopper")
+	state.AddMCPInjectionSignal("override safety")
+	state.SetPendingInjectionAlert("pending injection alert")
+	env.writeSession(state)
+
+	cmdClearSession(env.projectRoot)
+
+	reloaded, err := session.Load(env.projectRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.Posture != policy.PostureStateNormal {
+		t.Fatalf("expected posture to reset to normal, got %q", reloaded.Posture)
+	}
+	if len(reloaded.TaintedMCPServers) != 0 {
+		t.Fatalf("expected tainted MCP servers to be cleared, got %v", reloaded.TaintedMCPServers)
+	}
+	if len(reloaded.MCPInjectionSignals) != 0 {
+		t.Fatalf("expected MCP injection signals to be cleared, got %v", reloaded.MCPInjectionSignals)
+	}
+	if reloaded.PendingInjectionAlert {
+		t.Fatal("expected pending injection alert to be cleared")
+	}
+}
+
 func TestCmdClearSession_LogsToLedger(t *testing.T) {
 	env := newTestEnv(t)
 
@@ -429,7 +501,6 @@ func TestCmdClearSession_NonSecretSession(t *testing.T) {
 	env := newTestEnv(t)
 
 	state := session.NewState(env.projectRoot)
-	// Not marked as secret
 	env.writeSession(state)
 
 	// Should not panic or error, just print a message
@@ -773,6 +844,82 @@ func TestCmdGuard_UnknownAgentFallsBackToClaudeEnvelope(t *testing.T) {
 	}
 	if !strings.Contains(stderr, `unknown --agent value: "not-real"`) {
 		t.Fatalf("stderr = %q, want unknown-agent text", stderr)
+	}
+}
+
+func TestCmdGuard_EvaluateAdoptsSirRefreshedLeaseHash(t *testing.T) {
+	env := newTestEnv(t)
+
+	if err := os.WriteFile(
+		filepath.Join(env.home, ".claude.json"),
+		[]byte(`{"mcpServers":{"HopperMCPServer":{"command":"node","args":["hopper.js"]}}}`),
+		0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	env.writeDefaultLease()
+	oldHash, err := posture.HashLeaseFile(env.projectRoot)
+	if err != nil {
+		t.Fatalf("hash original lease: %v", err)
+	}
+
+	state := session.NewState(env.projectRoot)
+	state.LeaseHash = oldHash
+	env.writeSession(state)
+
+	payloadPath := filepath.Join("..", "..", "testdata", "hook-payloads", "allow-curl-localhost.json")
+	payload, err := os.ReadFile(payloadPath)
+	if err != nil {
+		t.Fatalf("read payload fixture: %v", err)
+	}
+
+	stdout, stderr := runCmdGuardHelper(t, env, string(payload), "evaluate")
+	if strings.Contains(stdout, "Security policy integrity check failed") || strings.Contains(stderr, "Security policy integrity check failed") {
+		t.Fatalf("unexpected lease integrity fatal\nstdout:\n%s\nstderr:\n%s", stdout, stderr)
+	}
+	jsonEnd := strings.LastIndex(stdout, "}")
+	if jsonEnd == -1 {
+		t.Fatalf("stdout missing JSON envelope:\n%s", stdout)
+	}
+	stdoutJSON := stdout[:jsonEnd+1]
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal([]byte(stdoutJSON), &resp); err != nil {
+		t.Fatalf("unmarshal stdout: %v\nstdout=%q", err, stdout)
+	}
+	hso, ok := resp["hookSpecificOutput"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("hookSpecificOutput missing or wrong type: %T", resp["hookSpecificOutput"])
+	}
+	if hso["permissionDecision"] != "allow" {
+		t.Fatalf("permissionDecision = %v, want allow\nstdout:\n%s\nstderr:\n%s", hso["permissionDecision"], stdout, stderr)
+	}
+
+	reloadedState, err := session.Load(env.projectRoot)
+	if err != nil {
+		t.Fatalf("reload session: %v", err)
+	}
+	if reloadedState.LeaseHash == oldHash {
+		t.Fatalf("session lease hash stayed stale at %q", oldHash)
+	}
+	if !posture.VerifyLeaseIntegrity(env.projectRoot, reloadedState) {
+		t.Fatal("expected refreshed session lease hash to satisfy integrity verification")
+	}
+
+	updatedLease, err := lease.Load(env.leasePath)
+	if err != nil {
+		t.Fatalf("reload lease: %v", err)
+	}
+	found := false
+	for _, name := range updatedLease.ApprovedMCPServers {
+		if name == "HopperMCPServer" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected refreshed lease to auto-approve HopperMCPServer, got %v", updatedLease.ApprovedMCPServers)
 	}
 }
 

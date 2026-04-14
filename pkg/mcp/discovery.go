@@ -59,11 +59,23 @@ func discoverConfigFiles(projectRoot string, scopes map[ConfigScope]bool) []Inve
 	}
 	if homeDir, err := os.UserHomeDir(); err == nil {
 		if scopeAllowed(scopes, ConfigClaudeGlobal) {
-			files = append(files, InventoryFile{
-				Path:  filepath.Join(homeDir, ".claude", "settings.json"),
-				Label: "~/.claude/settings.json",
-				Scope: ConfigClaudeGlobal,
-			})
+			files = append(files,
+				InventoryFile{
+					Path:  filepath.Join(homeDir, ".claude", "settings.json"),
+					Label: "~/.claude/settings.json",
+					Scope: ConfigClaudeGlobal,
+				},
+				InventoryFile{
+					Path:  filepath.Join(homeDir, ".claude.json"),
+					Label: "~/.claude.json",
+					Scope: ConfigClaudeGlobal,
+				},
+				InventoryFile{
+					Path:  filepath.Join(homeDir, ".claude", ".mcp.json"),
+					Label: "~/.claude/.mcp.json",
+					Scope: ConfigClaudeGlobal,
+				},
+			)
 		}
 		if scopeAllowed(scopes, ConfigGeminiGlobal) {
 			files = append(files, InventoryFile{

@@ -41,14 +41,12 @@ func EvaluateSubagentStart(projectRoot string, ag agent.Agent) error {
 		return fmt.Errorf("unmarshal payload: %w", err)
 	}
 
-	// Load lease
-	l, err := loadLease(projectRoot)
-	if err != nil {
-		return fmt.Errorf("load lease: %w", err)
-	}
-
 	var resp *HookResponse
 	lockErr := session.WithSessionLock(projectRoot, func() error {
+		l, leaseMeta, err := loadLeaseWithMetadata(projectRoot)
+		if err != nil {
+			return fmt.Errorf("load lease: %w", err)
+		}
 		state, sErr := session.Load(projectRoot)
 		if sErr != nil {
 			if os.IsNotExist(sErr) {
@@ -61,6 +59,9 @@ func EvaluateSubagentStart(projectRoot string, ag agent.Agent) error {
 			// Returning an error causes the outer handler to exit via
 			// guardDeny (see cmd/sir/main.go), emitting a deny response.
 			return fmt.Errorf("load session: %w", sErr)
+		}
+		if err := syncSessionLeaseHashAfterSirRefresh(state, leaseMeta); err != nil {
+			return fmt.Errorf("sync refreshed lease hash into session: %w", err)
 		}
 
 		// Check session-fatal deny-all

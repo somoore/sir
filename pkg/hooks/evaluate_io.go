@@ -34,28 +34,55 @@ func writeResponse(w io.Writer, resp *HookResponse, ag agent.Agent) error {
 	return err
 }
 
+type leaseLoadMetadata struct {
+	previousHash   string
+	currentHash    string
+	refreshedBySir bool
+}
+
 func loadLease(projectRoot string) (*lease.Lease, error) {
+	l, _, err := loadLeaseWithMetadata(projectRoot)
+	return l, err
+}
+
+func loadLeaseWithMetadata(projectRoot string) (*lease.Lease, leaseLoadMetadata, error) {
+	meta := leaseLoadMetadata{}
 	if policy, err := session.LoadManagedPolicy(); err != nil {
-		return nil, fmt.Errorf("load managed policy: %w", err)
+		return nil, meta, fmt.Errorf("load managed policy: %w", err)
 	} else if policy != nil {
-		return policy.CloneLease()
+		cloned, err := policy.CloneLease()
+		if err != nil {
+			return nil, meta, fmt.Errorf("clone managed policy lease: %w", err)
+		}
+		return cloned, meta, nil
 	}
 	leasePath := filepath.Join(session.StateDir(projectRoot), "lease.json")
+	if priorHash, err := hashLeaseFile(projectRoot); err == nil {
+		meta.previousHash = priorHash
+	}
 	l, err := lease.Load(leasePath)
 	leaseExists := err == nil
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return nil, fmt.Errorf("load lease (%s): %w", leasePath, err)
+			return nil, meta, fmt.Errorf("load lease (%s): %w", leasePath, err)
 		}
 		l = lease.DefaultLease()
 	}
-	autoApproveDiscoveredMCPServers(projectRoot, l, leasePath, leaseExists)
-	return l, nil
+	if autoApproveDiscoveredMCPServers(projectRoot, l, leasePath, leaseExists) {
+		if currentHash, err := hashLeaseFile(projectRoot); err == nil {
+			meta.currentHash = currentHash
+			meta.refreshedBySir = meta.previousHash != "" && meta.currentHash != "" && meta.currentHash != meta.previousHash
+		}
+	}
+	return l, meta, nil
 }
 
-func loadOrCreateSession(projectRoot string, l *lease.Lease) (*session.State, error) {
+func loadOrCreateSession(projectRoot string, l *lease.Lease, meta leaseLoadMetadata) (*session.State, error) {
 	state, err := session.Load(projectRoot)
 	if err == nil {
+		if err := syncSessionLeaseHashAfterSirRefresh(state, meta); err != nil {
+			return nil, fmt.Errorf("sync refreshed lease hash into session: %w", err)
+		}
 		return state, nil
 	}
 	if os.IsNotExist(err) {
@@ -75,10 +102,10 @@ func isToolMCP(toolName string) bool {
 //
 // Managed mode skips this entirely because the manifest lease is the trust
 // anchor and local discovery must not widen it.
-func autoApproveDiscoveredMCPServers(projectRoot string, l *lease.Lease, leasePath string, leaseExists bool) {
+func autoApproveDiscoveredMCPServers(projectRoot string, l *lease.Lease, leasePath string, leaseExists bool) bool {
 	discovered := mcp.DiscoverServerNames(projectRoot)
 	if len(discovered) == 0 {
-		return
+		return false
 	}
 
 	approved := make(map[string]struct{}, len(l.ApprovedMCPServers)+len(discovered))
@@ -105,15 +132,28 @@ func autoApproveDiscoveredMCPServers(projectRoot string, l *lease.Lease, leasePa
 		changed = true
 	}
 	if !changed {
-		return
+		return false
 	}
 
 	sort.Strings(merged)
 	l.ApprovedMCPServers = merged
 	if !leaseExists {
-		return
+		return false
 	}
 	if err := l.Save(leasePath); err != nil {
 		fmt.Fprintf(os.Stderr, "sir: warning: could not refresh approved_mcp_servers: %v\n", err)
+		return false
 	}
+	return true
+}
+
+func syncSessionLeaseHashAfterSirRefresh(state *session.State, meta leaseLoadMetadata) error {
+	if !meta.refreshedBySir || state == nil {
+		return nil
+	}
+	if state.LeaseHash == "" || state.LeaseHash != meta.previousHash || meta.currentHash == "" {
+		return nil
+	}
+	state.LeaseHash = meta.currentHash
+	return state.Save()
 }

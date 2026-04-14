@@ -2,7 +2,7 @@
   "version": 1,
   "name": "mcp-tainted-sink-gate",
   "scenario": "mcp_tainted_sink_gate",
-  "description": "A secret session must gate later MCP calls, and a file carrying secret lineage must keep gating an approved MCP call after the turn boundary.",
+  "description": "A secret session must not blanket-gate later approved MCP calls, but a file carrying secret lineage must keep gating an approved MCP call after the turn boundary.",
   "sensitive_path": ".env",
   "read_output": "OPENAI_API_KEY=sk-secret-12345\nDATABASE_URL=postgres://user:pass@db.internal/app",
   "derived_path": "report.txt",
@@ -14,7 +14,7 @@
     }
   },
   "expected": {
-    "secret_session_decision": "ask",
+    "secret_session_decision": "allow",
     "derived_lineage_decision": "ask"
   }
 }

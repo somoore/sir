@@ -10,21 +10,21 @@ import (
 	"github.com/somoore/sir/pkg/session"
 )
 
-// cmdClearSession clears the session secret flag and other session restrictions.
-// Pressure-valve command for developers who want to restore network access without
+// cmdClearSession clears developer-recoverable runtime restriction state.
+// Pressure-valve command for developers who want to restore operability without
 // starting a new Claude session.
 func cmdClearSession(projectRoot string) {
 	existing, err := session.Load(projectRoot)
 	if err != nil {
 		fatal("no active session found: %v", err)
 	}
-	if !existing.SecretSession {
-		fmt.Println("Session does not carry secret labels. Nothing to clear.")
+	if !existing.HasTransientRestrictions() {
+		fmt.Println("Session does not carry transient runtime restrictions. Nothing to clear.")
 		return
 	}
 
 	if err := session.Update(projectRoot, func(state *session.State) error {
-		state.ClearSecretSession()
+		state.ClearTransientRestrictions()
 		return nil
 	}); err != nil {
 		fatal("clear session: %v", err)
@@ -33,9 +33,9 @@ func cmdClearSession(projectRoot string) {
 	entry := &ledger.Entry{
 		ToolName: "sir-cli",
 		Verb:     "session_cleared",
-		Target:   "secret_session",
+		Target:   "transient_restrictions",
 		Decision: "allow",
-		Reason:   "developer lifted secret-session lock via sir unlock",
+		Reason:   "developer cleared transient runtime restrictions via sir unlock",
 	}
 	if err := ledger.Append(projectRoot, entry); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not log to ledger: %v\n", err)
