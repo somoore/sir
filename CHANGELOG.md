@@ -7,6 +7,59 @@ sir is experimental. Each release listed here is a snapshot of the "sandbox in r
 
 This file tracks shipped releases only. Historical planning notes, launch copy, and exploratory findings live in git history rather than on the production repo surface.
 
+## v0.0.6 — 2026-04-14 — MCP trust tuning
+
+Four-part expansion of the MCP gating surface, ordered least-risk to most-opt-in. Details and scope caveats live in `docs/contributor/security-engineering-core.md`.
+
+**allow-host for MCP (always on)**
+
+- New verb `mcp_network_unapproved` fires when an approved MCP tool is called with a URL arg whose host is not in `approved_hosts`. Verdict is `ask`, never `deny`.
+- `Target` on the intent is passed through a new `RedactURL` helper that strips `user:pass@` userinfo and masks known credential query keys (`token`, `api_key`, `auth`, `access_token`, etc.) before the URL lands in deny messages or ledger entries.
+- Known limitation — documented explicitly: field-split URLs, encoded URLs, and URLs the MCP constructs server-side are not detected. Containment for malicious MCPs remains `sir mcp-proxy`.
+
+**MCP trust posture + explicit approval**
+
+- New global config file `~/.sir/config.json` with `mcp_trust_posture: strict | standard | permissive`. Fresh installs default to `strict`; existing installs (detected via presence of `~/.sir/binary-manifest.json`) stay on `standard` so upgrades do not surprise.
+- Under `strict`, `sir install` writes discovered MCP servers into a new `discovered_mcp_servers` lease field instead of auto-populating `approved_mcp_servers`. Prior approvals are preserved across re-runs; only newly-surfaced servers land in the discovered-pending bucket.
+- New commands `sir mcp approve [<name>... | --all] [--yes]`, `sir mcp revoke <name>...`, and `sir mcp list`. Approvals record a sha256 `command_hash` (empty for commands launched via `npx`/`uvx` or unresolvable via `$PATH` — honest about what we cannot pin). The approve UI is batched: one review screen with provenance (source config path, command, hash) for all pending servers.
+
+**MCP onboarding window**
+
+- New verb `mcp_onboarding`. When an MCP server is within its onboarding window — both `time.Since(ApprovedAt) < mcp_onboarding_window_hours` AND per-session call count `< mcp_onboarding_call_count` — calls that would silently allow are bumped to `ask`.
+- Defaults: 24 hours, 20 calls. Negative values disable; zero and missing resolve to default. Call counter lives in session state and resets per session — a deliberate "re-acquaint on fresh session" semantic.
+- Gate ends when EITHER threshold is crossed. Honest framing: this is friction, not containment. Documented as such in the contributor guide.
+
+**MCP deep verb gating (opt-in)**
+
+- New config flag `mcp_deep_verb_gating` (default `false` in v1). When enabled, MCP tool args are scanned for conventional shell/filesystem field names and re-classified through the native verb pipeline, so a postgres MCP call that takes a shell `command` arg ends up on the `net_external` gate when the command reaches out, instead of silently allowing.
+- Shell-like keys route through `mapShellCommand`; only risky resulting verbs divert. Write-like keys route through the posture/sensitive-path classifiers.
+- Scope discipline: heuristic, field-rename evasion is trivial. Documented as opt-in for v1; telemetry must justify a v2 default flip.
+
+**MCP binary drift detection**
+
+- New verb `mcp_binary_drift`. When an approved MCP tool call fires and the current sha256 of the recorded command path no longer matches the hash stored at approval, the gate returns `ask` with a recovery hint (`sir mcp revoke && sir mcp approve`).
+- mtime is a fast-path: matching mtime means skip the rehash. On mismatch the gate rehashes; same content with different mtime (touch/chmod) allows silently, different content asks. Missing binary at the recorded path also asks.
+- Approvals with empty `command_hash` (npx/uvx/PATH-unresolvable) are exempt from the gate — documented, honest about what we cannot pin.
+- `MCPApproval` now carries `command_mod_time` alongside `command_hash`; both recorded at approve time via a new `pkg/mcp.StatCommand` helper.
+
+**Config.json writes ask**
+
+- `sir install` now appends the absolute path of `~/.sir/config.json` to the lease's `PostureFiles`. Agent-initiated `Write`/`Edit` calls against it route through the posture-file ask gate. A compromised agent cannot silently flip `mcp_trust_posture` from strict to permissive or disable onboarding/drift gates.
+- Manual edits in a terminal outside the agent remain possible — consistent with the threat model.
+
+**Hook + posture fixes (surfaced by live-agent E2E)**
+
+- `isSirHookCommand` previously matched only the current process's binary path; re-running `sir install` from a different absolute path (symlink swap, brew→source migration, dev build at a different location) failed to recognize prior entries and appended a duplicate. Fix: structural match (basename `sir`/`sir.exe` + second token `guard`) catches stale entries from any prior install path. Idempotent re-installs and one-shot dedupe of pre-existing duplicates.
+- `HashSentinelFiles` previously hashed the whole file for every posture file, including agent settings (`~/.claude/settings.json`, `~/.gemini/settings.json`, `~/.codex/hooks.json`). Agents legitimately rewrite those during a session — Gemini in particular updates oauth/session metadata — which tripped `posture_tamper → deny` on the first tool call. Fix: agent settings hash only the managed hooks subtree (matching `HashGlobalHooksFile`'s narrowing). Non-agent posture files (CLAUDE.md, .env) still use whole-file hashing. **Note:** existing sessions baselined under the old algorithm need a one-time `sir doctor` after upgrade to re-baseline.
+- `Load()` in `pkg/config/global.go` previously accepted any string for `mcp_trust_posture`, so a typo (`"strcit"`) silently fell through `cmdInstall`'s switch default and widened MCP trust. Fix: validate via `IsValidPosture` and return an explicit error naming the offending value.
+- `evaluateMCPBinaryDrift` fired before the URL-host gate's policy evaluation, so an MCP call with both a tampered binary and an unapproved URL host surfaced only the drift prompt — the user lost the host-allow remediation hint. Fix: drift now only fires for `VerbExecuteDryRun` intents (matching the onboarding gate), so `VerbMcpNetworkUnapproved` and `VerbMcpUnapproved` retain precedence with their own messages.
+
+**Non-goals / what this does NOT add**
+
+- No per-tool ACLs inside an MCP server. The verb pipeline remains the right layer for per-action decisions.
+- No change to `sir trust <name>` semantics — still the explicit credential-scan bypass for secrets-vault-style MCPs.
+- No claim that verb gating contains a malicious MCP's own network or filesystem I/O. That is `sir mcp-proxy`'s job (OS sandbox via `sandbox-exec` / `unshare --net`).
+
 ## v0.0.5 — 2026-04-14 — approval-friction reduction and MCP recovery fixes
 
 **Approval-friction reduction**

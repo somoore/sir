@@ -61,6 +61,12 @@ func localEvaluateCommandRisk(req *Request) *Response {
 		return &Response{Decision: policy.VerdictAsk, Reason: fmt.Sprintf("npx downloads and runs remote code. Approve to proceed. (%s)", req.Intent.Target)}
 	case policy.VerbMcpUnapproved:
 		return &Response{Decision: policy.VerdictAsk, Reason: fmt.Sprintf("This tool comes from a server sir hasn't seen before (%s). Approve this call once, or add the server to your MCP config and re-run `sir install` to refresh approved MCP servers.", req.Intent.Target)}
+	case policy.VerbMcpNetworkUnapproved:
+		return &Response{Decision: policy.VerdictAsk, Reason: fmt.Sprintf("An MCP tool was called with a URL whose host is not in your approved_hosts list (%s). Approve this call, or run `sir allow-host <host>` to approve the destination. Note: this only sees URLs passed as tool arguments — a malicious MCP can still reach the network on its own.", req.Intent.Target)}
+	case policy.VerbMcpOnboarding:
+		return &Response{Decision: policy.VerdictAsk, Reason: fmt.Sprintf("MCP server %q is within its onboarding window. Approving surfaces early activity; once the session call threshold or wall-clock window is crossed, this gate stops firing. Friction, not a security block.", req.Intent.Target)}
+	case policy.VerbMcpBinaryDrift:
+		return &Response{Decision: policy.VerdictAsk, Reason: fmt.Sprintf("MCP command binary for %q changed since you approved it. Approve once to continue, or run `sir mcp revoke` and re-approve after confirming the new binary is intended.", req.Intent.Target)}
 	case policy.VerbEnvRead:
 		return &Response{Decision: policy.VerdictAsk, Reason: fmt.Sprintf("Environment variables may contain credentials. Approve to proceed. (%s)", req.Intent.Target)}
 	case policy.VerbPersistence:

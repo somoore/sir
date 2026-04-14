@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/somoore/sir/pkg/policy"
 )
@@ -22,6 +23,39 @@ type Sink struct {
 	Pattern string `json:"pattern"`
 	Trust   string `json:"trust"`
 	MinRisk string `json:"min_risk"`
+}
+
+// MCPDiscoveredServer is an MCP server that sir install discovered in an
+// agent config but has not yet been explicitly approved. Populated when the
+// global mcp_trust_posture is "strict". Provenance fields let `sir mcp list`
+// show the user which config file surfaced the server and what binary it
+// points to, so approval decisions can be informed.
+type MCPDiscoveredServer struct {
+	Name       string `json:"name"`
+	SourcePath string `json:"source_path,omitempty"`
+	Command    string `json:"command,omitempty"`
+}
+
+// MCPApproval records the metadata of an explicit approval. CommandHash is
+// recorded at approval time to enable binary-change detection later (the
+// per-call drift gate rehashes and flags mismatch). Empty CommandHash is
+// valid for command-via-PATH servers where we cannot resolve a binary path
+// at approval time — recorded as "" rather than erroring, since many MCP
+// servers are launched via npx/uvx and do not have a stable local binary.
+// Empty hash disables drift detection for that server — documented and
+// honest.
+//
+// CommandModTime is the mtime of the binary at approval time. It is a
+// fast-path for the drift gate: if the current mtime matches, we skip
+// the more expensive rehash. ModTime is NOT authoritative (rsync and
+// similar tools can preserve mtime across replacement), so the hash
+// remains the source of truth.
+type MCPApproval struct {
+	ApprovedAt     time.Time `json:"approved_at"`
+	SourcePath     string    `json:"source_path,omitempty"`
+	Command        string    `json:"command,omitempty"`
+	CommandHash    string    `json:"command_hash,omitempty"`
+	CommandModTime time.Time `json:"command_mod_time,omitempty"`
 }
 
 // Lease is the full lease model. It defines the agent's granted authority.
@@ -44,10 +78,12 @@ type Lease struct {
 	ForbiddenVerbs []policy.Verb `json:"forbidden_verbs"`
 	AskVerbs       []policy.Verb `json:"ask_verbs"`
 
-	ApprovedRemotes    []string `json:"approved_remotes"`
-	ApprovedHosts      []string `json:"approved_hosts"`
-	ApprovedMCPServers []string `json:"approved_mcp_servers"`
-	TrustedMCPServers  []string `json:"trusted_mcp_servers,omitempty"` // servers exempt from credential scanning
+	ApprovedRemotes      []string                   `json:"approved_remotes"`
+	ApprovedHosts        []string                   `json:"approved_hosts"`
+	ApprovedMCPServers   []string                   `json:"approved_mcp_servers"`
+	TrustedMCPServers    []string                   `json:"trusted_mcp_servers,omitempty"`    // servers exempt from credential scanning
+	DiscoveredMCPServers []MCPDiscoveredServer      `json:"discovered_mcp_servers,omitempty"` // strict-posture: awaiting `sir mcp approve`
+	MCPApprovals         map[string]MCPApproval     `json:"mcp_approvals,omitempty"`          // provenance for explicit approvals
 
 	Sinks []Sink `json:"sinks"`
 
@@ -238,4 +274,46 @@ func (l *Lease) IsTrustedMCPServer(serverName string) bool {
 		}
 	}
 	return false
+}
+
+// FindDiscoveredMCPServer returns the discovered-server record with the
+// given name, and a boolean indicating whether it was found. Used by
+// `sir mcp approve` to promote a discovered server to approved.
+func (l *Lease) FindDiscoveredMCPServer(name string) (MCPDiscoveredServer, bool) {
+	for _, s := range l.DiscoveredMCPServers {
+		if s.Name == name {
+			return s, true
+		}
+	}
+	return MCPDiscoveredServer{}, false
+}
+
+// RemoveDiscoveredMCPServer removes a server from DiscoveredMCPServers
+// in place. No-op if the server is not in the list.
+func (l *Lease) RemoveDiscoveredMCPServer(name string) {
+	out := l.DiscoveredMCPServers[:0]
+	for _, s := range l.DiscoveredMCPServers {
+		if s.Name != name {
+			out = append(out, s)
+		}
+	}
+	l.DiscoveredMCPServers = out
+}
+
+// RemoveApprovedMCPServer removes a server from ApprovedMCPServers and
+// MCPApprovals in place. No-op if the server is not present.
+func (l *Lease) RemoveApprovedMCPServer(name string) {
+	out := l.ApprovedMCPServers[:0]
+	for _, s := range l.ApprovedMCPServers {
+		if s != name {
+			out = append(out, s)
+		}
+	}
+	l.ApprovedMCPServers = out
+	if l.MCPApprovals != nil {
+		delete(l.MCPApprovals, name)
+		if len(l.MCPApprovals) == 0 {
+			l.MCPApprovals = nil
+		}
+	}
 }
