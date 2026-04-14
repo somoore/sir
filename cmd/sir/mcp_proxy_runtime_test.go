@@ -141,20 +141,26 @@ func TestRunProxyChild_DrainsStderrBeforeReturn(t *testing.T) {
 	const payload = "PAYLOAD-LINE-THAT-MUST-BE-DRAINED"
 	cmd := exec.Command("/bin/sh", "-c", "printf '%s\\n' '"+payload+"' 1>&2; exit 0")
 	var captured bytes.Buffer
-	cmd.Stderr = &captured
 
-	// Because cmd.Stderr is already set, runProxyChild's StderrPipe() call
-	// will fail and we'll fall through to the direct-stderr path. To force
-	// the pipe path, clear Stderr and capture via a stdout-side stub.
-	cmd.Stderr = nil
 	// Redirect the scanner's output (os.Stderr) to a pipe we can read.
-	origStderr := redirectStderr(t, &captured)
-	defer origStderr()
+	// runProxyChild will install its own cmd.Stderr via StderrPipe() and
+	// the reader goroutine tees into os.Stderr — which is now our pipe.
+	restore := redirectStderr(t, &captured)
 
 	code := runProxyChild(cmd, "")
 	if code != 0 {
+		restore()
 		t.Fatalf("runProxyChild exit = %d, want 0", code)
 	}
+
+	// Explicitly restore BEFORE the assertion. The restore closes the
+	// write end of the pipe, which unblocks the io.Copy inside
+	// redirectStderr; only after that returns is the buffer guaranteed
+	// to contain everything that was written. Asserting before restore
+	// races with the io.Copy goroutine — previously passed on macOS,
+	// failed on Linux CI.
+	restore()
+
 	if !strings.Contains(captured.String(), payload) {
 		t.Fatalf("stderr payload was lost — goroutine did not drain before return.\nGot: %q", captured.String())
 	}
