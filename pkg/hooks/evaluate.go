@@ -126,6 +126,16 @@ func evaluatePayload(payload *HookPayload, l *lease.Lease, state *session.State,
 		return resp, nil
 	}
 
+	if resp, handled := evaluateMCPBinaryDrift(payload, l, state, projectRoot); handled {
+		overlayPendingInjectionWarning(resp, pendingInjectionDetail)
+		return resp, nil
+	}
+
+	if resp, handled := evaluateMCPOnboarding(intent, payload, l, state, projectRoot); handled {
+		overlayPendingInjectionWarning(resp, pendingInjectionDetail)
+		return resp, nil
+	}
+
 	if resp, handled := evaluateElevatedPosture(intent, state); handled {
 		return resp, nil
 	}

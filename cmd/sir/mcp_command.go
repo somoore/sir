@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -36,6 +37,14 @@ func cmdMCP(projectRoot string, args []string) {
 		args = args[1:]
 	}
 
+	// approve/revoke/list accept --project <path> to operate on a lease
+	// outside the current working directory. The flag is stripped from
+	// args before the subcommand sees positional names.
+	args, overriddenRoot := extractProjectFlag(args)
+	if overriddenRoot != "" {
+		projectRoot = overriddenRoot
+	}
+
 	opts := parseMCPCommandOptions(args)
 	if opts.explicitAgent != "" && agent.ForID(agent.AgentID(opts.explicitAgent)) == nil {
 		fatal("unknown agent: %s (supported: %s)", opts.explicitAgent, supportedAgentIDs())
@@ -46,9 +55,47 @@ func cmdMCP(projectRoot string, args []string) {
 		cmdMCPStatus(projectRoot, opts.explicitAgent)
 	case "wrap":
 		cmdMCPWrap(projectRoot, opts.explicitAgent, opts.skipPrompt)
+	case "approve":
+		cmdMCPApprove(projectRoot, args)
+	case "revoke":
+		cmdMCPRevoke(projectRoot, args)
+	case "list":
+		cmdMCPList(projectRoot)
 	default:
-		fatal("usage: sir mcp [status|inventory|wrap] [--agent <id>] [--yes]\n\nExamples:\n  sir mcp\n  sir mcp wrap --yes\n  sir mcp status --agent gemini")
+		fatal("usage: sir mcp [status|inventory|wrap|approve|revoke|list] [--agent <id>] [--yes] [--project <path>]\n\nExamples:\n  sir mcp\n  sir mcp wrap --yes\n  sir mcp status --agent gemini\n  sir mcp approve <name>\n  sir mcp approve --all\n  sir mcp revoke <name>\n  sir mcp list\n  sir mcp list --project /path/to/repo")
 	}
+}
+
+// extractProjectFlag removes `--project <path>` or `--project=<path>` from
+// args and returns the remaining args plus the resolved absolute path.
+// Absent flag returns args unchanged and "". Errors on missing value or
+// bad path resolution.
+func extractProjectFlag(args []string) ([]string, string) {
+	out := make([]string, 0, len(args))
+	var raw string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--project":
+			if i+1 >= len(args) {
+				fatal("--project requires a path argument")
+			}
+			raw = args[i+1]
+			i++
+		case strings.HasPrefix(a, "--project="):
+			raw = strings.TrimPrefix(a, "--project=")
+		default:
+			out = append(out, a)
+		}
+	}
+	if raw == "" {
+		return out, ""
+	}
+	abs, err := filepath.Abs(raw)
+	if err != nil {
+		fatal("resolve --project path %q: %v", raw, err)
+	}
+	return out, abs
 }
 
 func cmdMCPStatus(projectRoot, explicitAgent string) {

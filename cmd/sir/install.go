@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/somoore/sir/pkg/agent"
+	"github.com/somoore/sir/pkg/config"
 	"github.com/somoore/sir/pkg/hooks"
 	"github.com/somoore/sir/pkg/lease"
 	"github.com/somoore/sir/pkg/session"
@@ -49,16 +50,96 @@ func cmdInstall(projectRoot, mode string) {
 		}
 	}
 	mcpServers := approvedMCPServerNames(mcpReport.Servers)
+	posture := resolveMCPTrustPostureForInstall()
+	// Preserve existing approvals across re-runs of `sir install`. In strict
+	// posture, previously-approved servers that are still present in
+	// discovery keep their approval and are NOT moved into
+	// DiscoveredMCPServers; only newly-surfaced servers sit in the
+	// discovered-pending-approval bucket. Managed mode bypasses this (the
+	// policy lease is the trust anchor).
+	existingLease, existingLeaseErr := lease.Load(filepath.Join(session.StateDir(projectRoot), "lease.json"))
+	carryApproved, carryApprovals := map[string]struct{}{}, map[string]lease.MCPApproval{}
+	if existingLeaseErr == nil && policy == nil && posture == config.PostureStrict {
+		for _, s := range existingLease.ApprovedMCPServers {
+			carryApproved[s] = struct{}{}
+		}
+		for k, v := range existingLease.MCPApprovals {
+			carryApprovals[k] = v
+		}
+	}
+
 	if policy != nil && len(mcpServers) > 0 {
 		fmt.Printf("  Managed mode keeps approved_mcp_servers pinned to policy %s; locally discovered MCP servers remain unapproved until the manifest lease is updated.\n",
 			policy.PolicyVersion)
 	} else if len(mcpServers) > 0 {
-		l.ApprovedMCPServers = mcpServers
-		fmt.Printf("  Discovered %d MCP server(s) to auto-approve via approved_mcp_servers: %v\n", len(mcpServers), mcpServers)
+		switch posture {
+		case config.PostureStrict:
+			var carriedApprovedNames []string
+			var newlyDiscovered []lease.MCPDiscoveredServer
+			seen := make(map[string]struct{}, len(mcpReport.Servers))
+			for _, s := range mcpReport.Servers {
+				if _, dup := seen[s.Name]; dup {
+					continue
+				}
+				seen[s.Name] = struct{}{}
+				if _, ok := carryApproved[s.Name]; ok {
+					carriedApprovedNames = append(carriedApprovedNames, s.Name)
+					continue
+				}
+				newlyDiscovered = append(newlyDiscovered, lease.MCPDiscoveredServer{
+					Name:       s.Name,
+					SourcePath: s.SourcePath,
+					Command:    s.Command,
+				})
+			}
+			l.ApprovedMCPServers = carriedApprovedNames
+			if len(carryApprovals) > 0 {
+				l.MCPApprovals = make(map[string]lease.MCPApproval, len(carriedApprovedNames))
+				for _, name := range carriedApprovedNames {
+					if rec, ok := carryApprovals[name]; ok {
+						l.MCPApprovals[name] = rec
+					}
+				}
+			}
+			l.DiscoveredMCPServers = newlyDiscovered
+			switch {
+			case len(newlyDiscovered) == 0 && len(carriedApprovedNames) > 0:
+				fmt.Printf("  Kept %d previously-approved MCP server(s) (strict posture): %v\n", len(carriedApprovedNames), carriedApprovedNames)
+			case len(newlyDiscovered) > 0 && len(carriedApprovedNames) > 0:
+				fmt.Printf("  Kept %d approved, discovered %d new MCP server(s) awaiting `sir mcp approve` (strict): approved=%v discovered=%v\n",
+					len(carriedApprovedNames), len(newlyDiscovered), carriedApprovedNames, mcpDiscoveredNames(newlyDiscovered))
+			default:
+				fmt.Printf("  Discovered %d MCP server(s) (strict posture: use `sir mcp approve <name>` to trust): %v\n", len(newlyDiscovered), mcpDiscoveredNames(newlyDiscovered))
+			}
+		default:
+			l.ApprovedMCPServers = mcpServers
+			fmt.Printf("  Discovered %d MCP server(s) to auto-approve via approved_mcp_servers: %v\n", len(mcpServers), mcpServers)
+		}
 	}
 	mcpRewrites := planMCPProxyRewrites(mcpReport.Servers)
 
 	homeDir := mustHomeDir()
+
+	// The global config file (~/.sir/config.json) carries the user's MCP
+	// trust posture and deep-gating preferences. Agent-initiated writes to
+	// it are security-relevant — a compromised agent should not be able to
+	// silently flip the posture from strict to permissive or disable the
+	// onboarding gate. Route it through the existing posture-file gate by
+	// appending its absolute path to PostureFiles. Manual edits in a
+	// terminal outside the agent are still possible; they are outside sir's
+	// threat model the same way a shell-level `rm -rf` is.
+	if configAbsPath := filepath.Join(homeDir, ".sir", "config.json"); configAbsPath != "" {
+		already := false
+		for _, p := range l.PostureFiles {
+			if p == configAbsPath {
+				already = true
+				break
+			}
+		}
+		if !already {
+			l.PostureFiles = append(l.PostureFiles, configAbsPath)
+		}
+	}
 
 	// Resolve the set of agents to install for. The default path auto-detects
 	// the supported agents already present on the machine; explicit selection
@@ -195,3 +276,48 @@ func cmdInstall(projectRoot, mode string) {
 		}
 	}
 }
+
+// resolveMCPTrustPostureForInstall returns the posture to use for this
+// install. Missing config file on a first install (no binary manifest yet)
+// is upgraded to "strict" and persisted; on an existing install missing
+// config defaults to "standard" so upgrades do not surprise. Parse errors
+// fail closed — the install aborts rather than silently widening trust.
+func resolveMCPTrustPostureForInstall() config.MCPTrustPosture {
+	cfg, present, err := config.Load()
+	if err != nil {
+		fatal("load global config: %v", err)
+	}
+	if present {
+		return cfg.MCPTrustPosture
+	}
+	first, firstErr := config.IsFirstInstall()
+	if firstErr != nil {
+		// Hit only if os.Stat fails for reasons other than ENOENT. Treat
+		// as existing install to avoid mis-tightening on a broken home.
+		return config.PostureStandard
+	}
+	if first {
+		cfg.MCPTrustPosture = config.PostureStrict
+		if saveErr := cfg.Save(); saveErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not persist strict posture: %v\n", saveErr)
+		} else {
+			fmt.Println("  First install detected; mcp_trust_posture = strict (fresh defaults).")
+		}
+		return cfg.MCPTrustPosture
+	}
+	return config.PostureStandard
+}
+
+// mcpDiscoveredNames returns the Name field of each entry. Used for
+// install's summary line.
+func mcpDiscoveredNames(servers []lease.MCPDiscoveredServer) []string {
+	if len(servers) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(servers))
+	for _, s := range servers {
+		out = append(out, s.Name)
+	}
+	return out
+}
+

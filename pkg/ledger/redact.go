@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"encoding/json"
+	"net/url"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -47,6 +48,95 @@ func TruncateToWordBoundary(s string, maxBytes int) string {
 		return s
 	}
 	return trimSegmentToBoundary(s, maxBytes)
+}
+
+// RedactURL returns a copy of s safe to surface in deny messages and ledger
+// entries. Userinfo (user:pass@) is stripped and values of known
+// credential-bearing query parameters are masked. If s does not parse as a
+// URL, the input is returned unchanged except for the known-key scan, so
+// non-URL inputs that happen to contain `?token=` still get masked.
+//
+// Scope note: this is a display redactor, not a general secret scanner.
+// URLs that embed credentials in unconventional places (path segments,
+// custom query keys, fragments) will pass through. Feed results through
+// RedactString for additional sweep if the URL appears in free-form content.
+func RedactURL(s string) string {
+	if s == "" {
+		return ""
+	}
+	u, err := url.Parse(strings.TrimSpace(s))
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return maskQueryStringSecrets(s)
+	}
+	if u.User != nil {
+		u.User = url.User("REDACTED")
+	}
+	if q := u.Query(); len(q) > 0 {
+		changed := false
+		for key, vals := range q {
+			if !isCredentialQueryKey(key) {
+				continue
+			}
+			for i := range vals {
+				if vals[i] != "" {
+					vals[i] = "[REDACTED]"
+				}
+			}
+			q[key] = vals
+			changed = true
+		}
+		if changed {
+			u.RawQuery = q.Encode()
+		}
+	}
+	return u.String()
+}
+
+var credentialQueryKeys = map[string]struct{}{
+	"token":        {},
+	"access_token": {}, // #nosec G101
+	"api_key":      {}, // #nosec G101
+	"apikey":       {}, // #nosec G101
+	"auth":         {},
+	"authorization": {},
+	"key":          {},
+	"secret":       {},
+	"password":     {},
+	"passwd":       {},
+	"session":      {},
+	"sig":          {},
+	"signature":    {},
+}
+
+func isCredentialQueryKey(k string) bool {
+	_, ok := credentialQueryKeys[strings.ToLower(k)]
+	return ok
+}
+
+// maskQueryStringSecrets is a best-effort fallback for strings that do not
+// parse as URLs but still contain key=value pairs. Scoped narrow by design.
+func maskQueryStringSecrets(s string) string {
+	if !strings.Contains(s, "=") {
+		return s
+	}
+	parts := strings.Split(s, "&")
+	changed := false
+	for i, p := range parts {
+		eq := strings.IndexByte(p, '=')
+		if eq <= 0 {
+			continue
+		}
+		key := strings.TrimLeft(p[:eq], "?")
+		if !isCredentialQueryKey(key) {
+			continue
+		}
+		parts[i] = p[:eq+1] + "[REDACTED]"
+		changed = true
+	}
+	if !changed {
+		return s
+	}
+	return strings.Join(parts, "&")
 }
 
 // RedactString applies the shared credential pattern table to a string value.
