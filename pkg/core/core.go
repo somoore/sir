@@ -87,7 +87,7 @@ func Evaluate(req *Request) (*Response, error) {
 	if err := verifyMisterCoreOnce(path); err != nil {
 		return &Response{
 			Decision: policy.VerdictDeny,
-			Reason:   fmt.Sprintf("sir: mister-core binary integrity check failed: %v — run 'sir verify' or re-run install.sh", err),
+			Reason:   fmt.Sprintf("sir: mister-core binary integrity check failed: %v — run 'sir verify' or reinstall sir to refresh ~/.sir/binary-manifest.json", err),
 		}, nil
 	}
 

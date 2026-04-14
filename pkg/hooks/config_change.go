@@ -74,9 +74,12 @@ func EvaluateConfigChange(projectRoot string, ag agent.Agent) error {
 				return nil
 			}
 
-			l, err := loadLifecycleLease(projectRoot, "config-change")
+			l, leaseMeta, err := loadLeaseWithMetadata(projectRoot)
 			if err != nil {
-				return err
+				return fmt.Errorf("config-change: load lease: %w", err)
+			}
+			if err := syncSessionLeaseHashAfterSirRefresh(state, leaseMeta); err != nil {
+				return fmt.Errorf("config-change: sync refreshed lease hash into session: %w", err)
 			}
 
 			// Verify posture integrity

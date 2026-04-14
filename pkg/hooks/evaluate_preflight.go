@@ -54,7 +54,7 @@ func evaluateTaintedMCPServer(payload *HookPayload, state *session.State) (*Hook
 		return nil, false
 	}
 	serverName := extractMCPServerName(payload.ToolName)
-	if !state.IsMCPServerTainted(serverName) || state.Posture != policy.PostureStateCritical {
+	if !state.IsMCPServerTainted(serverName) || state.IsTaintedMCPServerAcknowledged(serverName) {
 		return nil, false
 	}
 	if err := state.Save(); err != nil {
@@ -66,8 +66,8 @@ func evaluateTaintedMCPServer(payload *HookPayload, state *session.State) (*Hook
 	}, true
 }
 
-// Approved MCP calls still need a gate when the session is secret or when the
-// payload points at a file already carrying secret lineage.
+// Approved MCP calls still need a gate when the payload points at a file
+// already carrying secret lineage.
 func evaluateTaintedMCPInput(payload *HookPayload, l *lease.Lease, state *session.State, projectRoot string) (*HookResponse, bool) {
 	if !isToolMCP(payload.ToolName) {
 		return nil, false
@@ -75,13 +75,6 @@ func evaluateTaintedMCPInput(payload *HookPayload, l *lease.Lease, state *sessio
 	serverName := extractMCPServerName(payload.ToolName)
 	if !isApprovedMCPServer(serverName, l) {
 		return nil, false
-	}
-	if state.SecretSession {
-		saveSessionBestEffort(state)
-		return &HookResponse{
-			Decision: policy.VerdictAsk,
-			Reason:   "MCP calls require approval while the session carries credentials.",
-		}, true
 	}
 
 	targets := derivedSecretLineageTargets(payload.ToolInput, projectRoot, state)
@@ -165,12 +158,10 @@ func evaluateElevatedPosture(intent Intent, state *session.State) (*HookResponse
 	if state.Posture != policy.PostureStateElevated && state.Posture != policy.PostureStateCritical {
 		return nil, false
 	}
-	if intent.Verb != policy.VerbStageWrite && intent.Verb != policy.VerbExecuteDryRun {
-		return nil, false
-	}
-	saveSessionBestEffort(state)
-	return &HookResponse{
-		Decision: policy.VerdictAsk,
-		Reason:   FormatAskPostureElevated(string(intent.Verb), intent.Target, string(state.Posture), state.MCPInjectionSignals),
-	}, true
+	// Elevated posture stays visible in status/compact output and still gates
+	// delegation plus repeated calls back into the tainted MCP server, but it
+	// should not degrade ordinary local Bash/Edit traffic into endless prompts.
+	_ = intent
+	_ = state
+	return nil, false
 }

@@ -129,7 +129,7 @@ func FormatAskSensitive(target string, scope string) string {
 		b.WriteString(" — persists until you run `sir unlock`.\n\n")
 	}
 	b.WriteString("  If something gets stuck after approval:\n")
-	b.WriteString("       sir unlock                (lift the secret-session lock)\n")
+	b.WriteString("       sir unlock                (clear transient runtime restrictions)\n")
 	b.WriteString("       sir allow-host <host>     (permanently allow a specific host)\n\n")
 	b.WriteString("  Details: ")
 	b.WriteString(colorize(colorDim, "sir explain --last"))

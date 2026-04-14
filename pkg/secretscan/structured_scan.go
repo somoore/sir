@@ -34,6 +34,28 @@ var outputPatterns = []Pattern{
 const scanWindowBytes = 100 * 1024
 const largeOutputThreshold = 200 * 1024
 
+var highEntropyContextHints = []string{
+	"token",
+	"secret",
+	"password",
+	"passwd",
+	"credential",
+	"authorization",
+	"bearer",
+	"auth",
+	"api_key",
+	"api key",
+	"access_key",
+	"access key",
+	"client_secret",
+	"client secret",
+	"private_key",
+	"private key",
+	"session_token",
+	"session token",
+	"cookie",
+}
+
 // ScanOutputForCredentials scans tool output text for structured secret patterns.
 // Returns a deduplicated list of matches (one per pattern name). Never stores or
 // logs actual credential values.
@@ -79,9 +101,10 @@ func ScanOutputForCredentials(output string) []CredentialMatch {
 		})
 	}
 
+	lowerScanText := strings.ToLower(scanText)
 	if _, dup := seen["high_entropy_token"]; !dup {
 		for _, tok := range strings.Fields(scanText) {
-			if IsHighEntropyString(tok) {
+			if IsHighEntropyString(tok) && hasHighEntropyCredentialContext(lowerScanText, tok) {
 				matches = append(matches, CredentialMatch{
 					PatternName: "high_entropy_token",
 					Confidence:  "medium",
@@ -92,6 +115,33 @@ func ScanOutputForCredentials(output string) []CredentialMatch {
 	}
 
 	return matches
+}
+
+func hasHighEntropyCredentialContext(lowerScanText, token string) bool {
+	lowerToken := strings.ToLower(token)
+	searchFrom := 0
+	for {
+		idx := strings.Index(lowerScanText[searchFrom:], lowerToken)
+		if idx < 0 {
+			return false
+		}
+		idx += searchFrom
+		start := idx - 80
+		if start < 0 {
+			start = 0
+		}
+		end := idx + len(lowerToken) + 80
+		if end > len(lowerScanText) {
+			end = len(lowerScanText)
+		}
+		window := lowerScanText[start:end]
+		for _, hint := range highEntropyContextHints {
+			if strings.Contains(window, hint) {
+				return true
+			}
+		}
+		searchFrom = idx + len(lowerToken)
+	}
 }
 
 // RedactStructuredText replaces structured credential matches with

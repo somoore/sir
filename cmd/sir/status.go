@@ -137,9 +137,21 @@ func renderStatusSnapshot(snapshot statusSnapshot) {
 		} else if snapshot.state.SecretSession {
 			sinceFmt := snapshot.state.SecretSessionSince.Format("15:04:05")
 			fmt.Printf("  %-9s ACTIVE — external egress blocked since %s\n", "secrets", sinceFmt)
-			fmt.Printf("             Run 'sir unlock' to restore network access.\n")
+			fmt.Printf("             Run 'sir unlock' to clear transient runtime restrictions.\n")
 		} else {
 			fmt.Printf("  %-9s none (network access unrestricted)\n", "secrets")
+		}
+		if snapshot.state.Posture != "" && snapshot.state.Posture != "normal" {
+			fmt.Printf("  %-9s %s\n", "posture", snapshot.state.Posture)
+		}
+		if len(snapshot.state.TaintedMCPServers) > 0 {
+			fmt.Printf("  %-9s %s\n", "mcp taint", strings.Join(snapshot.state.TaintedMCPServers, ", "))
+		}
+		if snapshot.state.PendingInjectionAlert {
+			fmt.Printf("  %-9s active\n", "alert")
+		}
+		if !snapshot.state.SecretSession && snapshot.state.HasTransientRestrictions() {
+			fmt.Printf("  %-9s Run 'sir unlock' to clear transient runtime restrictions.\n", "recovery")
 		}
 	} else {
 		fmt.Printf("  %-9s none\n", "session")
@@ -170,8 +182,8 @@ func renderStatusSnapshot(snapshot statusSnapshot) {
 
 	fmt.Println(statusSeparator)
 	fmt.Println("  Run 'sir why' to see the last decision.")
-	if snapshot.sessionErr == nil && snapshot.state.SecretSession {
-		fmt.Println("  Run 'sir unlock' to lift the secret-session lock.")
+	if snapshot.sessionErr == nil && snapshot.state.HasTransientRestrictions() {
+		fmt.Println("  Run 'sir unlock' to clear transient runtime restrictions.")
 	}
 }
 

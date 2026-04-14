@@ -70,7 +70,7 @@ func cmdMCPStatus(projectRoot, explicitAgent string) {
 		if explicitAgent != "" {
 			fmt.Println("  No MCP servers found in that agent-scoped config surface.")
 		} else {
-			fmt.Println("  No MCP servers found in .mcp.json, ~/.claude/settings.json, or ~/.gemini/settings.json.")
+			fmt.Println("  No MCP servers found in .mcp.json, ~/.claude/settings.json, ~/.claude.json, ~/.claude/.mcp.json, or ~/.gemini/settings.json.")
 		}
 		return
 	}

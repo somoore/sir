@@ -118,6 +118,8 @@ func TestPublicContractParity(t *testing.T) {
 		requireContainsFile(t, root, "Makefile", "bench:", "Makefile bench target")
 		requireContainsFile(t, root, "Makefile", "bench-check:", "Makefile bench-check target")
 		requireContainsFile(t, root, "Makefile", "verify-release:", "Makefile verify-release target")
+		requireContainsFile(t, root, "Makefile", "binary-manifest.json", "Makefile install manifest write")
+		requireContainsFile(t, root, "Makefile", ".manifest-expected", "Makefile install manifest sentinel")
 		requireFileExists(t, root, ".github/workflows/actionlint.yml")
 		requireFileExists(t, root, ".github/workflows/post-merge.yml")
 		requireFileExists(t, root, ".github/workflows/triage-backlog.yml")

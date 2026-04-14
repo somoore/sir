@@ -7,6 +7,7 @@ REPLAY_ARGS  ?=
 BENCH_ARGS   ?= -run '^$$' -bench . -benchmem
 RELEASE_TAG  ?=
 RELEASE_DIR  ?= ./verify-release
+INSTALL_DIR  ?= $(HOME)/.local/bin
 
 # Build flags for reproducibility and security
 CARGO_FLAGS  = --release --locked
@@ -61,10 +62,26 @@ contributor-check:
 	bash scripts/check_review_context.sh
 
 install: build
-	mkdir -p ~/.local/bin
-	cp target/release/mister-core ~/.local/bin/
-	cp bin/sir ~/.local/bin/
-	chmod 750 ~/.local/bin/mister-core ~/.local/bin/sir
+	mkdir -p "$(INSTALL_DIR)"
+	cp target/release/mister-core "$(INSTALL_DIR)/"
+	cp bin/sir "$(INSTALL_DIR)/"
+	chmod 750 "$(INSTALL_DIR)/mister-core" "$(INSTALL_DIR)/sir"
+	@VERSION=$$(sed -n 's/^const Version = "\(.*\)"/\1/p' cmd/sir/version.go); \
+	if command -v sha256sum >/dev/null 2>&1; then \
+		SIR_SHA=$$(sha256sum "$(INSTALL_DIR)/sir" | awk '{print $$1}'); \
+		MC_SHA=$$(sha256sum "$(INSTALL_DIR)/mister-core" | awk '{print $$1}'); \
+	else \
+		SIR_SHA=$$(shasum -a 256 "$(INSTALL_DIR)/sir" | awk '{print $$1}'); \
+		MC_SHA=$$(shasum -a 256 "$(INSTALL_DIR)/mister-core" | awk '{print $$1}'); \
+	fi; \
+	MANIFEST_DIR="$$HOME/.sir"; \
+	mkdir -p "$$MANIFEST_DIR"; \
+	printf '{\n  "version": "%s",\n  "installed_at": "%s",\n  "install_method": "source",\n  "sir_sha256": "%s",\n  "mister_core_sha256": "%s",\n  "sir_path": "%s",\n  "mister_core_path": "%s"\n}\n' \
+		"$$VERSION" "$$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$$SIR_SHA" "$$MC_SHA" "$(INSTALL_DIR)/sir" "$(INSTALL_DIR)/mister-core" \
+		> "$$MANIFEST_DIR/binary-manifest.json"; \
+	chmod 600 "$$MANIFEST_DIR/binary-manifest.json"; \
+	touch "$$MANIFEST_DIR/.manifest-expected"; \
+	chmod 600 "$$MANIFEST_DIR/.manifest-expected"
 
 clean:
 	cargo clean

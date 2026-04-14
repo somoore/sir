@@ -269,9 +269,9 @@ func TestFormatPostureRestore_WhatWhyHow(t *testing.T) {
 func TestFormatSessionCleared_WhatHow(t *testing.T) {
 	msg := FormatSessionCleared()
 	// WHAT
-	assertContains(t, "FormatSessionCleared", msg, "secret-session lock lifted")
+	assertContains(t, "FormatSessionCleared", msg, "transient runtime restrictions cleared")
 	// Consequence
-	assertContains(t, "FormatSessionCleared", msg, "network access is restored")
+	assertContains(t, "FormatSessionCleared", msg, "External network access", "prompt-driving session taint")
 	// Warning
 	assertContains(t, "FormatSessionCleared", msg, "model memory", "fresh agent session")
 	// Details hint

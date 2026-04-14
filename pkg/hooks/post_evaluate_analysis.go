@@ -89,6 +89,9 @@ func applyPostEvaluateMCPOutputAnalysis(payload *PostHookPayload, state *session
 
 	signals := ScanMCPResponseForInjection(payload.ToolOutput)
 	if len(signals) == 0 {
+		if state.IsMCPServerTainted(serverName) {
+			state.AcknowledgeTaintedMCPServer(serverName)
+		}
 		return appended
 	}
 
