@@ -18,6 +18,12 @@ type ProxySpec struct {
 	Wrapped      bool
 	SirCommand   string
 	AllowedHosts []string
+	// NoSandbox is true when the sir mcp-proxy invocation carries
+	// --no-sandbox in the leading-flags region, which disables sandbox-exec
+	// (macOS) / unshare (Linux) and drops to credential-scanning-only mode.
+	// Tracked here so inventory and runtime assessment don't report the
+	// server as hardened when it was explicitly opted out.
+	NoSandbox    bool
 	InnerCommand string
 	InnerArgs    []string
 	Malformed    bool
@@ -64,6 +70,12 @@ const (
 	RuntimeLinuxNamespaceIsolated    RuntimeMode = "linux_namespace_isolated"
 	RuntimeLinuxAllowHostUnsupported RuntimeMode = "linux_allow_host_unsupported"
 	RuntimeMonitoringOnly            RuntimeMode = "monitoring_only"
+	// RuntimeNoSandboxMonitoringOnly means the proxy wrapper exists but the
+	// operator opted out with --no-sandbox; sir only scans credentials and
+	// forwards signals. Reported separately from RuntimeMonitoringOnly so
+	// operators can tell an intentional opt-out from an environment that
+	// lacks sandbox support.
+	RuntimeNoSandboxMonitoringOnly RuntimeMode = "no_sandbox_monitoring_only"
 )
 
 // RuntimeAssessment is the operator-facing posture summary for an MCP entry.

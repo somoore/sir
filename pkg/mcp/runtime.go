@@ -39,6 +39,21 @@ func AssessProxyRuntime(proxy ProxySpec, goos string, hasUnshare bool) RuntimeAs
 		}
 	}
 
+	// --no-sandbox is an explicit opt-out from OS-level isolation. Must be
+	// checked before the per-OS branches: otherwise we'd report the server as
+	// hardened (`darwin_localhost_only`, `linux_namespace_isolated`) when
+	// runtime actually falls through to monitored mode. See
+	// cmd/sir/mcp_proxy.go runMCPProxyDarwin: opts.noSandbox short-circuits to
+	// runMCPProxyMonitored before sandbox-exec is invoked.
+	if proxy.NoSandbox {
+		return RuntimeAssessment{
+			Mode:           RuntimeNoSandboxMonitoringOnly,
+			Summary:        "proxied (--no-sandbox: monitoring only; OS sandbox disabled)",
+			Warning:        "sir mcp-proxy was invoked with --no-sandbox, so sandbox-exec / unshare isolation is disabled for this server; only credential scanning and signal forwarding remain",
+			NeedsAttention: true,
+		}
+	}
+
 	switch goos {
 	case "darwin":
 		if len(proxy.AllowedHosts) > 0 {
