@@ -26,6 +26,9 @@ pub enum Verb {
     DeletePosture,        // rm/ln targeting posture files
     Delegate,             // Agent tool delegation
     McpUnapproved,        // MCP server not in approved list
+    McpNetworkUnapproved, // Approved MCP called with URL arg whose host is not in ApprovedHosts
+    McpOnboarding,        // Approved MCP within onboarding window (recent approval, low call count)
+    McpBinaryDrift,       // Approved MCP command binary changed since approval (hash mismatch)
     McpCredentialLeak,    // credential-looking MCP arguments to untrusted server
     McpInjectionDetected, // hostile MCP output detected post-call
     CredentialDetected,   // structured credential detected in tool output
@@ -34,7 +37,7 @@ pub enum Verb {
 }
 
 impl Verb {
-    pub const ALL: [Verb; 25] = [
+    pub const ALL: [Verb; 28] = [
         Verb::NetLocal,
         Verb::NetAllowlisted,
         Verb::NetExternal,
@@ -55,6 +58,9 @@ impl Verb {
         Verb::DeletePosture,
         Verb::Delegate,
         Verb::McpUnapproved,
+        Verb::McpNetworkUnapproved,
+        Verb::McpOnboarding,
+        Verb::McpBinaryDrift,
         Verb::McpCredentialLeak,
         Verb::McpInjectionDetected,
         Verb::CredentialDetected,
@@ -85,6 +91,9 @@ impl Verb {
             "delete_posture" => Some(Verb::DeletePosture),
             "delegate" => Some(Verb::Delegate),
             "mcp_unapproved" => Some(Verb::McpUnapproved),
+            "mcp_network_unapproved" => Some(Verb::McpNetworkUnapproved),
+            "mcp_onboarding" => Some(Verb::McpOnboarding),
+            "mcp_binary_drift" => Some(Verb::McpBinaryDrift),
             "mcp_credential_leak" => Some(Verb::McpCredentialLeak),
             "mcp_injection_detected" => Some(Verb::McpInjectionDetected),
             "credential_detected" => Some(Verb::CredentialDetected),
@@ -116,6 +125,9 @@ impl Verb {
             Verb::DeletePosture => "delete_posture",
             Verb::Delegate => "delegate",
             Verb::McpUnapproved => "mcp_unapproved",
+            Verb::McpNetworkUnapproved => "mcp_network_unapproved",
+            Verb::McpOnboarding => "mcp_onboarding",
+            Verb::McpBinaryDrift => "mcp_binary_drift",
             Verb::McpCredentialLeak => "mcp_credential_leak",
             Verb::McpInjectionDetected => "mcp_injection_detected",
             Verb::CredentialDetected => "credential_detected",

@@ -207,3 +207,33 @@ func TestRedactMapValues_SensitiveKeyName(t *testing.T) {
 		t.Fatalf("expected sensitive key-name redaction, got %#v", got["password"])
 	}
 }
+
+func TestRedactURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		check   string
+		leakage string
+	}{
+		{"empty", "", "", ""},
+		{"plain url unchanged", "https://example.com/path?q=1", "https://example.com/path?q=1", ""},
+		{"userinfo masked", "https://user:hunter2@example.com/x", "REDACTED@example.com", "hunter2"},
+		{"user only masked", "https://alice@example.com/x", "REDACTED@example.com", "alice"},
+		{"token query param masked", "https://api.example.com/v1?token=abc123&id=42", "token=%5BREDACTED%5D", "abc123"},
+		{"api_key case-insensitive masked", "https://api.example.com/?API_KEY=deadbeef", "%5BREDACTED%5D", "deadbeef"},
+		{"multiple credential params", "https://x.example/?token=aaa&access_token=bbb&safe=ok", "safe=ok", "aaa"},
+		{"unknown param untouched", "https://example.com/?user_id=42", "user_id=42", ""},
+		{"non-url containing token= masked", "token=supersecret&other=ok", "token=[REDACTED]", "supersecret"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := RedactURL(tc.input)
+			if tc.check != "" && !strings.Contains(got, tc.check) {
+				t.Fatalf("RedactURL(%q) = %q, missing %q", tc.input, got, tc.check)
+			}
+			if tc.leakage != "" && strings.Contains(got, tc.leakage) {
+				t.Fatalf("RedactURL(%q) = %q, leaked %q", tc.input, got, tc.leakage)
+			}
+		})
+	}
+}

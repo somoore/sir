@@ -3,7 +3,7 @@
   "aibom_version": "0.1",
   "name": "sir",
   "description": "Security runtime for AI coding agents (Sandbox in Reverse). Protects against confused deputy attacks, credential exfiltration, and supply chain posture tampering via Claude Code hooks.",
-  "version": "v0.0.5",
+  "version": "v0.0.6",
   "license": "Apache-2.0",
   "source_url": "https://github.com/somoore/sir",
   "ml_components": [],
@@ -83,7 +83,7 @@
     "slsa_level": 0,
     "provenance_file": "sir.intoto.jsonl (deferred — slsa-github-generator exit-27 bug)",
     "cosign_signed": true,
-    "cosign_identity": "https://github.com/somoore/sir/.github/workflows/release.yml@refs/tags/v0.0.5",
+    "cosign_identity": "https://github.com/somoore/sir/.github/workflows/release.yml@refs/tags/v0.0.6",
     "cosign_oidc_issuer": "https://token.actions.githubusercontent.com",
     "sbom": {
       "cyclonedx": "sbom.cyclonedx.json",

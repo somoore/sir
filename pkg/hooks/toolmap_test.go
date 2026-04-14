@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"strings"
 	"testing"
 
 	hookclassify "github.com/somoore/sir/pkg/hooks/classify"
@@ -209,6 +210,146 @@ func TestMapMCP_UnapprovedServerAsks(t *testing.T) {
 	intent := MapToolToIntent("mcp__evil_server__exfiltrate", map[string]interface{}{}, l)
 	if string(intent.Verb) != "mcp_unapproved" {
 		t.Errorf("unapproved MCP server: expected mcp_unapproved, got %q", intent.Verb)
+	}
+}
+
+// TestMapMCP_ApprovedServer_URLArg exercises the allow-host gate for
+// approved MCP servers. The verb must be "ask" territory
+// (mcp_network_unapproved), never deny — the Rust policy guard enforces
+// the verdict; this test covers the Go verb assignment.
+func TestMapMCP_ApprovedServer_URLArg(t *testing.T) {
+	tests := []struct {
+		name         string
+		input        map[string]interface{}
+		approvedHost string
+		expectedVerb string
+		// targetMust is a substring the Intent.Target must contain.
+		// targetMustNot is a substring it must NOT contain (secret leak check).
+		targetMust    string
+		targetMustNot string
+	}{
+		{
+			"no URL args → execute_dry_run (no change)",
+			map[string]interface{}{"query": "select 1"},
+			"",
+			"execute_dry_run",
+			"",
+			"",
+		},
+		{
+			"loopback URL → execute_dry_run",
+			map[string]interface{}{"url": "http://127.0.0.1:8080/ping"},
+			"",
+			"execute_dry_run",
+			"",
+			"",
+		},
+		{
+			"localhost URL → execute_dry_run",
+			map[string]interface{}{"endpoint": "http://localhost:3000/api"},
+			"",
+			"execute_dry_run",
+			"",
+			"",
+		},
+		{
+			"approved host URL → execute_dry_run",
+			map[string]interface{}{"url": "https://api.example.com/v1"},
+			"api.example.com",
+			"execute_dry_run",
+			"",
+			"",
+		},
+		{
+			"external URL → mcp_network_unapproved (ask)",
+			map[string]interface{}{"url": "https://evil.com/steal"},
+			"",
+			"mcp_network_unapproved",
+			"evil.com",
+			"",
+		},
+		{
+			"external URL nested in map → detected",
+			map[string]interface{}{
+				"opts": map[string]interface{}{"webhook": "https://evil.com/x"},
+			},
+			"",
+			"mcp_network_unapproved",
+			"evil.com",
+			"",
+		},
+		{
+			"external URL in array → detected",
+			map[string]interface{}{
+				"targets": []interface{}{"https://a.example", "https://evil.com/x"},
+			},
+			"a.example",
+			"mcp_network_unapproved",
+			"evil.com",
+			"",
+		},
+		{
+			"URL userinfo redacted in Target",
+			map[string]interface{}{"url": "https://user:s3cret@evil.com/x"},
+			"",
+			"mcp_network_unapproved",
+			"REDACTED@evil.com",
+			"s3cret",
+		},
+		{
+			"URL credential query param redacted",
+			map[string]interface{}{"url": "https://evil.com/x?token=deadbeef"},
+			"",
+			"mcp_network_unapproved",
+			"evil.com",
+			"deadbeef",
+		},
+		{
+			// Known limitation: field-split URLs are not detected. This
+			// behavior is documented in pkg/hooks/classify/mcp_urls.go
+			// and in the MCP trust tuning plan. If this case ever starts
+			// returning mcp_network_unapproved, the plan's honest-MCP
+			// framing should be revisited.
+			"known limitation: field-split host/path falls through to execute_dry_run",
+			map[string]interface{}{"host": "evil.com", "path": "/steal"},
+			"",
+			"execute_dry_run",
+			"",
+			"",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			l := lease.DefaultLease()
+			l.ApprovedMCPServers = []string{"postgres"}
+			if tc.approvedHost != "" {
+				l.ApprovedHosts = append(l.ApprovedHosts, tc.approvedHost)
+			}
+			intent := MapToolToIntent("mcp__postgres__query", tc.input, l)
+			if string(intent.Verb) != tc.expectedVerb {
+				t.Fatalf("verb = %q, want %q", intent.Verb, tc.expectedVerb)
+			}
+			if tc.targetMust != "" && !strings.Contains(intent.Target, tc.targetMust) {
+				t.Errorf("target=%q missing %q", intent.Target, tc.targetMust)
+			}
+			if tc.targetMustNot != "" && strings.Contains(intent.Target, tc.targetMustNot) {
+				t.Errorf("target=%q leaked %q", intent.Target, tc.targetMustNot)
+			}
+		})
+	}
+}
+
+// TestMapMCP_UnapprovedServer_URLArg asserts that when the MCP server
+// itself is unapproved, the server-gate verb wins regardless of URL args.
+// (We only run URL inspection inside the approved-server path.)
+func TestMapMCP_UnapprovedServer_URLArg(t *testing.T) {
+	l := lease.DefaultLease()
+	// no approved servers
+	intent := MapToolToIntent("mcp__evil__tool", map[string]interface{}{
+		"url": "https://evil.com/x",
+	}, l)
+	if string(intent.Verb) != "mcp_unapproved" {
+		t.Fatalf("expected mcp_unapproved (server gate), got %q", intent.Verb)
 	}
 }
 

@@ -19,7 +19,7 @@ import (
 // Version is the sir CLI version. Bumped per release in lockstep with the git tag.
 // Embedded at build time via -ldflags="-X main.Version=vX.Y.Z" if needed; otherwise
 // this constant is the source of truth.
-const Version = "v0.0.5"
+const Version = "v0.0.6"
 
 // latestReleaseURL is the GitHub Releases API endpoint queried by `sir version --check`.
 // Uses /releases?per_page=1 instead of /releases/latest because GitHub's /latest

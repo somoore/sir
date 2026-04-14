@@ -84,6 +84,9 @@ pub(super) fn sink_trust_for_verb(verb: Verb) -> TrustLevel {
         | Verb::CredentialDetected
         | Verb::ElicitationHarvest => TrustLevel::Trusted,
         Verb::McpUnapproved => TrustLevel::Untrusted,
+        Verb::McpNetworkUnapproved => TrustLevel::Untrusted,
+        Verb::McpOnboarding => TrustLevel::Trusted,
+        Verb::McpBinaryDrift => TrustLevel::Untrusted,
         Verb::McpCredentialLeak | Verb::McpInjectionDetected => TrustLevel::Untrusted,
         Verb::SirSelf => TrustLevel::Trusted,
     }

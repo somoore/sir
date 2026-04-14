@@ -54,6 +54,14 @@ func newTestEnv(t *testing.T) *testEnv {
 		t.Fatal(err)
 	}
 
+	// Seed a binary manifest so `sir install` treats this HOME as an existing
+	// install and does not tighten mcp_trust_posture to strict. Tests that
+	// want to exercise the first-install path can delete this file.
+	manifestPath := filepath.Join(home, ".sir", "binary-manifest.json")
+	if err := os.WriteFile(manifestPath, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
 	leasePath := filepath.Join(stateDir, "lease.json")
 
 	return &testEnv{

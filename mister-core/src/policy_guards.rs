@@ -91,6 +91,21 @@ pub(super) fn evaluate_preapproval_guards(req: &EvalRequest, verb: Verb) -> Opti
             "MCP server not in approved list — unknown server.",
             RiskTier::R3,
         )),
+        Verb::McpNetworkUnapproved => Some(policy_result(
+            Verdict::Ask,
+            "MCP tool argument URL host not in approved hosts — gate honest MCPs only; malicious MCPs may ignore args.",
+            RiskTier::R3,
+        )),
+        Verb::McpOnboarding => Some(policy_result(
+            Verdict::Ask,
+            "MCP server is within its onboarding window (recently approved or low call count). Friction, not containment.",
+            RiskTier::R3,
+        )),
+        Verb::McpBinaryDrift => Some(policy_result(
+            Verdict::Ask,
+            "MCP command binary changed since approval — hash mismatch. Re-approve after verifying the change.",
+            RiskTier::R3,
+        )),
         _ => None,
     }
 }

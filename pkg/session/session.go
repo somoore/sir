@@ -62,6 +62,34 @@ type State struct {
 	// Artifact lineage fields
 	ActiveEvidence     []LineageEvidence            `json:"active_evidence,omitempty"`
 	DerivedFileLineage map[string]DerivedPathRecord `json:"derived_file_lineage,omitempty"`
+
+	// MCPOnboardingCalls counts calls to each approved MCP server in the
+	// current session. Used by the onboarding gate to end the
+	// speed-bump window after a configurable number of calls. Session-scoped
+	// (resets per session) so the friction reappears when a new agent
+	// session starts — a deliberate UX choice to re-acquaint the user with
+	// unfamiliar tools, NOT a security control.
+	MCPOnboardingCalls map[string]int `json:"mcp_onboarding_calls,omitempty"`
+}
+
+// BumpMCPOnboardingCall increments and returns the session call count for
+// the named MCP server. Lock-safe; callers must hold the session handle.
+func (s *State) BumpMCPOnboardingCall(serverName string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.MCPOnboardingCalls == nil {
+		s.MCPOnboardingCalls = make(map[string]int, 4)
+	}
+	s.MCPOnboardingCalls[serverName]++
+	return s.MCPOnboardingCalls[serverName]
+}
+
+// MCPOnboardingCallCount returns the session call count for the named
+// server without incrementing. Lock-safe.
+func (s *State) MCPOnboardingCallCount(serverName string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.MCPOnboardingCalls[serverName]
 }
 
 // PendingInstall tracks an in-progress install command for sentinel pre/post comparison.
