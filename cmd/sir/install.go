@@ -241,6 +241,31 @@ func cmdInstall(projectRoot, mode string) {
 		fatal("session start: %v", err)
 	}
 
+	// Refresh posture baselines across every other project whose session
+	// pre-dates this install. Install rewrote the host-agent hook files, so
+	// any session started earlier is carrying a stale baseline and would
+	// trip the tamper detector on its next Bash call. `sir install` is
+	// user-initiated from a terminal and out-of-band of any agent session,
+	// so the hook changes are legitimate by definition. Callers that want
+	// the old behavior (leave other sessions wedged, force a per-project
+	// `sir doctor`) can pass --no-rebaseline.
+	if !opts.noRebaseline {
+		summary, err := hooks.RebaselineAllProjects()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: cross-project rebaseline failed: %v\n", err)
+			fmt.Fprintln(os.Stderr, "  Run `sir doctor` in each active agent session to recover manually.")
+		} else if summary.Refreshed > 0 || summary.DenyAllCleared > 0 || len(summary.Skipped) > 0 {
+			fmt.Printf("  Refreshed baselines across %d project session(s); cleared deny-all on %d.\n",
+				summary.Refreshed, summary.DenyAllCleared)
+			for _, s := range summary.Skipped {
+				fmt.Fprintf(os.Stderr, "  Skipped %s: %s\n", s.Project, s.Reason)
+			}
+		}
+	} else {
+		fmt.Println("  --no-rebaseline set: existing project sessions keep their old posture baselines.")
+		fmt.Println("  Run `sir doctor` inside any active agent session to clear deny-all manually.")
+	}
+
 	fmt.Printf("sir installed successfully (%s mode)\n", l.Mode)
 	if policy != nil {
 		fmt.Printf("  Managed policy: %s (%s)\n", policy.PolicyVersion, policy.ManagedPolicySourcePath())

@@ -81,7 +81,7 @@ func main() {
 		cmdMCP(projectRoot, os.Args[2:])
 	case "mcp-proxy":
 		if len(os.Args) < 3 {
-			fatal("usage: sir mcp-proxy [--allow-host host]... <command> [args...]\n\nWraps an MCP server with OS-level hardening.\nmacOS: localhost-only egress by default; any --allow-host broadens to general outbound access.\nLinux: network namespace isolation when unshare is available; --allow-host is not host-granular.")
+			fatal("usage: sir mcp-proxy [--allow-host host]... [--no-sandbox] <command> [args...]\n\nWraps an MCP server with OS-level hardening.\nmacOS: localhost-only egress by default; any --allow-host broadens to general outbound access.\nLinux: network namespace isolation when unshare is available; --allow-host is not host-granular.\n\n--no-sandbox skips sandbox-exec entirely and runs in monitored mode (stderr\ncredential scanning + signal forwarding still active, no network/filesystem\nisolation). Use for MCP servers that XPC to a macOS .app and can't run under\nsandbox-exec. Helpers under /Applications/*.app/Contents/MacOS/ are\nauto-detected and degrade without this flag; --no-sandbox is the opt-out\nfor helpers at non-standard paths. A ledger entry is written so the\ndegradation is auditable in `sir log`.")
 		}
 		cmdMCPProxy(os.Args[2:])
 	case "trace":
@@ -109,8 +109,15 @@ A security runtime for AI coding agents (Claude Code, Codex, and Gemini CLI).
 Invisible during normal work. Loud at the exits.
 
 Get started
-  sir install [--agent <id>]     Auto-detect installed agents and set up hooks
+  sir install [--agent <id>] [--no-rebaseline]
+                                 Auto-detect installed agents and set up hooks
                                  (--agent: claude, codex, gemini)
+                                 --no-rebaseline skips refreshing posture
+                                 baselines in other project sessions. Default
+                                 behavior refreshes them so sessions that were
+                                 alive across the upgrade do not wedge into
+                                 deny-all. Use only if you need a per-project
+                                 'sir doctor' pass for auditing.
   sir status                     Show whether sir is active and what it sees
   sir support --json             Emit the public support manifests as JSON
   sir demo                       Run a 60-second tour of what sir blocks

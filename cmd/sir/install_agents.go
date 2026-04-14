@@ -47,6 +47,7 @@ func parseInstallAgentFlag(args []string) string {
 type installOptions struct {
 	explicitAgent string
 	skipPreview   bool
+	noRebaseline  bool
 }
 
 func parseInstallOptions(args []string) installOptions {
@@ -56,6 +57,8 @@ func parseInstallOptions(args []string) installOptions {
 		switch {
 		case a == "--yes":
 			opts.skipPreview = true
+		case a == "--no-rebaseline":
+			opts.noRebaseline = true
 		case a == "--agent" && i+1 < len(args):
 			opts.explicitAgent = args[i+1]
 			i++
