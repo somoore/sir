@@ -30,6 +30,7 @@ const (
 	mcpRuntimeLinuxNamespaceIsolated    = mcppkg.RuntimeLinuxNamespaceIsolated
 	mcpRuntimeLinuxAllowHostUnsupported = mcppkg.RuntimeLinuxAllowHostUnsupported
 	mcpRuntimeMonitoringOnly            = mcppkg.RuntimeMonitoringOnly
+	mcpRuntimeNoSandboxMonitoringOnly   = mcppkg.RuntimeNoSandboxMonitoringOnly
 )
 
 func discoverMCPServers(projectRoot string) []string {
@@ -78,8 +79,16 @@ func classifyMCPProxy(command string, args []string) mcpProxySpec {
 	return mcppkg.ClassifyProxy(command, args)
 }
 
+// parseMCPProxyInvocation is a thin wrapper that preserves the legacy 4-value
+// return shape used by cmd/sir. cmd/sir strips --no-sandbox separately via
+// stripLeadingNoSandboxFlag before this is called (that strip is the security
+// boundary — see the comment on stripLeadingNoSandboxFlag), so the noSandbox
+// bool from pkg/mcp.ParseProxyInvocation is always false here and is dropped.
+// Inventory-side classifiers call ClassifyProxy / ParseProxyInvocation directly
+// and do see the flag.
 func parseMCPProxyInvocation(args []string) ([]string, string, []string, bool) {
-	return mcppkg.ParseProxyInvocation(args)
+	allowedHosts, _, command, commandArgs, malformed := mcppkg.ParseProxyInvocation(args)
+	return allowedHosts, command, commandArgs, malformed
 }
 
 func assessMCPProxyRuntime(proxy mcpProxySpec, goos string, hasUnshare bool) mcpRuntimeAssessment {

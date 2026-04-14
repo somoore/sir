@@ -1022,16 +1022,26 @@ func TestTerminateLinuxContainmentReapingHelper(t *testing.T) {
 
 func waitForPIDFile(path string, timeout time.Duration) (int, error) {
 	deadline := time.Now().Add(timeout)
+	var lastParseErr error
 	for {
 		raw, err := os.ReadFile(path)
 		if err == nil {
-			pid, convErr := strconv.Atoi(strings.TrimSpace(string(raw)))
-			if convErr != nil {
-				return 0, fmt.Errorf("parse pid: %w", convErr)
+			trimmed := strings.TrimSpace(string(raw))
+			if trimmed != "" {
+				pid, convErr := strconv.Atoi(trimmed)
+				if convErr == nil {
+					return pid, nil
+				}
+				// Remember the last parse error but keep retrying: the writer
+				// uses os.WriteFile, which truncates then writes, so a reader
+				// can observe an empty or partial file mid-write.
+				lastParseErr = convErr
 			}
-			return pid, nil
 		}
 		if time.Now().After(deadline) {
+			if lastParseErr != nil {
+				return 0, fmt.Errorf("parse pid: %w", lastParseErr)
+			}
 			return 0, fmt.Errorf("timed out waiting for pid file")
 		}
 		time.Sleep(10 * time.Millisecond)

@@ -333,8 +333,30 @@ INSTALL_DIR="$HOME/.local/bin"
 mkdir -p "$INSTALL_DIR"
 
 info "Installing binaries to $INSTALL_DIR..."
-cp target/release/mister-core "$INSTALL_DIR/"
-cp bin/sir "$INSTALL_DIR/"
+# Atomic replace via cp-to-tmp + mv. A plain `cp src dst` in-place keeps the
+# existing inode and overwrites its bytes; on macOS Tahoe 26.5 beta the
+# kernel caches the prior binary's code signature against that inode, and
+# launching the new bytes fails integrity verification — exit 137 with no
+# output. `mv -f` atomically replaces the directory entry with a fresh
+# inode, so the kernel re-verifies the signature from scratch.
+#
+# A trap cleans up any `.sirtmp.*` residue if we fail between mktemp and mv
+# (disk full, signal during cp, etc.) so we don't leave zombie files under
+# ~/.local/bin. The trap runs on EXIT, so normal completion (all mvs done)
+# finds nothing to clean.
+_SIRTMP_GLOB="${INSTALL_DIR}/*.sirtmp.*"
+# shellcheck disable=SC2064  # single-quoted $_SIRTMP_GLOB would defer expansion past unset
+trap "rm -f ${_SIRTMP_GLOB}" EXIT
+_CORE_TMP="$(mktemp "${INSTALL_DIR}/mister-core.sirtmp.XXXXXX")"
+cp target/release/mister-core "$_CORE_TMP"
+chmod 0750 "$_CORE_TMP"
+mv -f "$_CORE_TMP" "$INSTALL_DIR/mister-core"
+_SIR_TMP="$(mktemp "${INSTALL_DIR}/sir.sirtmp.XXXXXX")"
+cp bin/sir "$_SIR_TMP"
+chmod 0750 "$_SIR_TMP"
+mv -f "$_SIR_TMP" "$INSTALL_DIR/sir"
+trap - EXIT
+unset _CORE_TMP _SIR_TMP _SIRTMP_GLOB
 # Owner-executable only (0750): prevents other users on the machine from
 # reading or executing the binaries. Group access preserved for admin use.
 chmod 750 "$INSTALL_DIR/mister-core"
@@ -423,7 +445,7 @@ fi
 
 if [ "$RUN_SIR_INSTALL" -eq 1 ]; then
     info "Setting up sir hooks for detected agent surfaces..."
-    "$INSTALL_DIR/sir" install --yes "${INSTALL_ARGS[@]}"
+    "$INSTALL_DIR/sir" install --yes ${INSTALL_ARGS[@]+"${INSTALL_ARGS[@]}"}
 
     if [ -f "$HOME/.claude/settings.json" ] && grep -q "sir.*guard" "$HOME/.claude/settings.json" 2>/dev/null; then
         INSTALLED_AGENTS+=("claude")
