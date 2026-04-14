@@ -1,0 +1,5 @@
+vendor/
+out/
+exfil.log
+sink.log
+*.pid
