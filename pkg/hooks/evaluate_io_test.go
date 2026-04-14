@@ -104,6 +104,82 @@ func TestLoadLease_ManagedModeDoesNotAutoApproveDiscoveredMCPServers(t *testing.
 	}
 }
 
+func TestLoadLease_AutoApprovesDiscoveredClaudeLegacyMCPServers(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	projectRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpHome, ".claude.json"), []byte(`{"mcpServers":{"HopperMCPServer":{"command":"node","args":["hopper.js"]}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stateDir := session.StateDir(projectRoot)
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := lease.DefaultLease().Save(filepath.Join(stateDir, "lease.json")); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := loadLease(projectRoot)
+	if err != nil {
+		t.Fatalf("loadLease: %v", err)
+	}
+	if !containsStringValue(loaded.ApprovedMCPServers, "HopperMCPServer") {
+		t.Fatalf("expected Claude legacy MCP server to be auto-approved, got %v", loaded.ApprovedMCPServers)
+	}
+}
+
+func TestLoadOrCreateSession_AdoptsSirRefreshedLeaseHash(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	projectRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpHome, ".claude.json"), []byte(`{"mcpServers":{"HopperMCPServer":{"command":"node","args":["hopper.js"]}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stateDir := session.StateDir(projectRoot)
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := lease.DefaultLease().Save(filepath.Join(stateDir, "lease.json")); err != nil {
+		t.Fatal(err)
+	}
+	oldHash, err := hashLeaseFile(projectRoot)
+	if err != nil {
+		t.Fatalf("hash original lease: %v", err)
+	}
+
+	state := session.NewState(projectRoot)
+	state.LeaseHash = oldHash
+	if err := state.Save(); err != nil {
+		t.Fatalf("save session: %v", err)
+	}
+
+	loaded, meta, err := loadLeaseWithMetadata(projectRoot)
+	if err != nil {
+		t.Fatalf("loadLeaseWithMetadata: %v", err)
+	}
+	if !meta.refreshedBySir {
+		t.Fatalf("expected sir-driven lease refresh, got %+v", meta)
+	}
+
+	reloadedState, err := loadOrCreateSession(projectRoot, loaded, meta)
+	if err != nil {
+		t.Fatalf("loadOrCreateSession: %v", err)
+	}
+	if reloadedState.LeaseHash != meta.currentHash {
+		t.Fatalf("state lease hash = %q, want %q", reloadedState.LeaseHash, meta.currentHash)
+	}
+	if !VerifyLeaseIntegrity(projectRoot, reloadedState) {
+		t.Fatal("expected refreshed session lease hash to pass integrity verification")
+	}
+	if !session.VerifySessionIntegrity(reloadedState) {
+		t.Fatal("expected refreshed session to remain internally consistent")
+	}
+}
+
 func writeManagedPolicyManifest(t *testing.T, dir string, l *lease.Lease) string {
 	t.Helper()
 

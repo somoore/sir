@@ -19,9 +19,9 @@ func FormatPostureRestore(file string) string {
 // FormatSessionCleared formats the session clear confirmation.
 func FormatSessionCleared() string {
 	var b strings.Builder
-	b.WriteString(colorize(colorGreen, "sir: secret-session lock lifted"))
+	b.WriteString(colorize(colorGreen, "sir: transient runtime restrictions cleared"))
 	b.WriteString("\n\n")
-	b.WriteString("  External network access is restored for this session.\n\n")
+	b.WriteString("  External network access and prompt-driving session taint are cleared.\n\n")
 	b.WriteString("  Note: Secrets read earlier are still in model memory. If you need\n")
 	b.WriteString("        full isolation from those reads, start a fresh agent session.\n\n")
 	b.WriteString("  Details: ")

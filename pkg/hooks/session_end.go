@@ -39,9 +39,12 @@ func runSessionTerminalPostureSweep(projectRoot string, ag agent.Agent) error {
 		if st == nil {
 			return nil // no session — nothing to compare against
 		}
-		l, err := loadLifecycleLease(projectRoot, "session-terminal posture sweep")
+		l, leaseMeta, err := loadLeaseWithMetadata(projectRoot)
 		if err != nil {
-			return err
+			return fmt.Errorf("session-terminal posture sweep: load lease: %w", err)
+		}
+		if err := syncSessionLeaseHashAfterSirRefresh(st, leaseMeta); err != nil {
+			return fmt.Errorf("session-terminal posture sweep: sync refreshed lease hash into session: %w", err)
 		}
 
 		drift := hookslifecycle.DetectPostureIntegrityDrift(projectRoot, st, l)

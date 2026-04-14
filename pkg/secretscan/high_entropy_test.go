@@ -151,7 +151,7 @@ func TestScanOutputForCredentials_NoFalsePositiveOnREADME(t *testing.T) {
 // key=value or URL syntax.
 func TestScanOutputForCredentials_StillCatchesRealTokens(t *testing.T) {
 	realToken := "Zx8Qm1Nf7Vb4Lc2Kt9Pw5Hs3Jd6Rg8Ty0Ua1We2Ri3Po4Nk7"
-	output := "some normal text\n" + realToken + "\nmore text"
+	output := "session token: " + realToken + "\nmore text"
 	matches := ScanOutputForCredentials(output)
 	if !hasPattern(matches, "high_entropy_token") {
 		t.Fatalf("real high-entropy token was not detected — patterns: %+v", matches)
@@ -180,5 +180,23 @@ func TestScanOutputForCredentials_NoFalsePositiveOnFilePathHeavyOutput(t *testin
 		if m.PatternName == "high_entropy_token" {
 			t.Fatalf("file path output triggered high_entropy_token false positive — this should not taint the session")
 		}
+	}
+}
+
+func TestScanOutputForCredentials_NoFalsePositiveOnTechnicalVerificationExcerpt(t *testing.T) {
+	output := `11 +> **Static-analysis verification (2026-04-14, macOS 26.5 Beta 25F5042g):** The primary claims in this finding — the daemon's availability-update pathway, its notification-handling pattern, and its XPC surface — were cross-checked against the GenerativeExperiencesRuntime dylib in Hopper. Confirmed as literal strings or selectors: AvailabilityManager.updateAll(), AvailabilityManager.updateAvailabilityCache(), updateAvailabilityCache: calling CloudSubscriptionFeatures.Availability.current(), No change to availability or eligibility, not sending notification, Received Darwin notification: %{public}s, and the Swift-bridged selectors updateOptInStatusWithOptedIn:with:, setOverride:forKey:with:, updateAllWithUpdateReason:with:. Log lines carrying the [com.apple.CloudSubscriptionFeatures:optIn] subsystem prefix (the DSID-keyed lookup log emissions) are attributed to the CloudSubscriptionFeatures framework; they are not literals in GenerativeExperiencesRuntime and will be verified separately when CSF is loaded.`
+	matches := ScanOutputForCredentials(output)
+	for _, m := range matches {
+		if m.PatternName == "high_entropy_token" {
+			t.Fatalf("technical verification excerpt triggered high_entropy_token false positive — this should not taint the session")
+		}
+	}
+}
+
+func TestScanOutputForCredentials_BareHighEntropyTokenWithoutContextDoesNotTrigger(t *testing.T) {
+	output := "analysis artifact:\nZx8Qm1Nf7Vb4Lc2Kt9Pw5Hs3Jd6Rg8Ty0Ua1We2Ri3Po4Nk7\n"
+	matches := ScanOutputForCredentials(output)
+	if hasPattern(matches, "high_entropy_token") {
+		t.Fatalf("bare high-entropy token without credential context should not trigger — patterns: %+v", matches)
 	}
 }

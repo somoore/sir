@@ -55,9 +55,10 @@ func main() {
 	case "demo":
 		cmdDemo()
 	case "unlock", "reset":
-		// `sir unlock` is the canonical name — it lifts the secret-session
-		// lock and restores external network access. `sir reset` remains as
-		// a compatibility alias for older docs and muscle memory. The old
+		// `sir unlock` is the canonical name — it clears developer-recoverable
+		// runtime restriction state (including secret-session locks and
+		// prompt-driving transient taint). `sir reset` remains as a
+		// compatibility alias for older docs and muscle memory. The old
 		// `sir clear session` form has been removed: it was undocumented,
 		// footgun-shaped, and duplicated `sir unlock` exactly.
 		cmdClearSession(projectRoot)
@@ -116,7 +117,7 @@ Get started
 
 When sir asks or blocks
   sir why                        Explain the most recent decision
-  sir unlock                     Lift the secret-session lock, restore network access
+  sir unlock                     Clear transient runtime restrictions, restore operability
   sir allow-host <hostname>      Permanently allow requests to a host
   sir allow-remote <name>        Permanently allow pushes to a git remote
   sir trust <mcp-server>         Trust an MCP server with credentials (rare)

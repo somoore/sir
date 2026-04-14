@@ -445,11 +445,11 @@ func TestEvaluatePayload_ApprovedMCPGatePreservesSessionIntegrity(t *testing.T) 
 	if err != nil {
 		t.Fatalf("evaluate approved MCP gate: %v", err)
 	}
-	if got := string(firstResp.Decision); got != "ask" {
-		t.Fatalf("approved MCP gate decision = %q, want ask (reason=%s)", got, firstResp.Reason)
+	if got := string(firstResp.Decision); got != "allow" {
+		t.Fatalf("approved MCP call without secret lineage = %q, want allow (reason=%s)", got, firstResp.Reason)
 	}
 	if !session.VerifySessionIntegrity(state) {
-		t.Fatal("approved MCP gate should persist the updated session hash")
+		t.Fatal("approved MCP allow path should persist the updated session hash")
 	}
 
 	secondResp, err := ExportEvaluatePayload(&HookPayload{

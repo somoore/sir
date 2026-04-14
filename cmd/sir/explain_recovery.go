@@ -18,14 +18,14 @@ func recoveryOptions(e ledger.Entry) []string {
 	case "net_external":
 		host := extractHost(e.Target)
 		opts = append(opts, fmt.Sprintf("sir allow-host %-20s — Permanently allow this host (do this once, sticks forever)", host))
-		opts = append(opts, "sir unlock                       — Lift the secret-session lock (only if a secret read locked you)")
+		opts = append(opts, "sir unlock                       — Clear transient runtime restrictions (only if session taint caused this)")
 
 	case "push_remote":
 		opts = append(opts, "sir allow-remote <name>          — Permanently allow this remote")
-		opts = append(opts, "sir unlock                       — Lift the secret-session lock (only if a secret read locked you)")
+		opts = append(opts, "sir unlock                       — Clear transient runtime restrictions (only if session taint caused this)")
 
 	case "push_origin":
-		opts = append(opts, "sir unlock                       — Lift the secret-session lock, then retry")
+		opts = append(opts, "sir unlock                       — Clear transient runtime restrictions, then retry")
 
 	case "dns_lookup":
 		opts = append(opts, "DNS lookups are unconditionally blocked — they can encode data in hostnames.")
@@ -72,7 +72,7 @@ func recoveryOptions(e ledger.Entry) []string {
 		opts = append(opts, "                                   (rare — only for servers designed to receive tokens)")
 
 	case "delegate":
-		opts = append(opts, "sir unlock                       — Lift the secret-session lock, then retry delegation")
+		opts = append(opts, "sir unlock                       — Clear transient runtime restrictions, then retry delegation")
 
 	default:
 		if e.Decision == "deny" {

@@ -45,17 +45,15 @@ func PostEvaluate(projectRoot string, ag agent.Agent) error {
 		return fmt.Errorf("unmarshal payload: %w", err)
 	}
 
-	// Load lease
-	l, err := loadLease(projectRoot)
-	if err != nil {
-		return fmt.Errorf("load lease: %w", err)
-	}
-
 	// Load session and evaluate under file lock.
 	// The lock covers Load→PostEvaluate(mutate)→Save so concurrent hooks
 	// cannot corrupt session state.
 	var resp *HookResponse
 	lockErr := session.WithSessionLock(projectRoot, func() error {
+		l, leaseMeta, err := loadLeaseWithMetadata(projectRoot)
+		if err != nil {
+			return fmt.Errorf("load lease: %w", err)
+		}
 		state, err := loadOptionalLifecycleSession(projectRoot, "post-evaluate")
 		if err != nil {
 			return err
@@ -63,6 +61,9 @@ func PostEvaluate(projectRoot string, ag agent.Agent) error {
 		if state == nil {
 			// No session — nothing to check.
 			return nil
+		}
+		if err := syncSessionLeaseHashAfterSirRefresh(state, leaseMeta); err != nil {
+			return fmt.Errorf("sync refreshed lease hash into session: %w", err)
 		}
 		var pErr error
 		resp, pErr = postEvaluatePayload(payload, l, state, projectRoot, ag)

@@ -56,12 +56,30 @@ func (s *State) RaisePosture(level policy.PostureState) {
 func (s *State) AddTaintedMCPServer(serverName string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.clearAcknowledgedTaintedMCPServerLocked(serverName)
 	for _, existing := range s.TaintedMCPServers {
 		if existing == serverName {
 			return
 		}
 	}
 	s.TaintedMCPServers = append(s.TaintedMCPServers, serverName)
+}
+
+// AcknowledgeTaintedMCPServer records that the developer already chose to keep
+// using a tainted MCP server in this session. Subsequent calls can proceed
+// until fresh suspicious output from that server clears the acknowledgement.
+func (s *State) AcknowledgeTaintedMCPServer(serverName string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.isMCPServerTaintedLocked(serverName) {
+		return
+	}
+	for _, existing := range s.AcknowledgedTaintedMCPServers {
+		if existing == serverName {
+			return
+		}
+	}
+	s.AcknowledgedTaintedMCPServers = append(s.AcknowledgedTaintedMCPServers, serverName)
 }
 
 // AddMCPInjectionSignal records an injection signal pattern name.
@@ -80,12 +98,42 @@ func (s *State) AddMCPInjectionSignal(pattern string) {
 func (s *State) IsMCPServerTainted(serverName string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return s.isMCPServerTaintedLocked(serverName)
+}
+
+// IsTaintedMCPServerAcknowledged returns true if a tainted server already had
+// its one-time developer acknowledgement in this session.
+func (s *State) IsTaintedMCPServerAcknowledged(serverName string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, acknowledged := range s.AcknowledgedTaintedMCPServers {
+		if acknowledged == serverName {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *State) isMCPServerTaintedLocked(serverName string) bool {
 	for _, t := range s.TaintedMCPServers {
 		if t == serverName {
 			return true
 		}
 	}
 	return false
+}
+
+func (s *State) clearAcknowledgedTaintedMCPServerLocked(serverName string) {
+	if len(s.AcknowledgedTaintedMCPServers) == 0 {
+		return
+	}
+	filtered := s.AcknowledgedTaintedMCPServers[:0]
+	for _, acknowledged := range s.AcknowledgedTaintedMCPServers {
+		if acknowledged != serverName {
+			filtered = append(filtered, acknowledged)
+		}
+	}
+	s.AcknowledgedTaintedMCPServers = filtered
 }
 
 // SetPendingInjectionAlert flags that an injection was detected in PostToolUse.
@@ -102,6 +150,35 @@ func (s *State) ClearPendingInjectionAlert() {
 	defer s.mu.Unlock()
 	s.PendingInjectionAlert = false
 	s.InjectionAlertDetail = ""
+}
+
+// HasTransientRestrictions reports whether the session currently carries any
+// developer-clearable runtime restriction state.
+func (s *State) HasTransientRestrictions() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.SecretSession ||
+		s.RecentlyReadUntrusted ||
+		s.PendingInjectionAlert ||
+		s.Posture == policy.PostureStateElevated ||
+		s.Posture == policy.PostureStateCritical ||
+		len(s.TaintedMCPServers) > 0 ||
+		len(s.MCPInjectionSignals) > 0
+}
+
+// ClearTransientRestrictions clears developer-recoverable runtime restriction
+// state while preserving durable integrity signals like DenyAll and lineage.
+func (s *State) ClearTransientRestrictions() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.clearSecretSessionLocked()
+	s.RecentlyReadUntrusted = false
+	s.PendingInjectionAlert = false
+	s.InjectionAlertDetail = ""
+	s.Posture = policy.PostureStateNormal
+	s.TaintedMCPServers = nil
+	s.AcknowledgedTaintedMCPServers = nil
+	s.MCPInjectionSignals = nil
 }
 
 // postureOrd returns a numeric ordering for posture levels.

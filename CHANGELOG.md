@@ -7,6 +7,25 @@ sir is experimental. Each release listed here is a snapshot of the "sandbox in r
 
 This file tracks shipped releases only. Historical planning notes, launch copy, and exploratory findings live in git history rather than on the production repo surface.
 
+## v0.0.5 — 2026-04-14 — approval-friction reduction and MCP recovery fixes
+
+**Approval-friction reduction**
+
+- Fixed the Hopper / MCP prompt storm path that could ask on nearly every tool call after a single false-positive taint event. Elevated posture no longer degrades ordinary local `Bash`, `Edit`, `Write`, or task-management work into repeated approval prompts.
+- Approved MCP calls are no longer gated just because the session once carried credentials. Approved MCP calls are still gated when they touch inputs that already carry secret lineage.
+- Tainted MCP servers now ask once per taint event instead of on every call forever. After the developer continues once and the next response from that server is clean, follow-on calls stop prompting until a fresh suspicious response appears.
+
+**False-positive fixes**
+
+- Refined MCP injection detection so Hopper-style string-search output containing phrases like `override safety` no longer counts as prompt injection unless it appears in directive context.
+- Refined `high_entropy_token` detection so bare high-entropy technical text does not mark the session secret unless nearby credential-like context is present.
+
+**Recovery and operator UX**
+
+- `sir unlock` now clears the full transient runtime restriction set, not just `secret_session`. This clears stale prompt-driving MCP taint and elevated posture as well as secret-session locks.
+- `sir status` now surfaces transient taint state directly, including elevated posture, tainted MCP servers, and pending alert state, so approval behavior is visible instead of opaque.
+- `sir doctor`, recovery hints, and session-cleared messaging now describe transient runtime restrictions accurately instead of referring only to the old secret-session lock model.
+
 ## v0.0.4 — 2026-04-13 — subagent false-positive fix and MCP lease refresh
 
 **Subagent false-positive fix**

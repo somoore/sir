@@ -811,6 +811,22 @@ func TestTaintedMCPInputGatesOnGenericPathLikeKeys(t *testing.T) {
 	}
 }
 
+func TestTaintedMCPInput_DoesNotGateApprovedMCPCallsOnlyBecauseSessionIsSecret(t *testing.T) {
+	projectRoot := t.TempDir()
+	l := lease.DefaultLease()
+	l.ApprovedMCPServers = []string{"jira"}
+	state := session.NewState(projectRoot)
+	state.MarkSecretSession()
+
+	resp, handled := evaluateTaintedMCPInput(&HookPayload{
+		ToolName:  "mcp__jira__search_issues",
+		ToolInput: map[string]interface{}{"query": "status:open"},
+	}, l, state, projectRoot)
+	if handled || resp != nil {
+		t.Fatalf("evaluateTaintedMCPInput(secret session, no lineage) = %+v, handled=%v, want no gate", resp, handled)
+	}
+}
+
 func TestDerivedSecretLineageTargetsIgnoreNestedMetadataUnderArtifactAndAttachmentObjects(t *testing.T) {
 	projectRoot := t.TempDir()
 	state := session.NewState(projectRoot)

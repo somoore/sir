@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"github.com/somoore/sir/pkg/agent"
+	"github.com/somoore/sir/pkg/core"
 	"github.com/somoore/sir/pkg/lease"
+	"github.com/somoore/sir/pkg/policy"
 	"github.com/somoore/sir/pkg/posture"
 	"github.com/somoore/sir/pkg/session"
 	"github.com/somoore/sir/pkg/telemetry"
@@ -106,6 +108,49 @@ func TestCmdStatus_SecretSession(t *testing.T) {
 
 	// Should not panic and should display secret status
 	cmdStatus(env.projectRoot)
+}
+
+func TestCmdStatus_ShowsTransientTaintState(t *testing.T) {
+	env := newTestEnv(t)
+
+	settings := map[string]interface{}{
+		"hooks": map[string]interface{}{
+			"PreToolUse": []interface{}{
+				map[string]interface{}{
+					"matcher": ".*",
+					"hooks": []interface{}{
+						map[string]interface{}{
+							"type":    "command",
+							"command": "sir guard evaluate",
+						},
+					},
+				},
+			},
+		},
+	}
+	env.writeSettingsJSON(settings)
+
+	env.writeDefaultLease()
+	state := session.NewState(env.projectRoot)
+	state.RaisePosture(policy.PostureStateElevated)
+	state.AddTaintedMCPServer("HopperMCPServer")
+	state.SetPendingInjectionAlert("pending injection alert")
+	env.writeSession(state)
+
+	out := captureStdout(t, func() {
+		cmdStatus(env.projectRoot)
+	})
+
+	for _, want := range []string{
+		"posture   elevated",
+		"mcp taint HopperMCPServer",
+		"alert     active",
+		"Run 'sir unlock' to clear transient runtime restrictions.",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("status output missing %q:\n%s", want, out)
+		}
+	}
 }
 
 func TestCmdStatus_DenyAll(t *testing.T) {
@@ -398,8 +443,8 @@ func TestCmdDoctor_SecretSessionDoesNotReportAllClear(t *testing.T) {
 	})
 
 	for _, want := range []string{
-		"Session state:      locked by secret-session",
-		"Run 'sir unlock' to lift the secret-session lock.",
+		"Session state:      transient restrictions active (secret session)",
+		"Run 'sir unlock' to clear transient runtime restrictions.",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("doctor output missing %q:\n%s", want, out)
@@ -410,6 +455,68 @@ func TestCmdDoctor_SecretSessionDoesNotReportAllClear(t *testing.T) {
 	}
 	if strings.Contains(out, "sir is operational. Type 'claude' to resume.") {
 		t.Fatalf("doctor output should not claim the session is fully operational while locked:\n%s", out)
+	}
+}
+
+func TestCmdDoctor_BinaryMismatchDoesNotReportAllClear(t *testing.T) {
+	env := newTestEnv(t)
+	env.writeDefaultLease()
+	env.writeSession(session.NewState(env.projectRoot))
+
+	binDir := filepath.Join(env.home, ".local", "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sirPath := filepath.Join(binDir, "sir")
+	misterCorePath := filepath.Join(binDir, "mister-core")
+	if err := os.WriteFile(sirPath, []byte("sir-on-disk"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(misterCorePath, []byte("mister-core-on-disk"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	manifestDir := filepath.Join(env.home, ".sir")
+	if err := os.MkdirAll(manifestDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	manifestData, err := json.MarshalIndent(core.BinaryManifest{
+		Version:          "v0.0.5",
+		InstalledAt:      "2026-04-13T23:05:23Z",
+		InstallMethod:    "source",
+		SirSHA256:        strings.Repeat("a", 64),
+		MisterCoreSHA256: strings.Repeat("b", 64),
+		SirPath:          sirPath,
+		MisterCorePath:   misterCorePath,
+	}, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(manifestDir, "binary-manifest.json"), manifestData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(manifestDir, ".manifest-expected"), []byte{}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureStdout(t, func() {
+		cmdDoctor(env.projectRoot)
+	})
+
+	for _, want := range []string{
+		"WARNING: binary integrity check failed:",
+		"Binary integrity:   mismatch",
+		"Run 'sir verify' for full hash details, then reinstall sir to refresh ~/.sir/binary-manifest.json.",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("doctor output missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "sir doctor — all clear") {
+		t.Fatalf("doctor output should not report all clear on binary mismatch:\n%s", out)
+	}
+	if strings.Contains(out, "sir is operational. Type 'claude' to resume.") {
+		t.Fatalf("doctor output should not claim operability on binary mismatch:\n%s", out)
 	}
 }
 

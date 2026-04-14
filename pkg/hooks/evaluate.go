@@ -44,11 +44,12 @@ func Evaluate(projectRoot string, ag agent.Agent) error {
 	var l *lease.Lease
 	var resp *HookResponse
 	lockErr := session.WithSessionLock(projectRoot, func() error {
-		l, err = loadLease(projectRoot)
+		var leaseMeta leaseLoadMetadata
+		l, leaseMeta, err = loadLeaseWithMetadata(projectRoot)
 		if err != nil {
 			return fmt.Errorf("load lease: %w", err)
 		}
-		state, sErr := loadOrCreateSession(projectRoot, l)
+		state, sErr := loadOrCreateSession(projectRoot, l, leaseMeta)
 		if sErr != nil {
 			return fmt.Errorf("load session: %w", sErr)
 		}

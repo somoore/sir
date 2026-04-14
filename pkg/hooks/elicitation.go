@@ -80,11 +80,11 @@ func EvaluateElicitation(projectRoot string, ag agent.Agent) error {
 	// same project, so a raw Load→mutate→Save would race. Missing
 	// sessions are bootstrapped; unreadable state is a hard failure.
 	lockErr := session.WithSessionLock(projectRoot, func() error {
-		l, err := loadLease(projectRoot)
+		l, leaseMeta, err := loadLeaseWithMetadata(projectRoot)
 		if err != nil {
 			return fmt.Errorf("load lease: %w", err)
 		}
-		state, err := loadOrCreateSession(projectRoot, l)
+		state, err := loadOrCreateSession(projectRoot, l, leaseMeta)
 		if err != nil {
 			return fmt.Errorf("load session: %w", err)
 		}

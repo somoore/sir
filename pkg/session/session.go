@@ -44,9 +44,10 @@ type State struct {
 	SessionHash           string               `json:"session_hash,omitempty"`     // SHA-256 of session.json content (excludes this field)
 
 	// MCP defense fields
-	Posture             policy.PostureState `json:"posture,omitempty"`               // "normal", "elevated", "critical"
-	MCPInjectionSignals []string            `json:"mcp_injection_signals,omitempty"` // pattern names from injection scans
-	TaintedMCPServers   []string            `json:"tainted_mcp_servers,omitempty"`   // MCP servers that returned injection signals
+	Posture                       policy.PostureState `json:"posture,omitempty"`                          // "normal", "elevated", "critical"
+	MCPInjectionSignals           []string            `json:"mcp_injection_signals,omitempty"`            // pattern names from injection scans
+	TaintedMCPServers             []string            `json:"tainted_mcp_servers,omitempty"`              // MCP servers that returned injection signals
+	AcknowledgedTaintedMCPServers []string            `json:"acknowledged_tainted_mcp_servers,omitempty"` // tainted servers the developer already chose to continue using this session
 
 	// PendingInjectionAlert is set by PostToolUse when MCP response injection is
 	// detected. The next PreToolUse checks this flag and returns "ask" before
