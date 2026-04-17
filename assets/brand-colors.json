@@ -1,77 +1,124 @@
 {
   "meta": {
-    "design_system": "Paper MCP (paper.design)",
-    "reference": "https://www.typeui.sh/design-skills/paper",
-    "note": "ANSI codes are standard 16-color only. Hex values are for web/documentation use."
+    "design_system": "sir design system v0.1",
+    "reference": "assets/design-system.html",
+    "note": "ANSI codes are standard 16-color only. Hex values are for web/documentation use. Neutral track is vellum+ink (warm cream on near-black)."
   },
-  "primary": {
-    "hex": "#111111",
-    "rgb": [17, 17, 17],
-    "ansi": "0",
-    "paper_token": "primary",
-    "usage": "Default text, headings, logo, body content"
+
+  "neutral": {
+    "paper": {
+      "hex": "#FAF6EC",
+      "usage": "Lightest surface — card backgrounds, inset wells"
+    },
+    "vellum_100": {
+      "hex": "#F3EEE2",
+      "usage": "Page background (light mode default)"
+    },
+    "vellum_200": {
+      "hex": "#EBE5D5",
+      "usage": "Hover state, alt row fill"
+    },
+    "vellum_300": {
+      "hex": "#DDD5C0",
+      "usage": "Borders, dividers, rule lines"
+    },
+    "ink_600": {
+      "hex": "#4A463F",
+      "usage": "Muted text, metadata, marginalia"
+    },
+    "ink_800": {
+      "hex": "#2A2824",
+      "usage": "Secondary text, captions"
+    },
+    "ink_900": {
+      "hex": "#141311",
+      "usage": "Primary text, headings, logo — light mode"
+    }
   },
-  "surface_light": {
-    "hex": "#FAFAF8",
-    "rgb": [250, 250, 248],
-    "ansi": "",
-    "paper_token": "surface",
-    "usage": "Light mode background (web/docs only, terminal inherits theme)"
+
+  "dark": {
+    "surface_900": {
+      "hex": "#0A0A08",
+      "usage": "Terminal background, dark mode base"
+    },
+    "surface_800": {
+      "hex": "#131210",
+      "usage": "Terminal title bar, dark mode card"
+    },
+    "surface_700": {
+      "hex": "#1E1D1A",
+      "usage": "Dark mode border, divider"
+    },
+    "surface_600": {
+      "hex": "#2A2824",
+      "usage": "Dark mode hover"
+    },
+    "text_muted": {
+      "hex": "#504A3F",
+      "usage": "Dim text in terminal, deep muted"
+    },
+    "text_secondary": {
+      "hex": "#B8B2A4",
+      "usage": "Secondary text in dark mode"
+    },
+    "text_primary": {
+      "hex": "#F3EEE2",
+      "usage": "Primary text in dark mode / terminal"
+    }
   },
-  "surface_dark": {
-    "hex": "#0A0A0A",
-    "rgb": [10, 10, 10],
-    "ansi": "",
-    "paper_token": "surface",
-    "usage": "Dark mode background (web/docs only, terminal inherits theme)"
+
+  "verdict": {
+    "allow": {
+      "hex": "#2F7D3A",
+      "hex_tint": "#EBEDE6",
+      "ansi": "32",
+      "glyph": "\u00b7",
+      "glyph_name": "middle dot",
+      "usage": "Allow verdicts, passing checks, clean session",
+      "terminal_bright": "#4FAF58"
+    },
+    "ask": {
+      "hex": "#B4660A",
+      "hex_tint": "#F1E6D3",
+      "ansi": "33",
+      "glyph": "?",
+      "glyph_name": "question mark",
+      "usage": "Ask prompts, caution indicators, operator decision required",
+      "terminal_bright": "#E29028"
+    },
+    "block": {
+      "hex": "#B8261F",
+      "hex_tint": "#F0DCD9",
+      "ansi": "31",
+      "glyph": "\u00d7",
+      "glyph_name": "multiplication sign",
+      "usage": "Deny verdicts, failed checks, tainted egress blocked",
+      "terminal_bright": "#E24A44"
+    },
+    "info": {
+      "hex": "#1E6E85",
+      "hex_tint": "#D0E8EE",
+      "ansi": "36",
+      "glyph": "i",
+      "glyph_name": "letter i",
+      "usage": "File paths, informational highlights, session metadata",
+      "terminal_bright": "#4FAEC4"
+    }
   },
-  "allow": {
-    "hex": "#16A34A",
-    "rgb": [22, 163, 74],
-    "ansi": "32",
-    "paper_token": "success",
-    "usage": "Allow verdicts, passing checks, success states"
-  },
-  "ask": {
-    "hex": "#D97706",
-    "rgb": [217, 119, 6],
-    "ansi": "33",
-    "paper_token": "warning",
-    "usage": "Ask prompts, caution indicators, developer decision required"
-  },
-  "block": {
-    "hex": "#DC2626",
-    "rgb": [220, 38, 38],
-    "ansi": "31",
-    "paper_token": "danger",
-    "usage": "Block/deny verdicts, failed checks, error states"
-  },
-  "fatal": {
-    "hex": "#DC2626",
-    "rgb": [220, 38, 38],
-    "ansi": "1;31",
-    "paper_token": "danger (bold)",
-    "usage": "Session-fatal deny-all, maximum severity"
-  },
-  "info": {
-    "hex": "#0891B2",
-    "rgb": [8, 145, 178],
-    "ansi": "36",
-    "paper_token": "text (secondary)",
-    "usage": "File paths, informational highlights, cyan accents"
-  },
-  "muted": {
-    "hex": "#6B7280",
-    "rgb": [107, 114, 128],
-    "ansi": "2",
-    "paper_token": "—",
-    "usage": "Metadata, timestamps, hashes, session IDs, dim text"
-  },
-  "bold": {
-    "hex": "#111111",
-    "rgb": [17, 17, 17],
-    "ansi": "1",
-    "paper_token": "primary (emphasis)",
-    "usage": "Verdict keywords, section headers, emphasis"
+
+  "legacy_ansi": {
+    "note": "These ANSI codes are stable across all terminal themes. Use the hex values above for web/docs only.",
+    "muted": {
+      "ansi": "2",
+      "usage": "Timestamps, hashes, dim metadata"
+    },
+    "bold": {
+      "ansi": "1",
+      "usage": "Verdict keywords, emphasis"
+    },
+    "reset": {
+      "ansi": "0",
+      "usage": "Reset after any colored span"
+    }
   }
 }
