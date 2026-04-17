@@ -78,34 +78,37 @@ func buildStatusSnapshot(projectRoot string) (statusSnapshot, error) {
 }
 
 func renderStatusSnapshot(snapshot statusSnapshot) {
+	sep := ac(auditDim, statusSeparator)
 	if !snapshot.installed {
-		fmt.Println(statusSeparator)
-		fmt.Println("  install  NOT INSTALLED")
-		fmt.Println(statusSeparator)
+		fmt.Println(sep)
+		fmt.Printf("  install  %s\n", ac(auditBoldRed, "NOT INSTALLED"))
+		fmt.Println(sep)
 		printMCPStatus(snapshot.mcpReport)
-		fmt.Println("  Run 'sir install' to set up protection.")
+		fmt.Println(ac(auditDim, "  Run 'sir install' to set up protection."))
 		return
 	}
 
-	fmt.Println(statusSeparator)
-	fmt.Println("  Agents:")
+	fmt.Println(sep)
+	fmt.Printf("  %s\n", ac(auditBold, "Agents:"))
 	for _, s := range snapshot.statuses {
 		if !s.Installed {
-			fmt.Printf("    -  %-12s not detected\n", s.Agent.Name())
+			fmt.Printf("    %s  %-12s %s\n", ac(auditDim, "-"), s.Agent.Name(), ac(auditDim, "not detected"))
 			continue
 		}
 		if s.ReadErr != nil {
-			fmt.Printf("    !  %-12s error: %v\n", s.Agent.Name(), s.ReadErr)
+			fmt.Printf("    %s  %-12s error: %v\n", ac(auditBoldRed, "!"), s.Agent.Name(), s.ReadErr)
 			continue
 		}
-		mark := "ok"
+		var mark string
 		if s.Found < s.Total {
-			mark = "!!"
+			mark = ac(auditYellow, "??")
+		} else {
+			mark = ac(auditGreen, "\u00b7 ")
 		}
 		tag := agent.SupportManifestForAgent(s.Agent).StatusSuffix()
-		fmt.Printf("    %-2s %-12s %d/%d hooks registered%s\n", mark, s.Agent.Name(), s.Found, s.Total, tag)
+		fmt.Printf("    %s %-12s %d/%d hooks registered%s\n", mark, s.Agent.Name(), s.Found, s.Total, tag)
 		if len(s.Missing) > 0 {
-			fmt.Printf("                    Missing: %s\n", strings.Join(s.Missing, ", "))
+			fmt.Printf("                    Missing: %s\n", ac(auditYellow, strings.Join(s.Missing, ", ")))
 		}
 	}
 	printStatusSupportWarnings(snapshot.statuses)
@@ -129,33 +132,33 @@ func renderStatusSnapshot(snapshot statusSnapshot) {
 		if len(shortID) > 8 {
 			shortID = shortID[:8]
 		}
-		fmt.Printf("  %-9s %s (started %s)\n", "session", shortID, snapshot.state.StartedAt.Format("15:04:05"))
+		fmt.Printf("  %-9s %s (started %s)\n", "session", ac(auditCyan, shortID), snapshot.state.StartedAt.Format("15:04:05"))
 		if snapshot.state.DenyAll {
-			fmt.Printf("  %-9s EMERGENCY — all tool calls blocked\n", "deny-all")
-			fmt.Printf("             Reason: %s\n", snapshot.state.DenyAllReason)
-			fmt.Printf("             Fix:    sir doctor\n")
+			fmt.Printf("  %-9s %s\n", "deny-all", ac(auditBoldRed, "EMERGENCY — all tool calls blocked"))
+			fmt.Printf("             reason: %s\n", snapshot.state.DenyAllReason)
+			fmt.Printf("             fix:    %s\n", ac(auditDim, "sir doctor"))
 		} else if snapshot.state.SecretSession {
 			sinceFmt := snapshot.state.SecretSessionSince.Format("15:04:05")
-			fmt.Printf("  %-9s ACTIVE — external egress blocked since %s\n", "secrets", sinceFmt)
-			fmt.Printf("             Run 'sir unlock' to clear transient runtime restrictions.\n")
+			fmt.Printf("  %-9s %s — external egress blocked since %s\n", "secrets", ac(auditBoldYellow, "ACTIVE"), sinceFmt)
+			fmt.Printf("             %s\n", ac(auditDim, "Run 'sir unlock' to clear transient runtime restrictions."))
 		} else {
-			fmt.Printf("  %-9s none (network access unrestricted)\n", "secrets")
+			fmt.Printf("  %-9s %s\n", "secrets", ac(auditDim, "none (network access unrestricted)"))
 		}
 		if snapshot.state.Posture != "" && snapshot.state.Posture != "normal" {
-			fmt.Printf("  %-9s %s\n", "posture", snapshot.state.Posture)
+			fmt.Printf("  %-9s %s\n", "posture", ac(auditYellow, string(snapshot.state.Posture)))
 		}
 		if len(snapshot.state.TaintedMCPServers) > 0 {
-			fmt.Printf("  %-9s %s\n", "mcp taint", strings.Join(snapshot.state.TaintedMCPServers, ", "))
+			fmt.Printf("  %-9s %s\n", "mcp taint", ac(auditYellow, strings.Join(snapshot.state.TaintedMCPServers, ", ")))
 		}
 		if snapshot.state.PendingInjectionAlert {
-			fmt.Printf("  %-9s active\n", "alert")
+			fmt.Printf("  %-9s %s\n", "alert", ac(auditYellow, "active"))
 		}
 		if !snapshot.state.SecretSession && snapshot.state.HasTransientRestrictions() {
-			fmt.Printf("  %-9s Run 'sir unlock' to clear transient runtime restrictions.\n", "recovery")
+			fmt.Printf("  %-9s %s\n", "recovery", ac(auditDim, "Run 'sir unlock' to clear transient runtime restrictions."))
 		}
 	} else {
-		fmt.Printf("  %-9s none\n", "session")
-		fmt.Printf("  %-9s none\n", "secrets")
+		fmt.Printf("  %-9s %s\n", "session", ac(auditDim, "none"))
+		fmt.Printf("  %-9s %s\n", "secrets", ac(auditDim, "none"))
 	}
 	if snapshot.runtimeErr != nil {
 		fmt.Printf("  %-9s error: %v\n", "runtime", snapshot.runtimeErr)
@@ -164,26 +167,26 @@ func renderStatusSnapshot(snapshot statusSnapshot) {
 	}
 
 	if snapshot.ledgerVerifyErr != nil {
-		fmt.Printf("  %-9s %d entries  CHAIN BROKEN: %v (%s)\n", "ledger", snapshot.ledgerCount, snapshot.ledgerVerifyErr, formatBytes(snapshot.operability.LedgerSize))
+		fmt.Printf("  %-9s %d entries  %s: %v (%s)\n", "ledger", snapshot.ledgerCount, ac(auditBoldRed, "CHAIN BROKEN"), snapshot.ledgerVerifyErr, formatBytes(snapshot.operability.LedgerSize))
 	} else {
-		fmt.Printf("  %-9s %d entries  chain valid (%s)\n", "ledger", snapshot.ledgerCount, formatBytes(snapshot.operability.LedgerSize))
+		fmt.Printf("  %-9s %d entries  %s (%s)\n", "ledger", snapshot.ledgerCount, ac(auditGreen, "chain valid"), formatBytes(snapshot.operability.LedgerSize))
 	}
 	if snapshot.operability.LedgerWarn {
-		fmt.Printf("             Warning: ledger growth crossed the operability budget.\n")
-		fmt.Printf("             Fix: archive the project state if explain/status starts to feel slow.\n")
+		fmt.Printf("             %s\n", ac(auditYellow, "Warning: ledger growth crossed the operability budget."))
+		fmt.Printf("             %s\n", ac(auditDim, "Fix: archive the project state if explain/status starts to feel slow."))
 	}
 	printStatusOperability(snapshot.operability)
 
-	fmt.Printf("  %-9s %s\n", "lease", snapshot.leasePath)
-	fmt.Printf("  %-9s %s\n", "state", snapshot.activeStateDir)
+	fmt.Printf("  %-9s %s\n", "lease", ac(auditDim, snapshot.leasePath))
+	fmt.Printf("  %-9s %s\n", "state", ac(auditDim, snapshot.activeStateDir))
 	if snapshot.runtimeErr == nil && snapshot.runtimeInspection != nil && snapshot.runtimeInspection.Info != nil {
-		fmt.Printf("  %-9s %s\n", "shadow", snapshot.runtimeInspection.Info.ShadowStateHome)
+		fmt.Printf("  %-9s %s\n", "shadow", ac(auditDim, snapshot.runtimeInspection.Info.ShadowStateHome))
 	}
 
-	fmt.Println(statusSeparator)
-	fmt.Println("  Run 'sir why' to see the last decision.")
+	fmt.Println(sep)
+	fmt.Println(ac(auditDim, "  Run 'sir why' to see the last decision."))
 	if snapshot.sessionErr == nil && snapshot.state.HasTransientRestrictions() {
-		fmt.Println("  Run 'sir unlock' to clear transient runtime restrictions.")
+		fmt.Println(ac(auditDim, "  Run 'sir unlock' to clear transient runtime restrictions."))
 	}
 }
 

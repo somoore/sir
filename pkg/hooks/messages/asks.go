@@ -8,16 +8,16 @@ import (
 // FormatAskInstall formats an ASK message for a package not found in the lockfile.
 func FormatAskInstall(pkgName, manager string) string {
 	var b strings.Builder
-	b.WriteString(colorize(colorBold+colorYellow, "sir: approval needed"))
-	b.WriteString(" -- Install ")
+	b.WriteString(colorize(colorBold+colorYellow, "? ask"))
+	b.WriteString(" \u00b7 Install ")
 	b.WriteString(colorize(colorCyan, pkgName))
 	b.WriteString(fmt.Sprintf(" (%s)", manager))
 	b.WriteString("\n\n")
-	b.WriteString("  Why: This package is not in your lockfile. It could be a typosquat\n")
-	b.WriteString("       or supply chain attack.\n\n")
+	b.WriteString("  reason: This package is not in your lockfile. It could be a typosquat\n")
+	b.WriteString("           or supply chain attack.\n\n")
 	b.WriteString("  Approve to install, or deny to prevent.\n")
 	b.WriteString("  Review the package before approving.\n\n")
-	b.WriteString("  Details: ")
+	b.WriteString("  details: ")
 	b.WriteString(colorize(colorDim, "sir explain --last"))
 	return b.String()
 }
@@ -105,17 +105,17 @@ func FormatAskPostureElevated(verb, target, posture string, signals []string) st
 	}
 
 	var b strings.Builder
-	b.WriteString(colorize(colorBold+colorYellow, "sir: approval needed"))
-	b.WriteString(" -- ")
+	b.WriteString(colorize(colorBold+colorYellow, "? ask"))
+	b.WriteString(" \u00b7 ")
 	b.WriteString(target)
 	b.WriteString("\n\n")
-	b.WriteString("  Why: A previous tool response contained suspicious patterns.\n")
-	b.WriteString("       Approving this call is riskier than usual.\n\n")
+	b.WriteString("  reason: A previous tool response contained suspicious patterns.\n")
+	b.WriteString("           Approving this call is riskier than usual.\n\n")
 	b.WriteString("  Signals: ")
 	b.WriteString(signalList)
 	b.WriteString("\n\n")
 	b.WriteString("  Approve to proceed, or deny to block this call.\n\n")
-	b.WriteString("  Details: ")
+	b.WriteString("  details: ")
 	b.WriteString(colorize(colorDim, "sir explain --last"))
 	return b.String()
 }
