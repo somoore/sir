@@ -8,49 +8,40 @@ Used in: status output, inline references
 [sir]
 
 
-STANDARD (5 lines)
+BRACKETS (3 lines)
 Used in: sir install, sir --version
 ─────────────────────────────────────────
 
- _____ _____ _____
-|   __|     | __  |
-|__   |-   -|    -|
-|_____|_____|__|__|
+[ · ? × ]
+   sir
+
+
+STANDARD (5 lines)
+Used in: splash screen, about page
+─────────────────────────────────────────
+
+[         ]
+[  · ? ×  ]
+[         ]
+     sir
   sandbox in reverse
 
 
-FULL (9 lines)
-Used in: README, documentation, about page
+FULL (7 lines)
+Used in: README, documentation
 ─────────────────────────────────────────
 
-    ^
-   /|\
-  / | \
- /  |  \
-/   |   \
-\   |   /
- \  |  /
-  \_|_/
-   sir
+╔═══════════════════╗
+║                   ║
+║   ·    ?    ×     ║
+║  allow ask deny   ║
+║                   ║
+╚═══════════════════╝
+         sir
 
-The full logo is an inverted shield with an upward
-arrow — the sandbox reversed. The shield points down
-(containment inverted) while the arrow points up
-(authority granted outward from the lease).
+The brackets face outward — containment reversed. The three
+dots are the verdict triad: allow (·), ask (?), deny (×).
+Authority flows out of the lease; what's inside stays inside.
 
-
-FULL WITH TAGLINE (11 lines)
-Used in: splash screen, first-run experience
-─────────────────────────────────────────
-
-    ^
-   /|\
-  / | \
- /  |  \
-/   |   \
-\   |   /
- \  |  /
-  \_|_/
-   sir
-  sandbox
- in reverse
+Wordmark rule: always lowercase. Never "Sir" or "SIR" in prose.
+Terminal variant: [sir]  Bracketed variant: [ · ? × ] sir
