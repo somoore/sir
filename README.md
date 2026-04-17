@@ -31,8 +31,8 @@ A Go CLI + Rust policy oracle + hash-chained ledger. sir intercepts agent tool c
 
 ```mermaid
 flowchart LR
-    A[Agent] -->|① Read .env| S1["sir: allow<br/>session → SECRET"]
-    A -->|② curl external| S2["sir: DENY<br/>session is SECRET"]
+    A[Agent] -->|① Read .env| S1["· allow<br/>session → SECRET"]
+    A -->|② curl external| S2["× deny<br/>session is SECRET"]
     S1 -. IFC taint .-> S2
 ```
 
