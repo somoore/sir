@@ -1,8 +1,29 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
-  <!-- sir logo — boundary + inverted diamond + blue grant -->
-  <!-- Designed in Paper MCP. Pixel-matched to Paper artboard O-0. -->
-  <rect x="8" y="8" width="104" height="104" rx="8" fill="none" stroke="#71717A" stroke-width="3"/>
-  <line x1="8" y1="8" x2="40" y2="8" stroke="#3B82F6" stroke-width="3" stroke-linecap="round"/>
-  <path d="M60 28 L92 60 L60 92 L28 60 Z" fill="none" stroke="#D4D4D8" stroke-width="2.5" stroke-linejoin="round"/>
-  <path d="M60 42 L78 60 L60 78 L42 60 Z" fill="#3B82F6"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 160" width="220" height="160" aria-label="sir — reverse brackets mark">
+  <!--
+    sir logo — Reverse Brackets (primary mark)
+    Brackets turned outward: containment reversed.
+    The three dots are the verdict triad — allow / ask / deny.
+    Design system: assets/design-system.html § 1.0 · Mk·01
+  -->
+
+  <!-- outward-facing brackets — reversed containment -->
+  <g stroke="#141311" stroke-width="3" fill="none" stroke-linecap="square">
+    <!-- left bracket pointing outward-left -->
+    <path d="M 40 30 L 20 30 L 20 130 L 40 130"/>
+    <!-- right bracket pointing outward-right -->
+    <path d="M 180 30 L 200 30 L 200 130 L 180 130"/>
+  </g>
+
+  <!-- verdict triad: allow / ask / deny -->
+  <circle cx="90"  cy="80" r="7" fill="#2F7D3A"/>
+  <circle cx="110" cy="80" r="7" fill="#B4660A"/>
+  <circle cx="130" cy="80" r="7" fill="#B8261F"/>
+
+  <!-- hairline lease corners -->
+  <g stroke="#8A857A" stroke-width="1">
+    <line x1="20" y1="20" x2="30" y2="20"/>
+    <line x1="200" y1="20" x2="190" y2="20"/>
+    <line x1="20" y1="140" x2="30" y2="140"/>
+    <line x1="200" y1="140" x2="190" y2="140"/>
+  </g>
 </svg>

@@ -1,0 +1,128 @@
+/*
+ * sir design tokens — web / docs surface
+ * Source: assets/design-system.html
+ * Import this file for any web or documentation build.
+ */
+
+:root {
+  /* ── neutral: vellum + ink ─────────────────────── */
+  --sir-paper:       #FAF6EC;   /* lightest surface */
+  --sir-vellum-100:  #F3EEE2;   /* page background */
+  --sir-vellum-200:  #EBE5D5;   /* hover, alt row */
+  --sir-vellum-300:  #DDD5C0;   /* borders, rules */
+  --sir-ink-600:     #4A463F;   /* muted text */
+  --sir-ink-800:     #2A2824;   /* secondary text */
+  --sir-ink-900:     #141311;   /* primary text, headings */
+  --sir-mute:        #8A857A;
+  --sir-mute-2:      #B8B2A4;
+  --sir-rule:        #CFC7B2;
+
+  /* ── dark / terminal ───────────────────────────── */
+  --sir-dark-900:    #0A0A08;
+  --sir-dark-800:    #131210;
+  --sir-dark-700:    #1E1D1A;
+  --sir-dark-600:    #2A2824;
+  --sir-dark-text-muted:     #504A3F;
+  --sir-dark-text-secondary: #B8B2A4;
+  --sir-dark-text-primary:   #F3EEE2;
+
+  /* ── verdict ────────────────────────────────────── */
+  --sir-allow:        #2F7D3A;
+  --sir-allow-tint:   #EBEDE6;
+  --sir-allow-bright: #4FAF58;   /* terminal use */
+
+  --sir-ask:          #B4660A;
+  --sir-ask-tint:     #F1E6D3;
+  --sir-ask-bright:   #E29028;   /* terminal use */
+
+  --sir-deny:         #B8261F;
+  --sir-deny-tint:    #F0DCD9;
+  --sir-deny-bright:  #E24A44;   /* terminal use */
+
+  --sir-info:         #1E6E85;
+  --sir-info-tint:    #D0E8EE;
+  --sir-info-bright:  #4FAEC4;   /* terminal use */
+
+  /* ── typography ─────────────────────────────────── */
+  --sir-font-serif: "IBM Plex Serif", Georgia, serif;
+  --sir-font-sans:  "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+  --sir-font-mono:  "IBM Plex Mono", ui-monospace, Menlo, monospace;
+
+  /* ── type scale ─────────────────────────────────── */
+  --sir-text-display-xl: 500 64px/1    var(--sir-font-serif);  /* title blocks */
+  --sir-text-display-lg: 500 44px/1.05 var(--sir-font-serif);  /* chapter heads */
+  --sir-text-display-md: 500 28px/1.2  var(--sir-font-serif);  /* section titles */
+  --sir-text-title:      500 20px/1.3  var(--sir-font-serif);  /* card heads */
+  --sir-text-body:       400 17px/1.55 var(--sir-font-serif);  /* default reading */
+  --sir-text-caption:    400 14px/1.5  var(--sir-font-serif);  /* captions */
+  --sir-text-code:       400 13px/1.6  var(--sir-font-mono);   /* inline / blocks */
+  --sir-text-eyebrow:    500 11px/1    var(--sir-font-mono);   /* section numbers */
+
+  /* ── layout ─────────────────────────────────────── */
+  --sir-page-max: 1180px;
+  --sir-gutter:   48px;
+}
+
+/* ── verdict utility classes ────────────────────────────────────── */
+
+.sir-allow  { color: var(--sir-allow); }
+.sir-ask    { color: var(--sir-ask); }
+.sir-deny   { color: var(--sir-deny); }
+.sir-info   { color: var(--sir-info); }
+.sir-muted  { color: var(--sir-ink-600); }
+
+/* verdict rail (left border callout) */
+.sir-callout {
+  border-left: 4px solid var(--sir-ink-900);
+  background: var(--sir-paper);
+  padding: 18px 24px;
+}
+.sir-callout.allow { border-color: var(--sir-allow); }
+.sir-callout.ask   { border-color: var(--sir-ask); }
+.sir-callout.deny  { border-color: var(--sir-deny); }
+.sir-callout.info  { border-color: var(--sir-info); }
+
+/* verdict badges (web only) */
+.sir-badge {
+  display: inline-flex;
+  font-family: var(--sir-font-mono);
+  font-size: 11px;
+  line-height: 1;
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid var(--sir-ink-900);
+}
+.sir-badge .k { background: var(--sir-ink-900); color: var(--sir-paper); padding: 6px 10px; }
+.sir-badge .v { padding: 6px 10px; color: var(--sir-ink-900); background: var(--sir-vellum-200); }
+.sir-badge.allow .v { background: var(--sir-allow); color: var(--sir-paper); }
+.sir-badge.ask   .v { background: var(--sir-ask);   color: var(--sir-paper); }
+.sir-badge.deny  .v { background: var(--sir-deny);  color: var(--sir-paper); }
+.sir-badge.info  .v { background: var(--sir-info);  color: var(--sir-paper); }
+
+/* ── motion ─────────────────────────────────────────────────────── */
+
+/* pulse — waiting for operator (ask) */
+@keyframes sir-pulse {
+  0%   { transform: scale(0.6); opacity: 1; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+
+/* typewriter — verdict being printed (allow) */
+@keyframes sir-type {
+  0%   { max-width: 0; }
+  60%  { max-width: 40em; }
+  100% { max-width: 40em; }
+}
+@keyframes sir-blink {
+  50% { border-color: transparent; }
+}
+
+/* shake — hard deny */
+@keyframes sir-shake {
+  0%   { transform: translateX(-2px); }
+  100% { transform: translateX(2px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
+}
