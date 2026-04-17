@@ -43,22 +43,22 @@ func cmdVersion(args []string) {
 	}
 
 	if !check {
-		fmt.Printf("sir %s\n", Version)
+		fmt.Printf("sir %s\n", ac(auditBold, Version))
 		return
 	}
 
 	release, err := fetchLatestRelease(latestReleaseURL, 5*time.Second)
 	if err != nil || release.TagName == "" {
-		fmt.Printf("sir %s (could not check for updates)\n", Version)
+		fmt.Printf("sir %s %s\n", ac(auditBold, Version), ac(auditDim, "(could not check for updates)"))
 		return
 	}
 
 	if release.TagName == Version {
-		fmt.Printf("sir %s (up to date)\n", Version)
+		fmt.Printf("sir %s %s\n", ac(auditBold, Version), ac(auditGreen, "(up to date)"))
 		return
 	}
 
-	fmt.Printf("sir %s → %s available\n", Version, release.TagName)
+	fmt.Printf("sir %s \u2192 %s\n", ac(auditBold, Version), ac(auditYellow, release.TagName+" available"))
 	fmt.Println()
 
 	// Release date
