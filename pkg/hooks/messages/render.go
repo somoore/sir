@@ -73,37 +73,37 @@ func colorize(color, text string) string {
 
 func FormatBlock(action, causalChain, fix string) string {
 	var b strings.Builder
-	b.WriteString(colorize(colorBold+colorRed, "sir BLOCKED"))
-	b.WriteString(": ")
+	b.WriteString(colorize(colorBold+colorRed, "\u00d7 deny"))
+	b.WriteString(" \u00b7 ")
 	b.WriteString(action)
 	b.WriteString("\n\n")
-	b.WriteString("  Why: ")
+	b.WriteString("  reason: ")
 	b.WriteString(causalChain)
 	b.WriteString("\n\n")
-	b.WriteString("  Fix: ")
+	b.WriteString("  fix:    ")
 	b.WriteString(fix)
 	b.WriteString("\n\n")
-	b.WriteString("  Details: ")
+	b.WriteString("  details: ")
 	b.WriteString(colorize(colorDim, "sir explain --last"))
 	return b.String()
 }
 
 func FormatAsk(action, reason, consequence string) string {
 	var b strings.Builder
-	b.WriteString(colorize(colorBold+colorYellow, "sir: approval needed"))
-	b.WriteString(" -- ")
+	b.WriteString(colorize(colorBold+colorYellow, "? ask"))
+	b.WriteString(" \u00b7 ")
 	b.WriteString(action)
 	b.WriteString("\n\n")
-	b.WriteString("  Why: ")
+	b.WriteString("  reason: ")
 	b.WriteString(reason)
 	b.WriteString("\n")
 	if consequence != "" {
-		b.WriteString("       ")
+		b.WriteString("          ")
 		b.WriteString(consequence)
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString("  Details: ")
+	b.WriteString("  details: ")
 	b.WriteString(colorize(colorDim, "sir explain --last"))
 	return b.String()
 }
@@ -113,43 +113,43 @@ func FormatAskSensitive(target string, scope string) string {
 		scope = "turn"
 	}
 	var b strings.Builder
-	b.WriteString(colorize(colorBold+colorYellow, "sir: approval needed"))
-	b.WriteString(" -- Read ")
+	b.WriteString(colorize(colorBold+colorYellow, "? ask"))
+	b.WriteString(" \u00b7 Read ")
 	b.WriteString(colorize(colorCyan, target))
 	b.WriteString("\n\n")
-	b.WriteString("  Why: This file contains credentials. If you approve, sir will\n")
-	b.WriteString("       restrict external network requests to prevent leaks.\n\n")
+	b.WriteString("  reason: This file contains credentials. Approving restricts\n")
+	b.WriteString("           external network requests to prevent leaks.\n\n")
 	if scope == "turn" {
-		b.WriteString("  Scope: ")
-		b.WriteString(colorize(colorGreen, "TURN"))
-		b.WriteString(" — clears automatically when the agent finishes responding.\n\n")
+		b.WriteString("  scope:   ")
+		b.WriteString(colorize(colorGreen, "turn"))
+		b.WriteString(" \u2014 clears automatically when the agent finishes responding.\n\n")
 	} else {
-		b.WriteString("  Scope: ")
-		b.WriteString(colorize(colorYellow, "SESSION"))
-		b.WriteString(" — persists until you run `sir unlock`.\n\n")
+		b.WriteString("  scope:   ")
+		b.WriteString(colorize(colorYellow, "session"))
+		b.WriteString(" \u2014 persists until you run `sir unlock`.\n\n")
 	}
-	b.WriteString("  If something gets stuck after approval:\n")
-	b.WriteString("       sir unlock                (clear transient runtime restrictions)\n")
-	b.WriteString("       sir allow-host <host>     (permanently allow a specific host)\n\n")
-	b.WriteString("  Details: ")
+	b.WriteString("  if stuck after approval:\n")
+	b.WriteString("           sir unlock                (clear transient runtime restrictions)\n")
+	b.WriteString("           sir allow-host <host>     (permanently allow a specific host)\n\n")
+	b.WriteString("  details: ")
 	b.WriteString(colorize(colorDim, "sir explain --last"))
 	return b.String()
 }
 
 func FormatFatal(action, consequence, remedy string) string {
 	var b strings.Builder
-	b.WriteString(colorize(colorBoldRed, "sir FATAL"))
-	b.WriteString(": ")
+	b.WriteString(colorize(colorBoldRed, "\u00d7 deny"))
+	b.WriteString(" \u00b7 ")
 	b.WriteString(action)
 	b.WriteString("\n\n")
-	b.WriteString("  Why: ")
+	b.WriteString("  reason: ")
 	b.WriteString(consequence)
 	b.WriteString("\n\n")
-	b.WriteString("  Fix: Open a NEW terminal outside the agent\n")
-	b.WriteString("       ")
+	b.WriteString("  fix:    Open a NEW terminal outside the agent\n")
+	b.WriteString("          ")
 	b.WriteString(remedy)
 	b.WriteString("\n\n")
-	b.WriteString("  Details: ")
+	b.WriteString("  details: ")
 	b.WriteString(colorize(colorDim, "sir explain --last"))
 	return b.String()
 }
@@ -158,10 +158,10 @@ func formatEmergencyBox(lines []string) string {
 	useBoxChars := ColorsEnabled()
 	var border, footer, rowL, rowR string
 	if useBoxChars {
-		border = "╔══════════════════════════════════════════════════════════╗"
-		footer = "╚══════════════════════════════════════════════════════════╝"
-		rowL = "║"
-		rowR = "║"
+		border = "\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557"
+		footer = "\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d"
+		rowL = "\u2551"
+		rowR = "\u2551"
 	} else {
 		border = "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 		footer = "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
@@ -189,10 +189,10 @@ func FormatDenyAll(reason string) string {
 	return formatEmergencyBox([]string{
 		"sir EMERGENCY: All tool calls blocked",
 		"",
-		"What: " + truncated,
+		"reason: " + truncated,
 		"",
-		"Fix:  Run `sir doctor` in a new terminal",
-		"      outside the current agent session",
+		"fix:    Run `sir doctor` in a new terminal",
+		"        outside the current agent session",
 	})
 }
 
@@ -204,12 +204,12 @@ func FormatHookTamper(file string) string {
 	return formatEmergencyBox([]string{
 		"sir FATAL: Security configuration was modified",
 		"",
-		"What: " + truncated + " changed without approval",
-		"Why:  All tool calls are blocked until verified",
+		"what:   " + truncated + " changed without approval",
+		"reason: All tool calls are blocked until verified",
 		"",
-		"Fix:  Open a NEW terminal outside the agent",
-		"      Run: sir doctor",
-		"      Then: sir install --force",
+		"fix:    Open a NEW terminal outside the agent",
+		"        Run: sir doctor",
+		"        Then: sir install --force",
 	})
 }
 

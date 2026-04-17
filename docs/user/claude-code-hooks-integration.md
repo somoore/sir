@@ -172,14 +172,14 @@ Claude Code expects a JSON object on stdout with at minimum a `decision` field. 
 ```json
 {
   "decision": "ask",
-  "reason": "sir ASK  read .env\n  sensitivity: secret\n\n  Note: approving this will block external network requests for the\n  current turn to prevent accidental data leaks.\n  Details: sir explain --last"
+  "reason": "? ask · Read .env\n\n  reason: This file contains credentials. Approving restricts\n           external network requests to prevent leaks.\n\n  details: sir explain --last"
 }
 ```
 
 ```json
 {
   "decision": "deny",
-  "reason": "sir BLOCKED: network request to evil.example.com\n  Why: ..."
+  "reason": "Claude tried to reach evil.example.com — × deny.\n\n  reason: ...\n\n  details: sir why"
 }
 ```
 
