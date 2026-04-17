@@ -261,6 +261,8 @@ jobs:
       #     --signature checksums.txt.sig --certificate checksums.txt.pem checksums.txt
       - name: Install cosign
         uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+        with:
+          cosign-release: 'v2.6.1'
 
       - name: Sign checksums with Sigstore
         run: |
@@ -459,6 +461,8 @@ jobs:
     steps:
       - name: Install cosign
         uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+        with:
+          cosign-release: 'v2.6.1'
 
       - name: Install slsa-verifier
         env:
