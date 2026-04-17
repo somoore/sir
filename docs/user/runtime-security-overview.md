@@ -70,7 +70,7 @@ Then trigger one real protection path:
 3. In the same turn, ask it to `curl https://httpbin.org/get`.
 4. Run `sir explain --last`.
 
-Expected result: the read is approved, the external request is blocked, and the ledger shows the causal chain.
+Expected result: the read shows `? ask` and prompts for approval, the external request shows `× deny`, and `sir explain --last` shows the causal chain.
 
 ## Go deeper
 
