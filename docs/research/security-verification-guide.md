@@ -94,8 +94,8 @@ Expected result:
 
 Expected result:
 
-- The read is `ask`.
-- The external request is `deny`.
+- The read shows `? ask` and prompts for approval.
+- The external request shows `× deny`.
 - `sir explain --last` shows the causal chain.
 
 ### Posture write prompt
