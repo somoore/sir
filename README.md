@@ -7,9 +7,9 @@
 
 <div align="center">
 
-[![Pre-alpha release](https://img.shields.io/github/v/release/somoore/sir?include_prereleases&label=pre-alpha&color=orange)](https://github.com/somoore/sir/releases/latest) [![Supports](https://img.shields.io/badge/supports-Claude_%7C_Gemini_%7C_Codex-blueviolet)](#what-it-is) [![Status: experimental](https://img.shields.io/badge/status-experimental-orange)](#hard-limits)
+[![release](https://img.shields.io/github/v/release/somoore/sir?include_prereleases&label=release&style=flat-square&labelColor=141311&color=B4660A)](https://github.com/somoore/sir/releases/latest) [![supports](https://img.shields.io/badge/supports-claude_%C2%B7_gemini_%C2%B7_codex-2A2824?style=flat-square&labelColor=141311)](#what-it-is) [![license](https://img.shields.io/badge/license-apache_2.0-2A2824?style=flat-square&labelColor=141311)](LICENSE) [![platform](https://img.shields.io/badge/platform-macos_%C2%B7_linux-1E6E85?style=flat-square&labelColor=141311)](#install)
 
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/somoore/sir/badge)](https://securityscorecards.dev/viewer/?uri=github.com/somoore/sir) [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12462/badge)](https://www.bestpractices.dev/projects/12462) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/somoore/sir/badge)](https://securityscorecards.dev/viewer/?uri=github.com/somoore/sir) [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12462/badge)](https://www.bestpractices.dev/projects/12462)
 
 **Supported platforms: macOS (Apple Silicon) and Linux (amd64, arm64).** Intel Mac and Windows are not yet supported.
 
