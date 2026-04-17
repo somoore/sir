@@ -20,7 +20,7 @@ func cmdDoctor(projectRoot string) {
 		fatal("load lease: %v", err)
 	}
 
-	fmt.Println("sir doctor")
+	fmt.Println(ac(auditBold, "sir doctor"))
 	fmt.Println()
 	if policy != nil {
 		fmt.Printf("  %s\n", managedPolicyNotice(policy))
@@ -45,18 +45,18 @@ func cmdDoctor(projectRoot string) {
 		printDoctorLines(binaryCheck.lines)
 		fmt.Println()
 		if binaryCheck.issue {
-			fmt.Println("sir doctor — recovery complete, but attention needed")
+			fmt.Println(ac(auditBoldYellow, "sir doctor") + " — recovery complete, but attention needed")
 			fmt.Println()
-			fmt.Println("  Session state:      initialized")
-			fmt.Printf("  Binary integrity:   %s\n", binaryCheck.summary)
+			fmt.Println("  Session state:      " + ac(auditGreen, "initialized"))
+			fmt.Printf("  Binary integrity:   %s\n", ac(auditBoldRed, binaryCheck.summary))
 			fmt.Println()
-			fmt.Println("Run 'sir verify' for full hash details, then reinstall sir to refresh ~/.sir/binary-manifest.json.")
+			fmt.Println(ac(auditDim, "Run 'sir verify' for full hash details, then reinstall sir to refresh ~/.sir/binary-manifest.json."))
 		} else {
-			fmt.Println("sir doctor — recovery complete")
+			fmt.Println(ac(auditBoldGreen, "sir doctor") + " — recovery complete")
 			fmt.Println()
 			fmt.Println("  Session initialized.")
 			fmt.Println()
-			fmt.Println("sir is operational. Type 'claude' to resume.")
+			fmt.Println(ac(auditDim, "sir is operational. Type 'claude' to resume."))
 		}
 		_ = state
 		return
@@ -103,66 +103,66 @@ func cmdDoctor(projectRoot string) {
 	hasTransientRestrictions := state.HasTransientRestrictions()
 	if fixed {
 		if hasTransientRestrictions || binaryCheck.issue {
-			fmt.Println("sir doctor — recovery complete, but attention needed")
+			fmt.Println(ac(auditBoldYellow, "sir doctor") + " — recovery complete, but attention needed")
 			fmt.Println()
-			fmt.Printf("  Hook configuration: %s\n", hookStatus)
-			fmt.Println("  Lease integrity:    verified")
+			fmt.Printf("  Hook configuration: %s\n", ac(auditYellow, hookStatus))
+			fmt.Println("  Lease integrity:    " + ac(auditGreen, "verified"))
 			if binaryCheck.issue {
-				fmt.Printf("  Binary integrity:   %s\n", binaryCheck.summary)
+				fmt.Printf("  Binary integrity:   %s\n", ac(auditBoldRed, binaryCheck.summary))
 			}
 			if hasTransientRestrictions {
 				if state.SecretSession {
-					fmt.Println("  Session state:      transient restrictions active (secret session)")
+					fmt.Println("  Session state:      " + ac(auditYellow, "transient restrictions active (secret session)"))
 				} else {
-					fmt.Println("  Session state:      transient restrictions active")
+					fmt.Println("  Session state:      " + ac(auditYellow, "transient restrictions active"))
 				}
 			} else {
-				fmt.Println("  Session state:      normal")
+				fmt.Println("  Session state:      " + ac(auditGreen, "normal"))
 			}
 			fmt.Println()
 			if binaryCheck.issue {
-				fmt.Println("Run 'sir verify' for full hash details, then reinstall sir to refresh ~/.sir/binary-manifest.json.")
+				fmt.Println(ac(auditDim, "Run 'sir verify' for full hash details, then reinstall sir to refresh ~/.sir/binary-manifest.json."))
 			}
 			if hasTransientRestrictions {
-				fmt.Println("Run 'sir unlock' to clear transient runtime restrictions.")
+				fmt.Println(ac(auditDim, "Run 'sir unlock' to clear transient runtime restrictions."))
 			}
 		} else {
-			fmt.Println("sir doctor — recovery complete")
+			fmt.Println(ac(auditBoldGreen, "sir doctor") + " — recovery complete")
 			fmt.Println()
-			fmt.Println("sir is operational. Type 'claude' to resume.")
+			fmt.Println(ac(auditDim, "sir is operational. Type 'claude' to resume."))
 		}
 	} else if hasTransientRestrictions || binaryCheck.issue {
-		fmt.Println("sir doctor — attention needed")
+		fmt.Println(ac(auditBoldYellow, "sir doctor") + " — attention needed")
 		fmt.Println()
-		fmt.Printf("  Hook configuration: %s\n", hookStatus)
-		fmt.Println("  Lease integrity:    verified")
+		fmt.Printf("  Hook configuration: %s\n", ac(auditGreen, hookStatus))
+		fmt.Println("  Lease integrity:    " + ac(auditGreen, "verified"))
 		if binaryCheck.issue {
-			fmt.Printf("  Binary integrity:   %s\n", binaryCheck.summary)
+			fmt.Printf("  Binary integrity:   %s\n", ac(auditBoldRed, binaryCheck.summary))
 		}
 		if hasTransientRestrictions {
 			if state.SecretSession {
-				fmt.Println("  Session state:      transient restrictions active (secret session)")
+				fmt.Println("  Session state:      " + ac(auditYellow, "transient restrictions active (secret session)"))
 			} else {
-				fmt.Println("  Session state:      transient restrictions active")
+				fmt.Println("  Session state:      " + ac(auditYellow, "transient restrictions active"))
 			}
 		} else {
-			fmt.Println("  Session state:      normal")
+			fmt.Println("  Session state:      " + ac(auditGreen, "normal"))
 		}
 		fmt.Println()
 		if binaryCheck.issue {
-			fmt.Println("Run 'sir verify' for full hash details, then reinstall sir to refresh ~/.sir/binary-manifest.json.")
+			fmt.Println(ac(auditDim, "Run 'sir verify' for full hash details, then reinstall sir to refresh ~/.sir/binary-manifest.json."))
 		}
 		if hasTransientRestrictions {
-			fmt.Println("Run 'sir unlock' to clear transient runtime restrictions.")
+			fmt.Println(ac(auditDim, "Run 'sir unlock' to clear transient runtime restrictions."))
 		}
 	} else {
-		fmt.Println("sir doctor — all clear")
+		fmt.Println(ac(auditBoldGreen, "sir doctor") + " — all clear")
 		fmt.Println()
-		fmt.Printf("  Hook configuration: %s\n", hookStatus)
-		fmt.Println("  Lease integrity:    verified")
-		fmt.Println("  Session state:      normal")
+		fmt.Printf("  Hook configuration: %s\n", ac(auditGreen, hookStatus))
+		fmt.Println("  Lease integrity:    " + ac(auditGreen, "verified"))
+		fmt.Println("  Session state:      " + ac(auditGreen, "normal"))
 		fmt.Println()
-		fmt.Println("Nothing to fix.")
+		fmt.Println(ac(auditDim, "Nothing to fix."))
 	}
 }
 

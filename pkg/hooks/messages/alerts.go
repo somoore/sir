@@ -9,9 +9,9 @@ func FormatPostureRestore(file string) string {
 	b.WriteString(": ")
 	b.WriteString(colorize(colorCyan, file))
 	b.WriteString(" was modified and auto-restored\n\n")
-	b.WriteString("  Why: This is a security configuration file.\n")
-	b.WriteString("       Unauthorized changes are reverted automatically.\n\n")
-	b.WriteString("  Details: ")
+	b.WriteString("  reason: This is a security configuration file.\n")
+	b.WriteString("           Unauthorized changes are reverted automatically.\n\n")
+	b.WriteString("  details: ")
 	b.WriteString(colorize(colorDim, "sir explain --last"))
 	return b.String()
 }
@@ -19,12 +19,13 @@ func FormatPostureRestore(file string) string {
 // FormatSessionCleared formats the session clear confirmation.
 func FormatSessionCleared() string {
 	var b strings.Builder
-	b.WriteString(colorize(colorGreen, "sir: transient runtime restrictions cleared"))
+	b.WriteString(colorize(colorGreen, "\u00b7 allow"))
+	b.WriteString(" \u00b7 transient runtime restrictions cleared")
 	b.WriteString("\n\n")
 	b.WriteString("  External network access and prompt-driving session taint are cleared.\n\n")
 	b.WriteString("  Note: Secrets read earlier are still in model memory. If you need\n")
 	b.WriteString("        full isolation from those reads, start a fresh agent session.\n\n")
-	b.WriteString("  Details: ")
+	b.WriteString("  details: ")
 	b.WriteString(colorize(colorDim, "sir why"))
 	return b.String()
 }
@@ -33,25 +34,25 @@ func FormatSessionCleared() string {
 // MCP tool arguments.
 func FormatDenyMCPCredential(toolName, serverName, patternHint string) string {
 	var b strings.Builder
-	b.WriteString(colorize(colorBold+colorRed, "sir: blocked"))
-	b.WriteString(" -- MCP credential leak\n\n")
+	b.WriteString(colorize(colorBold+colorRed, "\u00d7 deny"))
+	b.WriteString(" \u00b7 MCP credential leak\n\n")
 	b.WriteString("  Tool:    ")
 	b.WriteString(colorize(colorCyan, toolName))
 	b.WriteString("\n")
 	b.WriteString("  Server:  ")
 	b.WriteString(serverName)
 	b.WriteString("\n\n")
-	b.WriteString("  Why: The tool arguments look like they include a credential value,\n")
-	b.WriteString("       and this MCP server is not on your trusted list. Sending\n")
-	b.WriteString("       credentials to an untrusted MCP server is blocked regardless\n")
-	b.WriteString("       of session state.\n")
-	b.WriteString("       Pattern: ")
+	b.WriteString("  reason: The tool arguments look like they include a credential value,\n")
+	b.WriteString("           and this MCP server is not on your trusted list. Sending\n")
+	b.WriteString("           credentials to an untrusted MCP server is blocked regardless\n")
+	b.WriteString("           of session state.\n")
+	b.WriteString("           Pattern: ")
 	b.WriteString(patternHint)
 	b.WriteString("\n\n")
-	b.WriteString("  Fix: sir trust ")
+	b.WriteString("  fix: sir trust ")
 	b.WriteString(serverName)
 	b.WriteString("  (only do this if this server is designed to receive tokens)\n\n")
-	b.WriteString("  Details: ")
+	b.WriteString("  details: ")
 	b.WriteString(colorize(colorDim, "sir explain --last"))
 	return b.String()
 }
@@ -85,7 +86,7 @@ func FormatMCPInjectionWarning(serverName, severity string, patterns []string) s
 	b.WriteString("\n\n")
 	b.WriteString("  sir has raised the alert level. Subsequent calls to this\n")
 	b.WriteString("  server may require your approval.\n\n")
-	b.WriteString("  Details: ")
+	b.WriteString("  details: ")
 	b.WriteString(colorize(colorDim, "sir explain --last"))
 	return b.String()
 }
@@ -98,14 +99,14 @@ func FormatElicitationWarning(patterns []string) string {
 	}
 
 	var b strings.Builder
-	b.WriteString(colorize(colorBold+colorYellow, "sir WARNING"))
+	b.WriteString(colorize(colorBold+colorYellow, "? ask"))
 	b.WriteString(": This question may be harvesting credentials\n\n")
 	b.WriteString("  Patterns: ")
 	b.WriteString(patternList)
 	b.WriteString("\n\n")
 	b.WriteString("  Do NOT paste API keys, tokens, or passwords into the agent chat.\n")
 	b.WriteString("  Store credentials in .env files and let sir gate access.\n\n")
-	b.WriteString("  Details: ")
+	b.WriteString("  details: ")
 	b.WriteString(colorize(colorDim, "sir explain --last"))
 	return b.String()
 }

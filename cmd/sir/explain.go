@@ -28,7 +28,8 @@ func cmdExplain(projectRoot string, index int) {
 	e := entries[index]
 
 	// Section 1: Decision header
-	fmt.Printf("Decision #%d: %s\n\n", e.Index, decisionTitle(e))
+	title := decisionTitle(e)
+	fmt.Printf("%s #%d: %s\n\n", ac(auditDim, "Decision"), e.Index, ac(decisionColor(e.Decision), title))
 
 	// Section 2: Basic facts
 	fmt.Printf("Timestamp: %s\n", e.Timestamp.Format("2006-01-02 15:04:05"))
@@ -75,7 +76,7 @@ func cmdExplain(projectRoot string, index int) {
 	fmt.Println("Policy Rule:")
 	fmt.Printf("  Verb:   %s\n", e.Verb)
 	fmt.Printf("  Rule:   %s\n", verbPolicyDescription(e.Verb))
-	fmt.Printf("  Result: %s\n", strings.ToUpper(e.Decision))
+	fmt.Printf("  Result: %s\n", ac(decisionColor(e.Decision), strings.ToUpper(e.Decision)))
 	if e.Reason != "" {
 		fmt.Printf("  Reason: %s\n", e.Reason)
 	}

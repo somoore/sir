@@ -66,6 +66,10 @@ install: build
 	cp target/release/mister-core "$(INSTALL_DIR)/"
 	cp bin/sir "$(INSTALL_DIR)/"
 	chmod 750 "$(INSTALL_DIR)/mister-core" "$(INSTALL_DIR)/sir"
+	@if [ "$$(uname -s)" = "Darwin" ] && command -v codesign >/dev/null 2>&1; then \
+		codesign --sign - "$(INSTALL_DIR)/sir"; \
+		codesign --sign - "$(INSTALL_DIR)/mister-core"; \
+	fi
 	@VERSION=$$(sed -n 's/^const Version = "\(.*\)"/\1/p' cmd/sir/version.go); \
 	if command -v sha256sum >/dev/null 2>&1; then \
 		SIR_SHA=$$(sha256sum "$(INSTALL_DIR)/sir" | awk '{print $$1}'); \
