@@ -183,12 +183,10 @@ Claude Code expects a JSON object on stdout with at minimum a `decision` field. 
 }
 ```
 
-The `reason` field contains the human-readable message that Claude shows to the developer. As of v1.3, all messages follow the WHAT / WHY / HOW format:
+The `reason` field contains the human-readable message that Claude shows to the developer. All messages follow the verdict glyph format — `× deny ·` / `? ask ·` / `· allow ·` — followed by three labeled fields:
 
-- **what** happened, in plain English
-- **why**, as a causal chain tracing back to the original secret read with timestamps
-- **how** to fix it, with specific commands
+- **reason** — causal chain tracing back to the original secret read with timestamps
+- **fix** — specific commands to resolve the block
+- **details** — `sir explain --last` or `sir why` for full IFC labels and recovery options
 
-Every non-trivial message includes `sir explain --last` for full details, including IFC labels and recovery options.
-
-For `ask` verdicts on sensitive file reads, sir includes a note in the reason explaining that approving will gate external network access for the current turn (by default), with instructions to run `sir unlock` if immediate clearance is needed.
+For `ask` verdicts on sensitive file reads, the reason explains that approving gates external network access for the current turn, with instructions to run `sir unlock` if immediate clearance is needed.
