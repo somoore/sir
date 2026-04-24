@@ -75,9 +75,9 @@ That wrapper downloads the tagged release assets, verifies the signed checksums,
 <!-- BEGIN GENERATED SUPPORT FAQ -->
 Claude Code has **reference support**, Gemini CLI has **near-parity support**, and Codex has **limited support** today. `sir install` auto-detects the supported agents already present on this machine, or you can pin one with `sir install --agent <id>`:
 
-- **Claude Code:** 10 hook events — reference support with native interactive approval, MCP scanning, delegation gating, config change detection, and elicitation coverage.
-- **Gemini CLI 0.36.0+:** 6 hook events — near-parity support for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: SubagentStart, ConfigChange, InstructionsLoaded, and Elicitation. See [gemini-support.md](gemini-support.md).
-- **Codex 0.118.0+:** 5 hook events — limited support with a **Bash-only** upstream hook surface. Requires enabling `codex_hooks` (`codex features enable codex_hooks`). Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools still bypass PreToolUse; sir relies on PostToolUse sentinel hashing plus a final `Stop` sweep as the backstop. See [codex-support.md](codex-support.md).
+- **Claude Code:** 11 hook events — reference support with native interactive approval, MCP scanning, delegation gating, config change detection, and elicitation coverage.
+- **Gemini CLI 0.36.0+:** 6 hook events — near-parity support for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: PermissionRequest, SubagentStart, ConfigChange, InstructionsLoaded, and Elicitation. See [gemini-support.md](gemini-support.md).
+- **Codex 0.118.0+:** 6 hook events — limited support with partial tool-path coverage for Bash, native writes, MCP tools, and permission requests where Codex emits hooks. Requires enabling `codex_hooks` (`codex features enable codex_hooks`). Missing lifecycle hooks: SubagentStart, ConfigChange, InstructionsLoaded, SessionEnd, and Elicitation. See [codex-support.md](codex-support.md).
 <!-- END GENERATED SUPPORT FAQ -->
 
 ## Honest limits
@@ -88,6 +88,6 @@ sir is v1 and experimental. Be transparent with yourself about what it does and 
 - MCP injection detection is heuristic (~50 regex patterns). It is an arms race by nature; tainted servers require re-approval as the mitigation.
 - Turn boundaries use a 30-second gap heuristic and are gameable in theory.
 - Shell classification covers the common bypass patterns (wrappers, combined flags, compound commands) but is not a full POSIX parser.
-- Codex remains limited by the current Bash-only upstream hook surface. Native `apply_patch` writes bypass `PreToolUse`.
+- Codex remains limited by missing lifecycle hooks and upstream hook delivery gaps.
 - Model-internal paraphrase and arbitrary child-process behavior are out of scope.
 - The default lease is intentionally permissive for developer friction; lock it down with managed policy if you need stricter defaults.

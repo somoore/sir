@@ -34,6 +34,18 @@ func writeResponse(w io.Writer, resp *HookResponse, ag agent.Agent) error {
 	return err
 }
 
+func writePermissionRequestResponse(w io.Writer, resp *HookResponse, ag agent.Agent) error {
+	data, err := ag.FormatLifecycleResponse("PermissionRequest", string(resp.Decision), resp.Reason, "")
+	if err != nil {
+		return err
+	}
+	if len(data) == 0 {
+		return writeResponse(w, resp, ag)
+	}
+	_, err = w.Write(data)
+	return err
+}
+
 type leaseLoadMetadata struct {
 	previousHash   string
 	currentHash    string

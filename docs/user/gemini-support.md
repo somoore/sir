@@ -15,6 +15,7 @@ sir — Sandbox in Reverse — is an experimental security runtime for AI coding
 | Hook events wired | ✅ 6 events | BeforeTool, AfterTool, BeforeAgent, SessionStart, SessionEnd, AfterAgent |
 | Tool-path coverage | ✅ Full | File IFC labeling, shell classification, MCP scanning, and credential output scanning all run on the hooked tool path. |
 | Interactive approvals | ❌ No | Gemini CLI folds sir's internal ask verdict into deny with remediation text. |
+| Permission-request broker | ❌ No | Gemini CLI exposes no PermissionRequest-equivalent hook. |
 | File-read IFC labeling | ✅ Yes | BeforeTool labels read_file/read_many_files before execution. |
 | File-write pre-gating | ✅ Yes | BeforeTool gates write_file / replace posture mutations before execution. |
 | Shell classification | ✅ Yes | Bash commands are classified for egress, DNS, persistence, sudo, and install risk. |

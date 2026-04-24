@@ -14,7 +14,7 @@ We try to be narrow and honest about what v1 actually does, rather than claim pr
 - sir provides **hook-mediated** runtime policy for AI coding agents — it mediates *intents* crossing the tool boundary, not syscalls. If the agent bypasses the hook layer, sir cannot see it.
 - Claude Code is the reference-support target because it has the richest hook surface.
 - Gemini CLI is near-parity on tool-path coverage, with fewer lifecycle hooks.
-- Codex support is real but limited by the current upstream Bash-only hook surface.
+- Codex support is real but limited by missing lifecycle hooks and upstream hook delivery gaps.
 - `sir run <agent>` is a **measured preview** below-hook containment path on macOS and Linux, not yet a cross-platform transparent egress firewall.
 - MCP injection detection is heuristic (~50 regex patterns). The fail-closed backstop is downstream IFC, not the literal scanner.
 - The default lease is permissive to reduce developer friction. Hardened deployments should use managed mode.

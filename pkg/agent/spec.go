@@ -34,6 +34,7 @@ type ToolCoverage string
 
 const (
 	ToolCoverageFull     ToolCoverage = "full"
+	ToolCoveragePartial  ToolCoverage = "partial"
 	ToolCoverageBashOnly ToolCoverage = "bash_only"
 )
 
@@ -62,6 +63,7 @@ type AgentCapabilities struct {
 	SessionTerminalSweep bool
 
 	PreToolUse         bool
+	PermissionRequest  bool
 	PostToolUse        bool
 	UserPromptSubmit   bool
 	SubagentStart      bool
@@ -79,6 +81,8 @@ func (c AgentCapabilities) SupportsEvent(event string) bool {
 	switch event {
 	case "PreToolUse":
 		return c.PreToolUse
+	case "PermissionRequest":
+		return c.PermissionRequest
 	case "PostToolUse":
 		return c.PostToolUse
 	case "UserPromptSubmit":
@@ -116,6 +120,8 @@ func (c AgentCapabilities) StatusSuffix() string {
 	}
 	if c.ToolCoverage == ToolCoverageBashOnly {
 		parts = append(parts, "Bash-only")
+	} else if c.ToolCoverage == ToolCoveragePartial {
+		parts = append(parts, "partial tool coverage")
 	}
 	if len(parts) == 0 {
 		return ""

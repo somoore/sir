@@ -216,7 +216,7 @@ func TestCmdStatus_SupportManifestSuffixes(t *testing.T) {
 	for _, want := range []string{
 		"(reference support)",
 		"(near-parity support)",
-		"(limited support, Bash-only)",
+		"(limited support, partial tool coverage)",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("status output missing %q:\n%s", want, out)
@@ -576,8 +576,8 @@ func TestSupportManifestSupportWarningLines(t *testing.T) {
 		{
 			name:          "codex",
 			agent:         agent.NewCodexAgent(),
-			wantStatusFmt: "             Warning: %s remains limited support; enforcement is bounded by the upstream Bash-only hook surface.\n",
-			wantDoctorFmt: "  WARNING: %s is limited support — Bash-mediated actions are guarded, but native writes and MCP tools still depend on sentinel hashing plus end-of-session sweeps.\n",
+			wantStatusFmt: "             Warning: %s remains limited support; lifecycle coverage and upstream hook delivery are still narrower than Claude Code.\n",
+			wantDoctorFmt: "  WARNING: %s is limited support — Bash, native write, and MCP hooks are registered where available, but sentinel hashing plus final sweeps remain the backstop.\n",
 		},
 	}
 

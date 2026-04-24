@@ -97,7 +97,7 @@ func TestPublicContractParity(t *testing.T) {
 		requireContainsFile(t, root, "docs/user/claude-code-hooks-integration.md", "**Gemini CLI 0.36.0+ with near-parity support**", "Claude hooks integration Gemini tier")
 		requireContainsFile(t, root, "docs/user/claude-code-hooks-integration.md", "**Codex 0.118.0+ has limited support**", "Claude hooks integration Codex tier")
 		requireContainsFile(t, root, "docs/user/codex-support.md", "sir writes `~/.codex/hooks.json` and may create or update `~/.codex/config.toml`", "Codex support config.toml guidance")
-		requireContainsFile(t, root, "docs/research/security-verification-guide.md", "Codex remains limited support with a **Bash-only** hook surface", "verification guide Codex tier")
+		requireContainsFile(t, root, "docs/research/security-verification-guide.md", "Codex remains limited support with **partial** tool-path coverage", "verification guide Codex tier")
 		requireContainsFile(t, root, "docs/research/security-verification-guide.md", "auto-detected or explicitly selected agent configs gain sir hook entries", "verification guide auto-detect install guidance")
 	})
 

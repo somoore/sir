@@ -1,8 +1,8 @@
 // Package agent — Codex adapter.
 //
 // Codex uses the legacy { decision:"block", reason } response shape and
-// fires hooks for Bash only as of codex-cli 0.118. The adapter is a thin
-// wrapper over the shared base functions driven by codexSpec.
+// fires hooks for a partial tool surface on codex-cli 0.118. The adapter is
+// a thin wrapper over the shared base functions driven by codexSpec.
 //
 // PostInstallFunc (ensureCodexFeatureFlag) is wired at init time from
 // cmd/sir/install.go to avoid a pkg/agent → cmd/sir circular import.
@@ -15,15 +15,16 @@ var codexSpec = AgentSpec{
 	MinVersion: "0.118.0",
 	Capabilities: AgentCapabilities{
 		SupportTier:          SupportTierLimited,
-		ToolCoverage:         ToolCoverageBashOnly,
+		ToolCoverage:         ToolCoveragePartial,
 		InteractiveApproval:  false,
 		PostureBackstop:      true,
 		FileReadIFC:          true,
-		FileWriteIFC:         false,
+		FileWriteIFC:         true,
 		ShellClassification:  true,
-		MCPToolHooks:         false,
+		MCPToolHooks:         true,
 		SessionTerminalSweep: true,
 		PreToolUse:           true,
+		PermissionRequest:    true,
 		PostToolUse:          true,
 		UserPromptSubmit:     true,
 		SessionStart:         true,
@@ -32,6 +33,7 @@ var codexSpec = AgentSpec{
 
 	SupportedSIREvents: []string{
 		"PreToolUse",
+		"PermissionRequest",
 		"PostToolUse",
 		"UserPromptSubmit",
 		"SessionStart",
@@ -39,6 +41,7 @@ var codexSpec = AgentSpec{
 	},
 	SupportedWireEvents: []string{
 		"PreToolUse",
+		"PermissionRequest",
 		"PostToolUse",
 		"UserPromptSubmit",
 		"SessionStart",
@@ -52,7 +55,9 @@ var codexSpec = AgentSpec{
 	RequiredFeatureFlag:      "codex_hooks",
 	FeatureFlagEnableCommand: "codex features enable codex_hooks",
 
-	ToolNames:  nil,
+	ToolNames: map[string]string{
+		"apply_patch": "Edit",
+	},
 	EventNames: nil,
 
 	ResponseFormat:         ResponseFormatLegacy,
@@ -69,8 +74,9 @@ var codexSpec = AgentSpec{
 	CommandFlag: "--agent codex",
 
 	HookRegistrations: []HookRegistration{
-		{Event: "PreToolUse", Matcher: "Bash", Command: "guard evaluate", Timeout: 10},
-		{Event: "PostToolUse", Matcher: "Bash", Command: "guard post-evaluate", Timeout: 10},
+		{Event: "PreToolUse", Matcher: "Bash|apply_patch|Edit|Write|mcp__.*", Command: "guard evaluate", Timeout: 10},
+		{Event: "PermissionRequest", Matcher: ".*", Command: "guard permission-request", Timeout: 10},
+		{Event: "PostToolUse", Matcher: "Bash|apply_patch|Edit|Write|mcp__.*", Command: "guard post-evaluate", Timeout: 10},
 		{Event: "SessionStart", Matcher: "startup|resume", Command: "guard compact-reinject", Timeout: 5},
 		{Event: "UserPromptSubmit", Command: "guard user-prompt", Timeout: 5},
 		{Event: "Stop", Command: "guard session-summary", Timeout: 5},

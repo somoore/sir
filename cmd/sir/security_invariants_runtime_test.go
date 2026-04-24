@@ -49,8 +49,11 @@ func runInvariantCodexBashOnlyBoundary(t *testing.T, fixture securityInvariantFi
 		t.Fatalf("Codex tool coverage = %q, want %q", got, want)
 	}
 	for _, surface := range manifest.Surfaces {
-		if surface.Key == agent.SurfaceMCPToolHooks && surface.Supported {
-			t.Fatal("Codex must not claim MCP tool hook support")
+		if surface.Key == agent.SurfaceMCPToolHooks {
+			want := fixture.Expected["mcp_tool_hooks"] == "true"
+			if surface.Supported != want {
+				t.Fatalf("Codex MCP support = %v, want %v", surface.Supported, want)
+			}
 		}
 	}
 }

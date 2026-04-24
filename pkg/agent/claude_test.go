@@ -19,12 +19,13 @@ func TestClaudeAgent_ID(t *testing.T) {
 	}
 }
 
-// TestClaudeAgent_SupportedEvents asserts all ten hook events are present.
+// TestClaudeAgent_SupportedEvents asserts supported hook events are present.
 func TestClaudeAgent_SupportedEvents(t *testing.T) {
 	c := &ClaudeAgent{}
 	events := c.SupportedEvents()
 	want := []string{
 		"PreToolUse",
+		"PermissionRequest",
 		"PostToolUse",
 		"SubagentStart",
 		"UserPromptSubmit",

@@ -30,7 +30,7 @@ func TestCodexAgent_Metadata(t *testing.T) {
 		t.Errorf("Name() = %q, want %q", c.Name(), "Codex")
 	}
 	events := c.SupportedEvents()
-	want := []string{"PreToolUse", "PostToolUse", "UserPromptSubmit", "SessionStart", "Stop"}
+	want := []string{"PreToolUse", "PermissionRequest", "PostToolUse", "UserPromptSubmit", "SessionStart", "Stop"}
 	if len(events) != len(want) {
 		t.Fatalf("SupportedEvents() len = %d, want %d: %v", len(events), len(want), events)
 	}
@@ -275,8 +275,8 @@ func TestCodexAgent_GenerateHooksConfig_Shape(t *testing.T) {
 		t.Fatalf("top-level hooks missing or wrong type: %T", parsed["hooks"])
 	}
 
-	// Each of the 5 events must be present.
-	for _, ev := range []string{"PreToolUse", "PostToolUse", "SessionStart", "UserPromptSubmit", "Stop"} {
+	// Each supported event must be present.
+	for _, ev := range []string{"PreToolUse", "PermissionRequest", "PostToolUse", "SessionStart", "UserPromptSubmit", "Stop"} {
 		arr, ok := hooks[ev].([]interface{})
 		if !ok || len(arr) == 0 {
 			t.Fatalf("hooks[%q] missing or empty: %T", ev, hooks[ev])
@@ -301,8 +301,13 @@ func TestCodexAgent_GenerateHooksConfig_Shape(t *testing.T) {
 		// Matcher presence rules.
 		switch ev {
 		case "PreToolUse", "PostToolUse":
-			if entry["matcher"] != "Bash" {
-				t.Errorf("hooks[%q] matcher = %v, want Bash", ev, entry["matcher"])
+			wantMatcher := "Bash|apply_patch|Edit|Write|mcp__.*"
+			if entry["matcher"] != wantMatcher {
+				t.Errorf("hooks[%q] matcher = %v, want %s", ev, entry["matcher"], wantMatcher)
+			}
+		case "PermissionRequest":
+			if entry["matcher"] != ".*" {
+				t.Errorf("hooks[PermissionRequest] matcher = %v, want .*", entry["matcher"])
 			}
 		case "SessionStart":
 			if entry["matcher"] != "startup|resume" {
