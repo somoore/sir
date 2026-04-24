@@ -61,8 +61,10 @@ func cmdMCP(projectRoot string, args []string) {
 		cmdMCPRevoke(projectRoot, args)
 	case "list":
 		cmdMCPList(projectRoot)
+	case "scope":
+		cmdMCPScope(projectRoot, args)
 	default:
-		fatal("usage: sir mcp [status|inventory|wrap|approve|revoke|list] [--agent <id>] [--yes] [--project <path>]\n\nExamples:\n  sir mcp\n  sir mcp wrap --yes\n  sir mcp status --agent gemini\n  sir mcp approve <name>\n  sir mcp approve --all\n  sir mcp revoke <name>\n  sir mcp list\n  sir mcp list --project /path/to/repo")
+		fatal("usage: sir mcp [status|inventory|wrap|approve|revoke|list|scope] [--agent <id>] [--yes] [--project <path>]\n\nExamples:\n  sir mcp\n  sir mcp wrap --yes\n  sir mcp status --agent gemini\n  sir mcp approve <name>\n  sir mcp approve --all\n  sir mcp revoke <name>\n  sir mcp list\n  sir mcp scope <name> --allow-network --root .\n  sir mcp list --project /path/to/repo")
 	}
 }
 

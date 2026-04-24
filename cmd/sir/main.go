@@ -29,6 +29,8 @@ func main() {
 			}
 		}
 		cmdInstall(projectRoot, mode)
+	case "setup":
+		cmdSetup(projectRoot, os.Args[2:])
 	case "uninstall":
 		cmdUninstall(projectRoot)
 	case "status":
@@ -38,8 +40,7 @@ func main() {
 	case "doctor":
 		cmdDoctor(projectRoot)
 	case "log", "ledger":
-		verify := len(os.Args) > 2 && os.Args[2] == "verify"
-		cmdLog(projectRoot, verify)
+		cmdLogLifecycle(projectRoot, os.Args[2:])
 	case "explain", "why":
 		index := -1 // default: last entry
 		for i, arg := range os.Args[2:] {
@@ -63,15 +64,20 @@ func main() {
 		// footgun-shaped, and duplicated `sir unlock` exactly.
 		cmdClearSession(projectRoot)
 	case "allow-host":
-		if len(os.Args) < 3 {
-			fatal("usage: sir allow-host <hostname>")
-		}
-		cmdAllowHost(projectRoot, os.Args[2])
+		cmdAllowHostArgs(projectRoot, os.Args[2:])
 	case "allow-remote":
 		if len(os.Args) < 3 {
 			fatal("usage: sir allow-remote <remote-name>")
 		}
 		cmdAllowRemote(projectRoot, os.Args[2])
+	case "approve":
+		cmdApprove(projectRoot, os.Args[2:])
+	case "policy":
+		cmdPolicy(projectRoot, os.Args[2:])
+	case "protect-path":
+		cmdProtectPath(projectRoot, os.Args[2:])
+	case "unprotect-path":
+		cmdUnprotectPath(projectRoot, os.Args[2:])
 	case "trust", "trust-mcp":
 		if len(os.Args) < 3 {
 			fatal("usage: sir trust <server-name>")
@@ -88,7 +94,7 @@ func main() {
 		cmdTrace(projectRoot)
 	case "audit":
 		cmdAudit(projectRoot)
-	case "run":
+	case "run", "launch", "contain":
 		cmdRun(projectRoot, os.Args[2:])
 	case "verify":
 		cmdVerify()
@@ -109,6 +115,7 @@ A security runtime for AI coding agents (Claude Code, Codex, and Gemini CLI).
 Invisible during normal work. Loud at the exits.
 
 Get started
+  sir setup [--strict|--default]  Guided first-run setup for policy + hooks
   sir install [--agent <id>] [--no-rebaseline]
                                  Auto-detect installed agents and set up hooks
                                  (--agent: claude, codex, gemini)
@@ -124,18 +131,28 @@ Get started
 
 When sir asks or blocks
   sir why                        Explain the most recent decision
+  sir approve --last             Approve the next exact retry for the last ask
   sir unlock                     Clear transient runtime restrictions, restore operability
   sir allow-host <hostname>      Permanently allow requests to a host
+  sir allow-host <host> --ttl 2h Temporarily allow requests to a host
   sir allow-remote <name>        Permanently allow pushes to a git remote
   sir trust <mcp-server>         Trust an MCP server with credentials (rare)
+
+Policy
+  sir policy show                Show this project's lease and policy profile
+  sir policy diff --strict       Compare the active lease with strict defaults
+  sir policy init --strict       Initialize a stricter local policy profile
+  sir protect-path <path>        Add a sensitive path pattern
+  sir unprotect-path <path>      Remove a sensitive path pattern
 
 Review a session
   sir audit                      One-screen security summary of this session
   sir trace                      Export this session's ledger as a shareable HTML timeline
-  sir log [verify]               Show or verify the full decision log
+  sir log [verify|archive|export] Show, verify, archive, or export the decision log
   sir explain [--last|--index N] Explain any decision with full causal chain
   sir mcp [status]               Inspect discovered MCP servers and their runtime posture
   sir mcp wrap [--yes]           Rewrite raw command-based MCP servers through sir mcp-proxy
+  sir mcp scope <name> [flags]   Add per-server MCP capability scopes
 
 Maintenance
   sir doctor                     Check sir's health and auto-repair
@@ -145,5 +162,7 @@ Maintenance
 
 	Advanced
 	  sir mcp-proxy <command>        Wrap an MCP server with OS-level MCP hardening
-	  sir run <agent>               Experimental host-agent containment (macOS proxy sandbox, Linux exact-destination namespace allowlist)`)
+	  sir run <agent>               Host-agent containment launcher
+	  sir launch <agent>            Alias for sir run
+	  sir contain <agent>           Alias for sir run`)
 }

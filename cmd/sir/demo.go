@@ -36,7 +36,7 @@ sir Demo — see all three detections in action
 
 	// Create sample .env file with fake credentials
 	envPath := filepath.Join(tmpDir, ".env")
-envContent := `# FAKE CREDENTIALS — for demo only
+	envContent := `# FAKE CREDENTIALS — for demo only
 DATABASE_URL=postgres://admin:hunter2@db.example.com:5432/myapp
 API_KEY=EXAMPLE_API_KEY
 AWS_SECRET_ACCESS_KEY=EXAMPLE_AWS_SECRET_ACCESS_KEY
@@ -128,14 +128,14 @@ AWS_SECRET_ACCESS_KEY=EXAMPLE_AWS_SECRET_ACCESS_KEY
 	writePayload := &hooks.HookPayload{
 		ToolName: "Write",
 		ToolInput: map[string]interface{}{
-			"file_path": ".claude/hooks/hooks.json",
+			"file_path": ".claude/settings.json",
 			"content":   "{}",
 		},
 	}
 
 	intent3 := hooks.MapToolToIntent(writePayload.ToolName, writePayload.ToolInput, l)
 	fmt.Printf("  Tool:   Write\n")
-	fmt.Printf("  Target: .claude/hooks/hooks.json\n")
+	fmt.Printf("  Target: .claude/settings.json\n")
 	fmt.Printf("  Verb:   %s\n", intent3.Verb)
 	fmt.Printf("  Posture: %v\n", intent3.IsPosture)
 	fmt.Println()
@@ -145,7 +145,7 @@ AWS_SECRET_ACCESS_KEY=EXAMPLE_AWS_SECRET_ACCESS_KEY
 	fmt.Println("           session-fatal deny-all.")
 	fmt.Println()
 	fmt.Printf("  If tampered via Bash, the developer sees:\n")
-	fmt.Printf("  %s\n", hooks.FormatHookTamper(".claude/hooks/hooks.json"))
+	fmt.Printf("  %s\n", hooks.FormatHookTamper(".claude/settings.json"))
 	fmt.Println()
 
 	fmt.Println("--- What sir ignores ---")

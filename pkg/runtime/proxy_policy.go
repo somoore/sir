@@ -170,8 +170,9 @@ func buildRuntimeAllowlistForProject(projectRoot string, opts Options) (runtimeA
 	if err != nil {
 		return runtimeAllowlist{}, err
 	}
-	merged := make([]string, 0, len(l.ApprovedHosts)+len(opts.AllowedHosts))
-	merged = append(merged, l.ApprovedHosts...)
+	activeHosts := l.ActiveApprovedHosts()
+	merged := make([]string, 0, len(activeHosts)+len(opts.AllowedHosts))
+	merged = append(merged, activeHosts...)
 	if spec := opts.Agent.GetSpec(); spec != nil {
 		merged = append(merged, spec.RuntimeProxyHosts...)
 	}

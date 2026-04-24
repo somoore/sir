@@ -116,10 +116,8 @@ func ClassifyNetworkDest(target string, l *lease.Lease) string {
 	if isLoopback(host) {
 		return "loopback"
 	}
-	for _, approved := range l.ApprovedHosts {
-		if strings.EqualFold(host, approved) {
-			return "approved"
-		}
+	if l != nil && l.IsApprovedHost(host) {
+		return "approved"
 	}
 	return "external"
 }
