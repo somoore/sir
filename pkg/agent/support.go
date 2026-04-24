@@ -6,6 +6,7 @@ type SupportSurfaceKey string
 
 const (
 	SurfaceInteractiveApproval SupportSurfaceKey = "interactive_approval"
+	SurfacePermissionRequest   SupportSurfaceKey = "permission_request"
 	SurfaceFileReadIFC         SupportSurfaceKey = "file_read_ifc"
 	SurfaceFileWriteIFC        SupportSurfaceKey = "file_write_ifc"
 	SurfaceShellClassification SupportSurfaceKey = "shell_classification"
@@ -19,6 +20,7 @@ const (
 
 var allSIREvents = []string{
 	"PreToolUse",
+	"PermissionRequest",
 	"PostToolUse",
 	"UserPromptSubmit",
 	"SubagentStart",
@@ -143,6 +145,12 @@ func SupportManifestForSpec(spec *AgentSpec) SupportManifest {
 				Title:     "Interactive approvals",
 				Supported: spec.Capabilities.InteractiveApproval,
 				Notes:     supportSurfaceNotes(spec, SurfaceInteractiveApproval),
+			},
+			{
+				Key:       SurfacePermissionRequest,
+				Title:     "Permission-request broker",
+				Supported: spec.Capabilities.PermissionRequest,
+				Notes:     supportSurfaceNotes(spec, SurfacePermissionRequest),
 			},
 			{
 				Key:       SurfaceFileReadIFC,

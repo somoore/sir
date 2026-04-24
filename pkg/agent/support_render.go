@@ -47,10 +47,11 @@ var supportRenderProfiles = map[AgentID]supportRenderProfile{
 		docPath:               "docs/user/codex-support.md",
 		threatModelDocPath:    "../user/codex-support.md",
 		runtimeName:           "codex-cli",
-		statusHeadingTemplate: "## Status: limited support on codex-cli %s+ (Bash-only)",
+		statusHeadingTemplate: "## Status: limited support on codex-cli %s+ (partial tool coverage)",
 		surfaceNotes: map[SupportSurfaceKey]string{
 			SurfaceFileReadIFC:  "Bash-mediated sensitive reads (cat/sed/head/tail/grep/etc.) are promoted to read_ref before execution.",
-			SurfaceFileWriteIFC: "Native apply_patch writes bypass PreToolUse on codex-cli 0.118.x; posture tamper is caught post-hoc.",
+			SurfaceFileWriteIFC: "apply_patch/Edit/Write posture mutations are pre-gated when Codex emits their hooks; sentinel hashing remains the backstop.",
+			SurfaceMCPToolHooks: "sir registers Codex MCP matchers and sees MCP arguments/responses when Codex emits mcp__* tool hooks.",
 			SurfaceSessionSweep: "The final posture sweep runs on Stop because Codex exposes no SessionEnd hook.",
 		},
 	},
@@ -92,6 +93,7 @@ func supportDocLinkForFAQ(m SupportManifest) string {
 // the human-facing mitigation phrase used in threat model and FAQ prose.
 var lifecycleMitigationDescriptions = map[string]string{
 	"SubagentStart":      "SubagentStart delegation gating",
+	"PermissionRequest":  "PermissionRequest approval brokering",
 	"ConfigChange":       "ConfigChange tamper detection at the moment of change",
 	"InstructionsLoaded": "InstructionsLoaded pre-read scanning",
 	"Elicitation":        "Elicitation interception",
@@ -146,6 +148,11 @@ var capabilityBranchNotes = map[SupportSurfaceKey]capabilityBranch{
 		capability:  func(c AgentCapabilities) bool { return c.MCPToolHooks },
 		supported:   "sir sees both MCP arguments and MCP responses on this agent.",
 		unsupported: "%s does not fire hooks for MCP tools today.",
+	},
+	SurfacePermissionRequest: {
+		capability:  func(c AgentCapabilities) bool { return c.PermissionRequest },
+		supported:   "sir can broker agent-native permission request events through the same policy path.",
+		unsupported: "%s exposes no PermissionRequest-equivalent hook.",
 	},
 	SurfaceSubagentStart: {
 		capability:  func(c AgentCapabilities) bool { return c.SubagentStart },
@@ -228,6 +235,8 @@ func (m SupportManifest) StatusSuffix() string {
 	parts := []string{m.TierLabel()}
 	if m.ToolCoverage == ToolCoverageBashOnly {
 		parts = append(parts, "Bash-only")
+	} else if m.ToolCoverage == ToolCoveragePartial {
+		parts = append(parts, "partial tool coverage")
 	}
 	return "  (" + strings.Join(parts, ", ") + ")"
 }
@@ -237,7 +246,7 @@ func (m SupportManifest) StatusSuffix() string {
 // Tiers absent from the map produce an empty line.
 var supportTierStatusWarningTemplates = map[SupportTier]string{
 	SupportTierNearParity: "             Note: %s is near-parity support; lifecycle coverage remains narrower than Claude Code.\n",
-	SupportTierLimited:    "             Warning: %s remains limited support; enforcement is bounded by the upstream Bash-only hook surface.\n",
+	SupportTierLimited:    "             Warning: %s remains limited support; lifecycle coverage and upstream hook delivery are still narrower than Claude Code.\n",
 }
 
 // StatusWarningLine renders the support caveat used by `sir status`.
@@ -253,7 +262,7 @@ func (m SupportManifest) StatusWarningLine(agentName string) string {
 // DoctorWarningLine. The %s placeholder is substituted with the agent name.
 var supportTierDoctorWarningTemplates = map[SupportTier]string{
 	SupportTierNearParity: "  NOTE: %s is near-parity support — file IFC, shell classification, MCP scanning, and credential output scanning are covered, but some lifecycle hooks remain unavailable.\n",
-	SupportTierLimited:    "  WARNING: %s is limited support — Bash-mediated actions are guarded, but native writes and MCP tools still depend on sentinel hashing plus end-of-session sweeps.\n",
+	SupportTierLimited:    "  WARNING: %s is limited support — Bash, native write, and MCP hooks are registered where available, but sentinel hashing plus final sweeps remain the backstop.\n",
 }
 
 // DoctorWarningLine renders the support caveat used by `sir doctor`.
@@ -301,6 +310,14 @@ func (m SupportManifest) supportOverviewLine() string {
 		return fmt.Sprintf("- **%s** — **Near-parity support.** %d hook events fire on %s %s+, with full tool-path coverage for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: %s.",
 			m.Name, m.HookEventCount, m.Name, m.MinimumVersion, missingLifecycleHooks(m))
 	case SupportTierLimited:
+		if m.ToolCoverage == ToolCoveragePartial {
+			if docLink := supportDocLink(m); docLink != "" {
+				return fmt.Sprintf("- **%s** — **Limited support.** %d hook events fire on `%s` %s+ after enabling the `%s` feature flag (`%s`). sir registers Bash, native-write, MCP, and permission-request hooks where Codex exposes them, but lifecycle coverage remains narrower than Claude Code and the final `Stop` sweep stays the posture backstop. See %s.",
+					m.Name, m.HookEventCount, supportRuntimeName(m), m.MinimumVersion, m.RequiredFeatureFlag, m.FeatureFlagEnableCommand, docLink)
+			}
+			return fmt.Sprintf("- **%s** — **Limited support.** %d hook events fire on `%s` %s+ after enabling the `%s` feature flag (`%s`). sir registers Bash, native-write, MCP, and permission-request hooks where Codex exposes them, but lifecycle coverage remains narrower than Claude Code and the final `Stop` sweep stays the posture backstop.",
+				m.Name, m.HookEventCount, supportRuntimeName(m), m.MinimumVersion, m.RequiredFeatureFlag, m.FeatureFlagEnableCommand)
+		}
 		if docLink := supportDocLink(m); docLink != "" {
 			return fmt.Sprintf("- **%s** — **Limited support.** %d hook events fire on `%s` %s+ after enabling the `%s` feature flag (`%s`), and the upstream hook surface is Bash-only. Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools stay outside PreToolUse; sir relies on sentinel hashing plus a final `Stop` sweep as the backstop. See %s.",
 				m.Name, m.HookEventCount, supportRuntimeName(m), m.MinimumVersion, m.RequiredFeatureFlag, m.FeatureFlagEnableCommand, docLink)
@@ -338,6 +355,12 @@ func (m SupportManifest) faqLine() string {
 		}
 		return fmt.Sprintf("- **%s %s+:** %d hook events — near-parity support for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: %s.", m.Name, m.MinimumVersion, m.HookEventCount, missingLifecycleHooks(m))
 	case SupportTierLimited:
+		if m.ToolCoverage == ToolCoveragePartial {
+			if docLink := supportDocLinkForFAQ(m); docLink != "" {
+				return fmt.Sprintf("- **%s %s+:** %d hook events — limited support with partial tool-path coverage for Bash, native writes, MCP tools, and permission requests where Codex emits hooks. Requires enabling `%s` (`%s`). Missing lifecycle hooks: %s. See %s.", m.Name, m.MinimumVersion, m.HookEventCount, m.RequiredFeatureFlag, m.FeatureFlagEnableCommand, missingLifecycleHooks(m), docLink)
+			}
+			return fmt.Sprintf("- **%s %s+:** %d hook events — limited support with partial tool-path coverage for Bash, native writes, MCP tools, and permission requests where Codex emits hooks. Requires enabling `%s` (`%s`). Missing lifecycle hooks: %s.", m.Name, m.MinimumVersion, m.HookEventCount, m.RequiredFeatureFlag, m.FeatureFlagEnableCommand, missingLifecycleHooks(m))
+		}
 		if docLink := supportDocLinkForFAQ(m); docLink != "" {
 			return fmt.Sprintf("- **%s %s+:** %d hook events — limited support with a **Bash-only** upstream hook surface. Requires enabling `%s` (`%s`). Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools still bypass PreToolUse; sir relies on PostToolUse sentinel hashing plus a final `Stop` sweep as the backstop. See %s.", m.Name, m.MinimumVersion, m.HookEventCount, m.RequiredFeatureFlag, m.FeatureFlagEnableCommand, docLink)
 		}
@@ -364,6 +387,8 @@ func renderSupportMatrixTable(m SupportManifest, includeFeatureFlag bool) string
 	switch m.ToolCoverage {
 	case ToolCoverageBashOnly:
 		b.WriteString("| Tool-path coverage | ⚠ Bash-only | Shell classification is enforced, but non-Bash tools bypass sir entirely. |\n")
+	case ToolCoveragePartial:
+		b.WriteString("| Tool-path coverage | ⚠ Partial | Bash, native write, MCP, and permission-request hooks are registered where the host agent emits them; missing lifecycle hooks remain documented below. |\n")
 	default:
 		b.WriteString("| Tool-path coverage | ✅ Full | File IFC labeling, shell classification, MCP scanning, and credential output scanning all run on the hooked tool path. |\n")
 	}
@@ -437,7 +462,7 @@ func RenderThreatModelScopeBlock() string {
 	claude, _ := SupportManifestForID(Claude)
 	gemini, _ := SupportManifestForID(Gemini)
 	codex, _ := SupportManifestForID(Codex)
-	return fmt.Sprintf("**Scope note.** The threat model is written primarily against %s because %s is the **reference-support** target: it has the richest hook surface (%d events), native interactive approval, and the most complete sir coverage. %s has **near-parity support** — full tool-path coverage for file IFC labeling, shell classification, MCP scanning, and credential output scanning — but four Claude-specific lifecycle mitigations are not available: %s. %s has **limited support** with a Bash-only hook surface: Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools bypass PreToolUse, so sir relies on sentinel hashing plus a final `Stop` sweep as the posture backstop. Wherever a mitigation below depends on one of the missing hooks, the threat is correspondingly wider on the affected agent. See [%s](%s) and [%s](%s) for the per-agent coverage matrices.",
+	return fmt.Sprintf("**Scope note.** The threat model is written primarily against %s because %s is the **reference-support** target: it has the richest hook surface (%d events), native interactive approval, and the most complete sir coverage. %s has **near-parity support** — full tool-path coverage for file IFC labeling, shell classification, MCP scanning, and credential output scanning — but some Claude-specific mitigations are not available: %s. %s has **limited support** with partial tool-path coverage: Bash, native-write, MCP, and permission-request hooks are registered where Codex emits them, but missing lifecycle hooks and upstream delivery gaps mean sir still relies on sentinel hashing plus a final `Stop` sweep as the posture backstop. Wherever a mitigation below depends on one of the missing hooks, the threat is correspondingly wider on the affected agent. See [%s](%s) and [%s](%s) for the per-agent coverage matrices.",
 		claude.Name,
 		claude.Name,
 		claude.HookEventCount,

@@ -39,9 +39,9 @@ flowchart LR
 Same turn, two tool calls, different verdicts — the oracle's decision changed because session state mutated between them. That is [information flow control](mister-core/src/ifc.rs), not a static rule list.
 
 <!-- BEGIN GENERATED SUPPORT SUMMARY -->
-- **Claude Code** — **Reference support.** Full 10-hook lifecycle with native interactive approval and complete tool-path coverage.
-- **Gemini CLI** — **Near-parity support.** 6 hook events fire on Gemini CLI 0.36.0+, with full tool-path coverage for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: SubagentStart, ConfigChange, InstructionsLoaded, and Elicitation. See [gemini-support.md](docs/user/gemini-support.md).
-- **Codex** — **Limited support.** 5 hook events fire on `codex-cli` 0.118.0+ after enabling the `codex_hooks` feature flag (`codex features enable codex_hooks`), and the upstream hook surface is Bash-only. Bash-mediated sensitive reads are pre-gated, but native file writes and MCP tools stay outside PreToolUse; sir relies on sentinel hashing plus a final `Stop` sweep as the backstop. See [codex-support.md](docs/user/codex-support.md).
+- **Claude Code** — **Reference support.** Full 11-hook lifecycle with native interactive approval and complete tool-path coverage.
+- **Gemini CLI** — **Near-parity support.** 6 hook events fire on Gemini CLI 0.36.0+, with full tool-path coverage for file IFC labeling, shell classification, MCP scanning, and credential output scanning. Missing lifecycle hooks: PermissionRequest, SubagentStart, ConfigChange, InstructionsLoaded, and Elicitation. See [gemini-support.md](docs/user/gemini-support.md).
+- **Codex** — **Limited support.** 6 hook events fire on `codex-cli` 0.118.0+ after enabling the `codex_hooks` feature flag (`codex features enable codex_hooks`). sir registers Bash, native-write, MCP, and permission-request hooks where Codex exposes them, but lifecycle coverage remains narrower than Claude Code and the final `Stop` sweep stays the posture backstop. See [codex-support.md](docs/user/codex-support.md).
 <!-- END GENERATED SUPPORT SUMMARY -->
 
 ## Why use sir
@@ -116,7 +116,7 @@ sir is v1 and experimental. Shipped tradeoffs:
 - MCP injection detection is ~50 regex patterns — encoded, paraphrased, or non-English framing can evade. Tainted servers require re-approval.
 - Turn boundaries use a 30-second gap heuristic (gameable). Shell classification is prefix-aware, not full POSIX.
 - Default lease allows push to origin, commit, loopback, and delegation. Tighten with `sir trust`, `sir allow-host`, or managed policy.
-- Model-internal reasoning is out of scope. Codex is limited by the upstream Bash-only hook surface.
+- Model-internal reasoning is out of scope. Codex still has limited lifecycle coverage and depends on upstream hook delivery.
 - If `mister-core` is missing from `PATH`, Go falls back to a deliberately restrictive subset. Parity tests enforce the fallback is never more permissive.
 - `mister-core` is verified against the install-time manifest on first use per process. A tampered oracle triggers a hard deny on all tool calls.
 

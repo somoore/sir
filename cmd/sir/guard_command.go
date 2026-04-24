@@ -23,6 +23,12 @@ var guardHandlers = map[string]guardCommandHandler{
 			guardPostDeny(ag, "sir guard post-evaluate: %v", err)
 		}
 	},
+	"permission-request": func(projectRoot string, ag agent.Agent) {
+		// PermissionRequest — broker native permission prompts through sir policy.
+		if err := hooks.EvaluatePermissionRequest(projectRoot, ag); err != nil {
+			guardLifecycleDeny(ag, "PermissionRequest", "sir guard permission-request: %v", err)
+		}
+	},
 	"user-prompt": func(projectRoot string, ag agent.Agent) {
 		// UserPromptSubmit — advance turn counter
 		if err := hooks.EvaluateUserPrompt(projectRoot, ag); err != nil {
@@ -119,7 +125,7 @@ func guardCommandNames() []string {
 
 func cmdGuard(projectRoot string, args []string) {
 	if len(args) == 0 {
-		guardDeny(nil, "sir guard: missing subcommand (evaluate|post-evaluate|user-prompt|subagent-start|compact-reinject|config-change|instructions-loaded|session-summary|session-end|elicitation)")
+		guardDeny(nil, "sir guard: missing subcommand (evaluate|permission-request|post-evaluate|user-prompt|subagent-start|compact-reinject|config-change|instructions-loaded|session-summary|session-end|elicitation)")
 	}
 
 	agentID := string(agent.Claude)
