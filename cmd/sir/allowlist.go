@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/somoore/sir/pkg/lease"
 	"github.com/somoore/sir/pkg/ledger"
@@ -15,19 +16,48 @@ import (
 var afterLeaseSaveForTest func()
 
 func cmdAllowHost(projectRoot, host string) {
+	cmdAllowHostArgs(projectRoot, []string{host})
+}
+
+func cmdAllowHostArgs(projectRoot string, args []string) {
 	if err := ensureManagedCommandAllowed("allow-host"); err != nil {
 		fatal("%v", err)
+	}
+	if len(args) == 0 {
+		fatal("usage: sir allow-host <hostname> [--ttl <duration>]")
+	}
+	host := args[0]
+	var expiresAt time.Time
+	for rest := args[1:]; len(rest) > 0; {
+		arg := rest[0]
+		rest = rest[1:]
+		switch arg {
+		case "--ttl":
+			if len(rest) == 0 {
+				fatal("--ttl requires a duration, e.g. 2h or 30m")
+			}
+			ttl, err := time.ParseDuration(rest[0])
+			if err != nil {
+				fatal("parse --ttl: %v", err)
+			}
+			expiresAt = time.Now().Add(ttl).UTC()
+			rest = rest[1:]
+		default:
+			fatal("unknown flag: %s", arg)
+		}
 	}
 	l, err := loadProjectLease(projectRoot)
 	if err != nil {
 		fatal("load lease: %v", err)
 	}
 
-	// Check if already approved
-	for _, h := range l.ApprovedHosts {
-		if h == host {
-			fmt.Printf("Host %q is already in approved_hosts.\n", host)
-			return
+	if expiresAt.IsZero() && l.IsApprovedHost(host) {
+		fmt.Printf("Host %q is already in approved_hosts.\n", host)
+		return
+	}
+	if !expiresAt.IsZero() {
+		if l.IsApprovedHost(host) {
+			fmt.Printf("Host %q is already approved; refreshing TTL.\n", host)
 		}
 	}
 
@@ -35,36 +65,56 @@ func cmdAllowHost(projectRoot, host string) {
 	fmt.Println()
 	fmt.Printf("  WARNING: Adding %q to approved_hosts will allow sir-protected agents\n", host)
 	fmt.Printf("  to make network requests to this destination without blocking.\n")
+	if !expiresAt.IsZero() {
+		fmt.Printf("  This approval expires at %s.\n", expiresAt.Format("2006-01-02 15:04:05 MST"))
+	}
 	fmt.Println()
 	fmt.Printf("  Only add this host if you trust it completely.\n")
 	fmt.Printf("  sir will no longer block egress to %s.\n", host)
 	fmt.Println()
 	fmt.Printf("  Add %q to approved_hosts? [y/N] ", host)
 
-	var confirm string
-	fmt.Scanln(&confirm)
-	confirm = strings.TrimSpace(strings.ToLower(confirm))
-	if confirm != "y" && confirm != "yes" {
+	var confirmText string
+	fmt.Scanln(&confirmText)
+	confirmText = strings.TrimSpace(strings.ToLower(confirmText))
+	if confirmText != "y" && confirmText != "yes" {
 		fmt.Println("Cancelled. No changes made.")
 		return
 	}
 
 	if err := updateProjectLeaseAndSessionBaseline(projectRoot, func(l *lease.Lease) error {
-		l.ApprovedHosts = append(l.ApprovedHosts, host)
+		hostKey := strings.ToLower(host)
+		l.ApprovedHosts = appendUniqueString(l.ApprovedHosts, host)
+		if !expiresAt.IsZero() {
+			if l.ApprovedHostExpires == nil {
+				l.ApprovedHostExpires = make(map[string]time.Time)
+			}
+			l.ApprovedHostExpires[hostKey] = expiresAt
+		} else if l.ApprovedHostExpires != nil {
+			delete(l.ApprovedHostExpires, hostKey)
+		}
 		return nil
 	}); err != nil {
 		fatal("update lease/session baseline: %v", err)
 	}
 
+	reason := fmt.Sprintf("added host: %s", host)
+	if !expiresAt.IsZero() {
+		reason = fmt.Sprintf("added host: %s until %s", host, expiresAt.Format(time.RFC3339))
+	}
 	// Log to ledger
 	ledger.Append(projectRoot, &ledger.Entry{
 		Verb:     "lease_modify",
 		Target:   "approved_hosts",
 		Decision: "allow",
-		Reason:   fmt.Sprintf("added host: %s", host),
+		Reason:   reason,
 	})
 
-	fmt.Printf("Added %q to approved_hosts. sir-protected agents can now reach this host.\n", host)
+	if expiresAt.IsZero() {
+		fmt.Printf("Added %q to approved_hosts. sir-protected agents can now reach this host.\n", host)
+	} else {
+		fmt.Printf("Added %q to approved_hosts until %s.\n", host, expiresAt.Format("2006-01-02 15:04:05 MST"))
+	}
 }
 
 func cmdAllowRemote(projectRoot, remote string) {
@@ -190,15 +240,22 @@ func updateProjectLeaseAndSessionBaseline(projectRoot string, mutate func(*lease
 		}
 
 		originalLease, err := lease.Load(leasePath)
-		if err != nil {
+		missingLease := os.IsNotExist(err)
+		if err != nil && !missingLease {
 			return fmt.Errorf("load lease: %w", err)
 		}
-		l, err := lease.Load(leasePath)
-		if err != nil {
-			return fmt.Errorf("load lease: %w", err)
+		l := lease.DefaultLease()
+		if !missingLease {
+			l, err = lease.Load(leasePath)
+			if err != nil {
+				return fmt.Errorf("load lease: %w", err)
+			}
 		}
 		if err := mutate(l); err != nil {
 			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(leasePath), 0o700); err != nil {
+			return fmt.Errorf("create lease dir: %w", err)
 		}
 		if err := l.Save(leasePath); err != nil {
 			return fmt.Errorf("save lease: %w", err)
@@ -216,7 +273,11 @@ func updateProjectLeaseAndSessionBaseline(projectRoot string, mutate func(*lease
 		}
 		state.LeaseHash = newHash
 		if err := state.Save(); err != nil {
-			if rollbackErr := originalLease.Save(leasePath); rollbackErr != nil {
+			if missingLease {
+				if rollbackErr := os.Remove(leasePath); rollbackErr != nil && !os.IsNotExist(rollbackErr) {
+					return fmt.Errorf("save session after lease update: %w (rollback lease removal: %v)", err, rollbackErr)
+				}
+			} else if rollbackErr := originalLease.Save(leasePath); rollbackErr != nil {
 				return fmt.Errorf("save session after lease update: %w (rollback lease: %v)", err, rollbackErr)
 			}
 			return fmt.Errorf("save session after lease update: %w", err)

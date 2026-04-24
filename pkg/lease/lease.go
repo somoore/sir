@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/somoore/sir/pkg/policy"
@@ -58,6 +59,18 @@ type MCPApproval struct {
 	CommandModTime time.Time `json:"command_mod_time,omitempty"`
 }
 
+// MCPCapabilityScope narrows what a specific approved MCP server is expected
+// to do. Empty fields are intentionally permissive so adding this structure to
+// old leases does not change behavior until a user opts in per server.
+type MCPCapabilityScope struct {
+	Server       string   `json:"server"`
+	Tools        []string `json:"tools,omitempty"`
+	Roots        []string `json:"roots,omitempty"`
+	AllowShell   bool     `json:"allow_shell,omitempty"`
+	AllowNetwork bool     `json:"allow_network,omitempty"`
+	AllowWrite   bool     `json:"allow_write,omitempty"`
+}
+
 // Lease is the full lease model. It defines the agent's granted authority.
 type Lease struct {
 	LeaseID         string `json:"lease_id"`
@@ -78,12 +91,14 @@ type Lease struct {
 	ForbiddenVerbs []policy.Verb `json:"forbidden_verbs"`
 	AskVerbs       []policy.Verb `json:"ask_verbs"`
 
-	ApprovedRemotes      []string                   `json:"approved_remotes"`
-	ApprovedHosts        []string                   `json:"approved_hosts"`
-	ApprovedMCPServers   []string                   `json:"approved_mcp_servers"`
-	TrustedMCPServers    []string                   `json:"trusted_mcp_servers,omitempty"`    // servers exempt from credential scanning
-	DiscoveredMCPServers []MCPDiscoveredServer      `json:"discovered_mcp_servers,omitempty"` // strict-posture: awaiting `sir mcp approve`
-	MCPApprovals         map[string]MCPApproval     `json:"mcp_approvals,omitempty"`          // provenance for explicit approvals
+	ApprovedRemotes      []string               `json:"approved_remotes"`
+	ApprovedHosts        []string               `json:"approved_hosts"`
+	ApprovedMCPServers   []string               `json:"approved_mcp_servers"`
+	TrustedMCPServers    []string               `json:"trusted_mcp_servers,omitempty"`    // servers exempt from credential scanning
+	DiscoveredMCPServers []MCPDiscoveredServer  `json:"discovered_mcp_servers,omitempty"` // strict-posture: awaiting `sir mcp approve`
+	MCPApprovals         map[string]MCPApproval `json:"mcp_approvals,omitempty"`          // provenance for explicit approvals
+	ApprovedHostExpires  map[string]time.Time   `json:"approved_host_expires,omitempty"`  // optional TTLs for approved_hosts entries
+	MCPCapabilityScopes  []MCPCapabilityScope   `json:"mcp_capability_scopes,omitempty"`  // optional per-server narrowing
 
 	Sinks []Sink `json:"sinks"`
 
@@ -276,6 +291,45 @@ func (l *Lease) IsTrustedMCPServer(serverName string) bool {
 	return false
 }
 
+// IsApprovedHost reports whether host is approved right now. Expired host
+// entries remain on disk for auditability until a command rewrites the lease,
+// but are ignored by classification and runtime allowlist construction.
+func (l *Lease) IsApprovedHost(host string) bool {
+	host = strings.TrimSpace(strings.ToLower(host))
+	if host == "" {
+		return false
+	}
+	now := time.Now()
+	for _, approved := range l.ApprovedHosts {
+		approved = strings.TrimSpace(strings.ToLower(approved))
+		if approved == "" || approved != host {
+			continue
+		}
+		if l.ApprovedHostExpires == nil {
+			return true
+		}
+		expiresAt, ok := l.ApprovedHostExpires[approved]
+		if !ok || expiresAt.IsZero() || now.Before(expiresAt) {
+			return true
+		}
+	}
+	return false
+}
+
+// ActiveApprovedHosts returns the approved hosts whose TTLs have not expired.
+func (l *Lease) ActiveApprovedHosts() []string {
+	if l == nil {
+		return nil
+	}
+	out := make([]string, 0, len(l.ApprovedHosts))
+	for _, host := range l.ApprovedHosts {
+		if l.IsApprovedHost(host) {
+			out = append(out, host)
+		}
+	}
+	return out
+}
+
 // FindDiscoveredMCPServer returns the discovered-server record with the
 // given name, and a boolean indicating whether it was found. Used by
 // `sir mcp approve` to promote a discovered server to approved.
@@ -316,4 +370,36 @@ func (l *Lease) RemoveApprovedMCPServer(name string) {
 			l.MCPApprovals = nil
 		}
 	}
+}
+
+// FindMCPCapabilityScope returns the explicit capability scope for server.
+func (l *Lease) FindMCPCapabilityScope(server string) (MCPCapabilityScope, bool) {
+	for _, scope := range l.MCPCapabilityScopes {
+		if scope.Server == server {
+			return scope, true
+		}
+	}
+	return MCPCapabilityScope{}, false
+}
+
+// UpsertMCPCapabilityScope adds or replaces a scope by server name.
+func (l *Lease) UpsertMCPCapabilityScope(scope MCPCapabilityScope) {
+	for i := range l.MCPCapabilityScopes {
+		if l.MCPCapabilityScopes[i].Server == scope.Server {
+			l.MCPCapabilityScopes[i] = scope
+			return
+		}
+	}
+	l.MCPCapabilityScopes = append(l.MCPCapabilityScopes, scope)
+}
+
+// RemoveMCPCapabilityScope removes a capability scope by server name.
+func (l *Lease) RemoveMCPCapabilityScope(server string) {
+	out := l.MCPCapabilityScopes[:0]
+	for _, scope := range l.MCPCapabilityScopes {
+		if scope.Server != server {
+			out = append(out, scope)
+		}
+	}
+	l.MCPCapabilityScopes = out
 }
