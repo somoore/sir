@@ -1,6 +1,7 @@
 {
    "_test_metadata" : {
       "expected_reason" : "PostToolUse returns allow while MCP response injection taints the session",
+      "expected_alert" : true,
       "expected_verdict" : "allow",
       "hook_type" : "PostToolUse",
       "session_state" : {
