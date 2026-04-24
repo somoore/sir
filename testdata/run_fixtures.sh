@@ -207,6 +207,7 @@ for fixture in "${FIXTURE_DIR}"/*.json; do
   # Extract metadata
   expected_verdict="$(jq -r '._test_metadata.expected_verdict' "$fixture")"
   expected_reason="$(jq -r '._test_metadata.expected_reason // "N/A"' "$fixture")"
+  expected_alert="$(jq -r '._test_metadata.expected_alert // false' "$fixture")"
   hook_type="$(jq -r '._test_metadata.hook_type // "PreToolUse"' "$fixture")"
   session_fatal="$(jq -r '._test_metadata.session_fatal // false' "$fixture")"
   secret_session="$(jq -r '._test_metadata.session_state.secret_session // false' "$fixture")"
@@ -292,6 +293,10 @@ for fixture in "${FIXTURE_DIR}"/*.json; do
 
   # Extract verdict from output
   actual_verdict="$(extract_verdict "$actual_output")"
+  alert_output=false
+  if echo "$actual_output" | grep -qi "sentinel\|tamper\|mutation\|alert\|prompt injection\|suspicious"; then
+    alert_output=true
+  fi
 
   if $VERBOSE; then
     echo -e "  Exit code: ${actual_exit_code}"
@@ -302,15 +307,23 @@ for fixture in "${FIXTURE_DIR}"/*.json; do
   # Compare verdicts
   match=false
   if [[ "$actual_verdict" == "$expected_verdict" ]]; then
-    match=true
+    if [[ "$expected_alert" != "true" ]] || [[ "$alert_output" == "true" ]]; then
+      match=true
+    fi
   elif [[ "$expected_verdict" == "alert" ]] && [[ "$actual_verdict" == "deny" ]] && [[ "$session_fatal" == "true" ]]; then
     match=true  # session-fatal alerts result in deny-all
   elif [[ "$expected_verdict" == "deny" ]] && [[ "$actual_verdict" == "block" ]]; then
     match=true
   elif [[ "$expected_verdict" == "alert" ]] && [[ "$actual_verdict" == "allow" ]] && [[ "$hook_type" == "PostToolUse" ]]; then
     # PostToolUse alerts are logged but don't change the verdict
-    # If the alert was logged to stderr, check for it
-    if echo "$actual_output" | grep -qi "sentinel\|tamper\|mutation\|alert"; then
+    # If the alert was logged to stderr, check for it.
+    if [[ "$alert_output" == "true" ]]; then
+      match=true
+    fi
+  elif [[ "$expected_verdict" == "allow" ]] && [[ "$actual_verdict" == "alert" ]] && [[ "$hook_type" == "PostToolUse" ]] && [[ "$expected_alert" == "true" ]]; then
+    # Non-fatal PostToolUse alerts still return allow to the agent; the alert
+    # is expected out-of-band evidence for the next tool-call gate.
+    if [[ "$alert_output" == "true" ]]; then
       match=true
     fi
   fi
