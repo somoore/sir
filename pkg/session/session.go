@@ -70,6 +70,23 @@ type State struct {
 	// session starts — a deliberate UX choice to re-acquaint the user with
 	// unfamiliar tools, NOT a security control.
 	MCPOnboardingCalls map[string]int `json:"mcp_onboarding_calls,omitempty"`
+
+	// ApprovalGrants are explicit developer approvals recorded through
+	// `sir approve`. They only convert policy ASK verdicts into ALLOW for an
+	// exact verb/target retry; DENY verdicts are never overridden.
+	ApprovalGrants []ApprovalGrant `json:"approval_grants,omitempty"`
+}
+
+// ApprovalGrant records a manual approval for one retry or for a short-lived
+// session window. Empty ExpiresAt means the grant lasts until consumed or the
+// session file is discarded.
+type ApprovalGrant struct {
+	Verb          string    `json:"verb"`
+	Target        string    `json:"target"`
+	Scope         string    `json:"scope,omitempty"`
+	ExpiresAt     time.Time `json:"expires_at,omitempty"`
+	UsesRemaining int       `json:"uses_remaining,omitempty"`
+	Reason        string    `json:"reason,omitempty"`
 }
 
 // BumpMCPOnboardingCall increments and returns the session call count for
