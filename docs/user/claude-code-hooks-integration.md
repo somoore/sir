@@ -10,7 +10,7 @@ This page explains how sir hooks into Claude Code, where the decisions are made,
 Other agents are narrower:
 
 - sir also supports **Gemini CLI 0.36.0+ with near-parity support**. See [gemini-support.md](gemini-support.md).
-- **Codex 0.118.0+ has limited support** on the current Bash-only hook path after enabling `codex_hooks`. See [codex-support.md](codex-support.md).
+- **Codex 0.118.0+ has limited support** with partial tool-path coverage after enabling `codex_hooks`. See [codex-support.md](codex-support.md).
 
 ## Why Claude is the reference target
 
@@ -19,9 +19,10 @@ Claude Code exposes the richest hook surface sir supports today:
 <!-- BEGIN GENERATED CLAUDE SUPPORT MATRIX -->
 | Surface | Status | Notes |
 |---|---|---|
-| Hook events wired | ✅ 10 events | PreToolUse, PostToolUse, SubagentStart, UserPromptSubmit, SessionStart, ConfigChange, InstructionsLoaded, Stop, SessionEnd, Elicitation |
+| Hook events wired | ✅ 11 events | PreToolUse, PermissionRequest, PostToolUse, SubagentStart, UserPromptSubmit, SessionStart, ConfigChange, InstructionsLoaded, Stop, SessionEnd, Elicitation |
 | Tool-path coverage | ✅ Full | File IFC labeling, shell classification, MCP scanning, and credential output scanning all run on the hooked tool path. |
 | Interactive approvals | ✅ Yes | Native ask/allow/deny responses are preserved. |
+| Permission-request broker | ✅ Yes | sir can broker agent-native permission request events through the same policy path. |
 | File-read IFC labeling | ✅ Yes | Sensitive reads are labeled before execution via Claude's native Read/Edit hook path. |
 | File-write pre-gating | ✅ Yes | Write/Edit posture changes are gated before the write executes. |
 | Shell classification | ✅ Yes | Bash commands are classified for egress, DNS, persistence, sudo, and install risk. |

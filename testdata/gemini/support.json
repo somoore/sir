@@ -14,6 +14,7 @@
     "Stop"
   ],
   "unsupported_sir_events": [
+    "PermissionRequest",
     "SubagentStart",
     "ConfigChange",
     "InstructionsLoaded",
@@ -35,6 +36,12 @@
       "title": "Interactive approvals",
       "supported": false,
       "notes": "Gemini CLI folds sir's internal ask verdict into deny with remediation text."
+    },
+    {
+      "key": "permission_request",
+      "title": "Permission-request broker",
+      "supported": false,
+      "notes": "Gemini CLI exposes no PermissionRequest-equivalent hook."
     },
     {
       "key": "file_read_ifc",

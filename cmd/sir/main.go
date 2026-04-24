@@ -37,8 +37,14 @@ func main() {
 		cmdStatus(projectRoot)
 	case "support":
 		cmdSupport(os.Args[2:])
+	case "capabilities":
+		cmdCapabilities(os.Args[2:])
+	case "posture":
+		cmdPosture(projectRoot, os.Args[2:])
 	case "doctor":
 		cmdDoctor(projectRoot)
+	case "approvals":
+		cmdApprovals(projectRoot, os.Args[2:])
 	case "log", "ledger":
 		cmdLogLifecycle(projectRoot, os.Args[2:])
 	case "explain", "why":
@@ -94,6 +100,8 @@ func main() {
 		cmdTrace(projectRoot)
 	case "audit":
 		cmdAudit(projectRoot)
+	case "replay":
+		cmdReplay(projectRoot, os.Args[2:])
 	case "run", "launch", "contain":
 		cmdRun(projectRoot, os.Args[2:])
 	case "verify":
@@ -127,10 +135,13 @@ Get started
                                  'sir doctor' pass for auditing.
   sir status                     Show whether sir is active and what it sees
   sir support --json             Emit the public support manifests as JSON
+  sir capabilities [--json]      Show per-agent support and hook coverage
+  sir posture [--json]           Show install, policy, MCP, runtime, ledger posture
   sir demo                       Run a 60-second tour of what sir blocks
 
 When sir asks or blocks
   sir why                        Explain the most recent decision
+  sir approvals [--json]         Show pending asks, retry grants, and trust approvals
   sir approve --last             Approve the next exact retry for the last ask
   sir unlock                     Clear transient runtime restrictions, restore operability
   sir allow-host <hostname>      Permanently allow requests to a host
@@ -147,6 +158,7 @@ Policy
 
 Review a session
   sir audit                      One-screen security summary of this session
+  sir replay [--profile strict]  Project ledger decisions under another policy profile
   sir trace                      Export this session's ledger as a shareable HTML timeline
   sir log [verify|archive|export] Show, verify, archive, or export the decision log
   sir explain [--last|--index N] Explain any decision with full causal chain

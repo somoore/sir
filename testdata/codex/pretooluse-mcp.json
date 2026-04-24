@@ -1,0 +1,10 @@
+{
+  "session_id": "codex-session-1",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "mcp__github__search_issues",
+  "tool_input": {
+    "query": "label:security"
+  },
+  "tool_use_id": "call_mcp_1",
+  "cwd": "/Users/dev/myproject"
+}

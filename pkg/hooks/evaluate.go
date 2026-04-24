@@ -65,6 +65,39 @@ func Evaluate(projectRoot string, ag agent.Agent) error {
 	return writeResponse(os.Stdout, resp, ag)
 }
 
+// EvaluatePermissionRequest handles agents that expose a distinct
+// PermissionRequest hook. The policy path is intentionally the same as
+// PreToolUse so a permission prompt cannot gain broader authority than the
+// tool call it represents.
+func EvaluatePermissionRequest(projectRoot string, ag agent.Agent) error {
+	payload, err := readPayload(os.Stdin, ag)
+	if err != nil {
+		return fmt.Errorf("read payload: %w", err)
+	}
+
+	var l *lease.Lease
+	var resp *HookResponse
+	lockErr := session.WithSessionLock(projectRoot, func() error {
+		var leaseMeta leaseLoadMetadata
+		l, leaseMeta, err = loadLeaseWithMetadata(projectRoot)
+		if err != nil {
+			return fmt.Errorf("load lease: %w", err)
+		}
+		state, sErr := loadOrCreateSession(projectRoot, l, leaseMeta)
+		if sErr != nil {
+			return fmt.Errorf("load session: %w", sErr)
+		}
+		var eErr error
+		resp, eErr = evaluatePayload(payload, l, state, projectRoot, ag)
+		return eErr
+	})
+	if lockErr != nil {
+		return fmt.Errorf("evaluate permission request: %w", lockErr)
+	}
+
+	return writePermissionRequestResponse(os.Stdout, resp, ag)
+}
+
 // evaluatePayload is the testable core of the PreToolUse handler.
 //
 // The optional trailing ag argument is used for OTLP telemetry attribution

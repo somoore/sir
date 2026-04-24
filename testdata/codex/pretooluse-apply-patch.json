@@ -1,0 +1,10 @@
+{
+  "session_id": "codex-session-1",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "apply_patch",
+  "tool_input": {
+    "command": "*** Begin Patch\n*** Update File: AGENTS.md\n@@\n-old\n+new\n*** End Patch"
+  },
+  "tool_use_id": "call_patch_1",
+  "cwd": "/Users/dev/myproject"
+}

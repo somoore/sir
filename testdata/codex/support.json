@@ -3,10 +3,11 @@
   "name": "Codex",
   "minimum_version": "0.118.0",
   "support_tier": "limited",
-  "tool_coverage": "bash_only",
-  "hook_event_count": 5,
+  "tool_coverage": "partial",
+  "hook_event_count": 6,
   "supported_sir_events": [
     "PreToolUse",
+    "PermissionRequest",
     "PostToolUse",
     "UserPromptSubmit",
     "SessionStart",
@@ -21,6 +22,7 @@
   ],
   "supported_wire_events": [
     "PreToolUse",
+    "PermissionRequest",
     "PostToolUse",
     "UserPromptSubmit",
     "SessionStart",
@@ -36,6 +38,12 @@
       "notes": "Codex folds sir's internal ask verdict into block with remediation text."
     },
     {
+      "key": "permission_request",
+      "title": "Permission-request broker",
+      "supported": true,
+      "notes": "sir can broker agent-native permission request events through the same policy path."
+    },
+    {
       "key": "file_read_ifc",
       "title": "File-read IFC labeling",
       "supported": true,
@@ -44,20 +52,20 @@
     {
       "key": "file_write_ifc",
       "title": "File-write pre-gating",
-      "supported": false,
-      "notes": "Native apply_patch writes bypass PreToolUse on codex-cli 0.118.x; posture tamper is caught post-hoc."
+      "supported": true,
+      "notes": "apply_patch/Edit/Write posture mutations are pre-gated when Codex emits their hooks; sentinel hashing remains the backstop."
     },
     {
       "key": "shell_classification",
       "title": "Shell classification",
       "supported": true,
-      "notes": "Every hooked Codex tool call is Bash, so sir's shell classifier is the primary enforcement path."
+      "notes": "Bash commands are classified for egress, DNS, persistence, sudo, and install risk."
     },
     {
       "key": "mcp_tool_hooks",
       "title": "MCP tool hooks",
-      "supported": false,
-      "notes": "Codex does not fire hooks for MCP tools today."
+      "supported": true,
+      "notes": "sir registers Codex MCP matchers and sees MCP arguments/responses when Codex emits mcp__* tool hooks."
     },
     {
       "key": "subagent_start",

@@ -162,7 +162,7 @@ Expected result:
 ### MCP proxy caveats
 
 - Claude Code is the reference-support target.
-- Codex remains limited support with a **Bash-only** hook surface.
+- Codex remains limited support with **partial** tool-path coverage and missing lifecycle hooks.
 - macOS strict mode uses `sandbox-exec` for localhost-only egress.
 - macOS `--allow-host` broadens to general outbound allow; `sandbox-exec` cannot scope egress per host.
 - Linux `sir run --allow-host` uses exact-destination namespace rules, not a broad outbound allow.

@@ -1,10 +1,11 @@
 {
   "version": 1,
-  "name": "codex-bash-only-boundary",
+  "name": "codex-partial-tool-coverage-boundary",
   "scenario": "codex_bash_only_boundary",
-  "description": "The support manifest must keep Codex in the limited Bash-only tier until upstream hook coverage changes.",
+  "description": "The support manifest must keep Codex in the limited partial-coverage tier until lifecycle coverage reaches parity.",
   "expected": {
     "support_tier": "limited",
-    "tool_coverage": "bash_only"
+    "tool_coverage": "partial",
+    "mcp_tool_hooks": "true"
   }
 }
