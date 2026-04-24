@@ -2,8 +2,8 @@
   "$schema": "https://example.com/schemas/aibom-0.1.json",
   "aibom_version": "0.1",
   "name": "sir",
-  "description": "Security runtime for AI coding agents (Sandbox in Reverse). Protects against confused deputy attacks, credential exfiltration, and supply chain posture tampering via Claude Code hooks.",
-  "version": "v0.0.6",
+  "description": "Security runtime for AI coding agents (Sandbox in Reverse). Protects against confused deputy attacks, credential exfiltration, and supply chain posture tampering via agent hooks.",
+  "version": "v0.0.7",
   "license": "Apache-2.0",
   "source_url": "https://github.com/somoore/sir",
   "ml_components": [],
@@ -30,10 +30,36 @@
           "Stop",
           "SessionEnd"
         ]
+      },
+      {
+        "name": "Gemini CLI",
+        "vendor": "Google",
+        "integration_mode": "hook-based",
+        "hook_events": [
+          "BeforeTool",
+          "AfterTool",
+          "BeforeAgent",
+          "SessionStart",
+          "SessionEnd",
+          "AfterAgent"
+        ]
+      },
+      {
+        "name": "Codex",
+        "vendor": "OpenAI",
+        "integration_mode": "hook-based",
+        "hook_events": [
+          "PreToolUse",
+          "PermissionRequest",
+          "PostToolUse",
+          "UserPromptSubmit",
+          "SessionStart",
+          "Stop"
+        ]
       }
     ],
     "data_flow_to_llm": "none — sir is a local policy decision point. Tool calls are evaluated on the developer's machine by a pure-Rust policy oracle (mister-core). sir never forwards tool arguments, tool results, session state, or ledger contents to any LLM or remote service.",
-    "data_flow_from_llm": "sir receives tool invocations via Claude Code hook payloads on stdin, parses the intent (verb, target, metadata), and returns an allow/ask/deny verdict. sir does not call back into the model.",
+    "data_flow_from_llm": "sir receives tool invocations via agent hook payloads on stdin, parses the intent (verb, target, metadata), and returns an allow/ask/deny verdict. sir does not call back into the model.",
     "prompt_injection_defenses": [
       "MCP response scanning for authority-framing, exfiltration, credential harvesting patterns",
       "Elicitation credential-harvesting detection",
@@ -83,7 +109,7 @@
     "slsa_level": 0,
     "provenance_file": "sir.intoto.jsonl (deferred — slsa-github-generator exit-27 bug)",
     "cosign_signed": true,
-    "cosign_identity": "https://github.com/somoore/sir/.github/workflows/release.yml@refs/tags/v0.0.6",
+    "cosign_identity": "https://github.com/somoore/sir/.github/workflows/release.yml@refs/tags/v0.0.7",
     "cosign_oidc_issuer": "https://token.actions.githubusercontent.com",
     "sbom": {
       "cyclonedx": "sbom.cyclonedx.json",
