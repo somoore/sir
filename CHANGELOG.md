@@ -7,6 +7,29 @@ sir is experimental. Each release listed here is a snapshot of the "sandbox in r
 
 This file tracks shipped releases only. Historical planning notes, launch copy, and exploratory findings live in git history rather than on the production repo surface.
 
+## v0.0.7 — 2026-04-24 — agent capability posture and recovery UX
+
+This release widens sir's observable protection surface beyond hook-presence checks and makes the supported agent posture easier to inspect before trusting it.
+
+**Agent capability posture**
+
+- Added `sir capabilities`, `sir posture`, `sir approvals`, and `sir replay` so operators can inspect supported agent surfaces, current posture, pending approvals, and policy fixture behavior without reading source fixtures.
+- Claude Code and Codex now register `PermissionRequest` handling through the same policy path as ordinary tool hooks.
+- Codex support moves from Bash-only to partial tool-path coverage: `apply_patch`, `Edit`, `Write`, and `mcp__*` hook events are registered when Codex emits them, with apply-patch targets extracted before posture-sensitive writes execute.
+- Support metadata and docs now distinguish full, near-parity, and partial tool coverage across Claude Code, Gemini CLI, and Codex instead of flattening support into hook counts.
+
+**Recovery and approval UX**
+
+- Added higher-level recovery commands for policy/approval workflows, including session-scoped approvals and clearer MCP scope controls.
+- Added ledger archiving and setup/policy command surfaces so recovery actions are visible and repeatable instead of buried in one-off remediation text.
+- Tightened posture and approval messaging so `sir status`, `sir doctor`, and approval prompts better explain what is blocked, what is pending, and how to recover.
+
+**Runtime and release hardening**
+
+- Improved MCP proxy reliability and macOS Tahoe compatibility, including runtime tests around proxy degradation and app discovery paths.
+- Added post-upgrade hook rebaseline coverage to reduce stale posture failures after legitimate sir upgrades.
+- Refreshed the CLI/design-system presentation and pinned current release workflow actions, including GoReleaser, CodeQL, cosign, upload-artifact, and github-script updates.
+
 ## v0.0.6 — 2026-04-14 — MCP trust tuning
 
 Four-part expansion of the MCP gating surface, ordered least-risk to most-opt-in. Details and scope caveats live in `docs/contributor/security-engineering-core.md`.
