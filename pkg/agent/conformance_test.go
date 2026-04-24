@@ -140,6 +140,8 @@ func capabilityWitnesses(id AgentID) []capabilityWitness {
 	case Codex:
 		return []capabilityWitness{
 			{name: "pretooluse-bash-curl", path: "../../testdata/codex/pretooluse-bash-curl.json", parseKind: "pre", expectEvent: "PreToolUse", expectTool: "Bash", expectCWD: "/Users/dev/myproject"},
+			{name: "pretooluse-apply-patch", path: "../../testdata/codex/pretooluse-apply-patch.json", parseKind: "pre", expectEvent: "PreToolUse", expectTool: "Edit", expectCWD: "/Users/dev/myproject"},
+			{name: "pretooluse-mcp", path: "../../testdata/codex/pretooluse-mcp.json", parseKind: "pre", expectEvent: "PreToolUse", expectTool: "mcp__github__search_issues", expectCWD: "/Users/dev/myproject"},
 			{name: "posttooluse-bash-output", path: "../../testdata/codex/posttooluse-bash-string-output.json", parseKind: "post", expectEvent: "PostToolUse", expectTool: "Bash", expectCWD: "/Users/dev/myproject", expectOutput: "hello\n"},
 			{name: "sessionstart", path: "../../testdata/codex/sessionstart-startup.json", parseKind: "pre", expectEvent: "SessionStart", expectCWD: "/Users/dev/myproject"},
 			{name: "userprompt", path: "../../testdata/codex/userpromptsubmit.json", parseKind: "pre", expectEvent: "UserPromptSubmit", expectCWD: "/Users/dev/myproject"},
@@ -247,7 +249,7 @@ func TestConformance(t *testing.T) {
 					t.Errorf("invalid support tier %q", spec.Capabilities.SupportTier)
 				}
 				switch spec.Capabilities.ToolCoverage {
-				case ToolCoverageFull, ToolCoverageBashOnly:
+				case ToolCoverageFull, ToolCoveragePartial, ToolCoverageBashOnly:
 				default:
 					t.Errorf("invalid tool coverage %q", spec.Capabilities.ToolCoverage)
 				}
@@ -540,6 +542,10 @@ func TestConformance(t *testing.T) {
 					}
 					if sawNonBash {
 						t.Error("bash-only adapter unexpectedly has a non-Bash capability witness")
+					}
+				case ToolCoveragePartial:
+					if !sawNonBash {
+						t.Error("partial-coverage adapter has no non-Bash capability witness")
 					}
 				case ToolCoverageFull:
 					if !sawNonBash {

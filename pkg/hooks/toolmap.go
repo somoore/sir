@@ -5,8 +5,8 @@ import (
 
 	"github.com/somoore/sir/pkg/config"
 	hookclassify "github.com/somoore/sir/pkg/hooks/classify"
-	"github.com/somoore/sir/pkg/ledger"
 	"github.com/somoore/sir/pkg/lease"
+	"github.com/somoore/sir/pkg/ledger"
 	"github.com/somoore/sir/pkg/policy"
 )
 
@@ -66,6 +66,21 @@ func mapRead(toolInput map[string]interface{}, l *lease.Lease) Intent {
 
 func mapWrite(toolInput map[string]interface{}, l *lease.Lease) Intent {
 	target := extractFilePath(toolInput)
+	if target == "" {
+		targets := extractApplyPatchTargets(extractPatchPayload(toolInput))
+		if len(targets) > 0 {
+			target = strings.Join(targets, ", ")
+			for _, candidate := range targets {
+				if IsPostureFileResolved(candidate, l) {
+					return Intent{
+						Verb:      policy.VerbStageWrite,
+						Target:    target,
+						IsPosture: true,
+					}
+				}
+			}
+		}
+	}
 	return Intent{
 		Verb:      policy.VerbStageWrite,
 		Target:    target,

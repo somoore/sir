@@ -4,9 +4,10 @@
   "minimum_version": "",
   "support_tier": "reference",
   "tool_coverage": "full",
-  "hook_event_count": 10,
+  "hook_event_count": 11,
   "supported_sir_events": [
     "PreToolUse",
+    "PermissionRequest",
     "PostToolUse",
     "SubagentStart",
     "UserPromptSubmit",
@@ -20,6 +21,7 @@
   "unsupported_sir_events": [],
   "supported_wire_events": [
     "PreToolUse",
+    "PermissionRequest",
     "PostToolUse",
     "SubagentStart",
     "UserPromptSubmit",
@@ -38,6 +40,12 @@
       "title": "Interactive approvals",
       "supported": true,
       "notes": "Native ask/allow/deny responses are preserved."
+    },
+    {
+      "key": "permission_request",
+      "title": "Permission-request broker",
+      "supported": true,
+      "notes": "sir can broker agent-native permission request events through the same policy path."
     },
     {
       "key": "file_read_ifc",

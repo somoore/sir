@@ -27,12 +27,12 @@ func ValidateSupportContract(spec *AgentSpec) error {
 		problems = append(problems, "support tier requires a minimum version for generated prose")
 	}
 
-	if spec.Capabilities.ToolCoverage == ToolCoverageBashOnly {
+	if spec.Capabilities.ToolCoverage == ToolCoverageBashOnly || spec.RequiredFeatureFlag != "" {
 		if spec.RequiredFeatureFlag == "" {
-			problems = append(problems, "bash-only support requires a feature flag for generated prose")
+			problems = append(problems, "feature-gated support requires a feature flag for generated prose")
 		}
 		if spec.FeatureFlagEnableCommand == "" {
-			problems = append(problems, "bash-only support requires a feature-flag enable command for generated prose")
+			problems = append(problems, "feature-gated support requires a feature-flag enable command for generated prose")
 		}
 	}
 

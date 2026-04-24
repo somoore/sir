@@ -33,15 +33,16 @@ type claudeCompactResponse struct {
 //
 //	SessionStart       → { "message": <context> }  (compact reinject)
 //	SubagentStart      → hookSpecificOutput with SubagentStart eventName
+//	PermissionRequest  → hookSpecificOutput with PermissionRequest eventName
 //	everything else    → nil, nil (stderr fall-through)
 func formatClaudeLifecycleResponse(eventName, decision, reason, context string) ([]byte, error) {
 	switch eventName {
 	case "SessionStart":
 		return json.Marshal(claudeCompactResponse{Message: context})
-	case "SubagentStart":
+	case "SubagentStart", "PermissionRequest":
 		return json.Marshal(claudeHookResponse{
 			HookSpecificOutput: claudeHookSpecificOutput{
-				HookEventName:            "SubagentStart",
+				HookEventName:            eventName,
 				PermissionDecision:       decision,
 				PermissionDecisionReason: reason,
 			},
@@ -66,6 +67,7 @@ var claudeSpec = AgentSpec{
 		MCPToolHooks:         true,
 		SessionTerminalSweep: true,
 		PreToolUse:           true,
+		PermissionRequest:    true,
 		PostToolUse:          true,
 		UserPromptSubmit:     true,
 		SubagentStart:        true,
@@ -79,6 +81,7 @@ var claudeSpec = AgentSpec{
 
 	SupportedSIREvents: []string{
 		"PreToolUse",
+		"PermissionRequest",
 		"PostToolUse",
 		"SubagentStart",
 		"UserPromptSubmit",
@@ -92,6 +95,7 @@ var claudeSpec = AgentSpec{
 	// Claude's wire event names ARE the sir-internal names.
 	SupportedWireEvents: []string{
 		"PreToolUse",
+		"PermissionRequest",
 		"PostToolUse",
 		"SubagentStart",
 		"UserPromptSubmit",
@@ -126,6 +130,7 @@ var claudeSpec = AgentSpec{
 
 	HookRegistrations: []HookRegistration{
 		{Event: "PreToolUse", Matcher: ".*", Command: "guard evaluate", Timeout: 10},
+		{Event: "PermissionRequest", Matcher: ".*", Command: "guard permission-request", Timeout: 10},
 		{Event: "PostToolUse", Matcher: ".*", Command: "guard post-evaluate", Timeout: 10},
 		{Event: "SubagentStart", Matcher: ".*", Command: "guard subagent-start", Timeout: 10},
 		{Event: "UserPromptSubmit", Command: "guard user-prompt", Timeout: 5},

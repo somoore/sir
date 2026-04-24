@@ -123,6 +123,18 @@ func formatLegacyLifecycle(
 	case "SessionEnd":
 		// Both agents: {}.
 		return []byte("{}"), nil
+
+	case "PermissionRequest":
+		if decision == "allow" {
+			return []byte("{}"), nil
+		}
+		if decision == "ask" && !spec.HasAskVerdict {
+			reason = reason + AskToDenySuffix
+		}
+		return json.Marshal(map[string]interface{}{
+			"decision": denyLit,
+			"reason":   reason,
+		})
 	}
 
 	// Unknown / unsupported events.

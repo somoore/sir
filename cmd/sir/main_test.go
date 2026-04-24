@@ -706,6 +706,7 @@ func TestGuardCommandNames(t *testing.T) {
 		"elicitation",
 		"evaluate",
 		"instructions-loaded",
+		"permission-request",
 		"post-evaluate",
 		"session-end",
 		"session-summary",
