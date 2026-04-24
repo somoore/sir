@@ -251,10 +251,12 @@ func runProxyChild(cmd *exec.Cmd, assessmentSummary string) int {
 	}
 	cmd.SysProcAttr.Setpgid = true
 
-	stderrPipe, err := cmd.StderrPipe()
+	stderrPipe, stderrWriter, err := os.Pipe()
 	if err != nil {
 		cmd.Stderr = os.Stderr
 		stderrPipe = nil
+	} else {
+		cmd.Stderr = stderrWriter
 	}
 
 	if assessmentSummary != "" {
@@ -262,8 +264,17 @@ func runProxyChild(cmd *exec.Cmd, assessmentSummary string) int {
 	}
 
 	if err := cmd.Start(); err != nil {
+		if stderrWriter != nil {
+			_ = stderrWriter.Close()
+		}
+		if stderrPipe != nil {
+			_ = stderrPipe.Close()
+		}
 		fmt.Fprintf(os.Stderr, "sir: mcp-proxy: %v\n", err)
 		return 1
+	}
+	if stderrWriter != nil {
+		_ = stderrWriter.Close()
 	}
 
 	// Child is now running in its own PGID (== child PID). Use that as the
@@ -275,6 +286,7 @@ func runProxyChild(cmd *exec.Cmd, assessmentSummary string) int {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer stderrPipe.Close()
 			scanStderrForCredentials(stderrPipe)
 		}()
 	}

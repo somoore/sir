@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/somoore/sir/pkg/ledger"
 	"github.com/somoore/sir/pkg/lease"
+	"github.com/somoore/sir/pkg/ledger"
 	mcppkg "github.com/somoore/sir/pkg/mcp"
 )
 
@@ -270,6 +270,17 @@ func cmdMCPList(projectRoot string) {
 		fmt.Printf("  trusted — exempt from credential scanning (%d):\n", len(trusted))
 		for _, name := range trusted {
 			fmt.Printf("    - %s\n", name)
+		}
+	}
+
+	if len(l.MCPCapabilityScopes) > 0 {
+		fmt.Println()
+		fmt.Printf("  scoped capabilities (%d):\n", len(l.MCPCapabilityScopes))
+		scopes := append([]lease.MCPCapabilityScope(nil), l.MCPCapabilityScopes...)
+		sort.Slice(scopes, func(i, j int) bool { return scopes[i].Server < scopes[j].Server })
+		for _, scope := range scopes {
+			fmt.Printf("    - %s  shell=%v network=%v write=%v tools=%v roots=%v\n",
+				scope.Server, scope.AllowShell, scope.AllowNetwork, scope.AllowWrite, scope.Tools, scope.Roots)
 		}
 	}
 }

@@ -100,6 +100,11 @@ func evaluatePayload(payload *HookPayload, l *lease.Lease, state *session.State,
 		return resp, nil
 	}
 
+	if resp, handled := evaluateMCPCapabilityScope(payload, l, state, projectRoot); handled {
+		overlayPendingInjectionWarning(resp, pendingInjectionDetail)
+		return resp, nil
+	}
+
 	if resp, handled := evaluateTaintedMCPServer(payload, state); handled {
 		return resp, nil
 	}
@@ -147,6 +152,16 @@ func evaluatePayload(payload *HookPayload, l *lease.Lease, state *session.State,
 	coreResp, err := evaluatePolicy(projectRoot, payload, intent, l, state, labels)
 	if err != nil {
 		return nil, err
+	}
+	if coreResp.Decision == policy.VerdictAsk {
+		if grant, ok := state.ConsumeApprovalGrant(string(intent.Verb), intent.Target); ok {
+			coreResp.Decision = policy.VerdictAllow
+			if grant.Reason != "" {
+				coreResp.Reason = "manual approval grant: " + grant.Reason
+			} else {
+				coreResp.Reason = "manual approval grant"
+			}
+		}
 	}
 
 	hookResp := applyCoreEvaluationResult(coreResp, intent, labels, state, ag)
