@@ -80,7 +80,7 @@ The installer verifies cosign signatures on `checksums.txt` (when cosign is avai
 ```bash
 git clone https://github.com/somoore/sir.git && cd sir
 # Requires [Rust 1.94.0](https://rustup.rs/) (pinned in rust-toolchain.toml)
-# Requires [Go 1.22+](https://go.dev/dl/) with toolchain auto-fetch to go1.25.9
+# Requires [Go 1.22+](https://go.dev/dl/) with toolchain auto-fetch to go1.25.10
 make build
 make install
 ```

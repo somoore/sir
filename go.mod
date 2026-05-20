@@ -9,10 +9,11 @@ module github.com/somoore/sir
 go 1.22
 
 // Build-time toolchain. CI, release.yml, and `go build` on a developer
-// machine will auto-download and use Go 1.25.9 when this directive is
-// present (GOTOOLCHAIN=auto is the default since Go 1.21). 1.25.9
-// ships fixes for 3 additional crypto/x509 + crypto/tls stdlib CVEs
-// (GO-2026-4947, GO-2026-4946, GO-2026-4870) on top of 1.25.8 — do
-// not downgrade without replacing the pin with an equally-patched
-// version.
-toolchain go1.25.9
+// machine will auto-download and use Go 1.25.10 when this directive is
+// present (GOTOOLCHAIN=auto is the default since Go 1.21). 1.25.10
+// ships fixes for GO-2026-4971 (net Dial/LookupPort NUL byte panic on
+// Windows) and GO-2026-4918 (HTTP/2 infinite loop on bad SETTINGS_MAX_FRAME_SIZE)
+// on top of the crypto/x509 + crypto/tls CVEs (GO-2026-4947, GO-2026-4946,
+// GO-2026-4870) carried since 1.25.9. Do not downgrade without replacing
+// the pin with an equally-patched version.
+toolchain go1.25.10
