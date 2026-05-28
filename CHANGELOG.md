@@ -7,6 +7,33 @@ sir is experimental. Each release listed here is a snapshot of the "sandbox in r
 
 This file tracks shipped releases only. Historical planning notes, launch copy, and exploratory findings live in git history rather than on the production repo surface.
 
+## v0.1.0 — 2026-05-28 — friction reduction, behavior detections, and CLI/docs overhaul
+
+This release makes sir quiet during normal coding and loud on dangerous transitions: friction is now measurable and reducible, detections are causal rather than command-string matches, and the CLI/docs surface was reworked. Legacy command names are kept as aliases.
+
+**Measurable, low friction**
+
+- New `sir friction` summarizes prompts and blocks per session, repeated prompts, noisy rules, top hosts/MCP servers, likely false-positives, and service-level objectives (prompts/session, decision latency p50/p95, bypass signals), with scoped-lease suggestions.
+- Observe-only rollout (`sir install --observe`) records `would_allow`/`would_ask`/`would_deny` decisions with detection IDs without blocking; `sir policy suggest` recommends safer defaults from observed sessions.
+- Approvals now create narrow, expiring leases; an observed egress approval auto-leases the host so the same prompt does not recur. Revoke/undo for hosts, remotes, and MCP trust (`--remove`), with `--yes` for non-interactive use.
+- Team/strict profiles deny raw secret reads and hand back a value-free key inventory inline; `sir secret view` shows the redacted view on demand.
+
+**Causal detection and response**
+
+- Stable detection taxonomy (`pkg/detect`) with 11 IDs, including the compound `mcp_change_then_privileged_use`, emitted in the ledger and OTLP (`sir.detection_id`, `sir.route`, `sir.lease.version`, `sir.decision_latency_ms`, `sir.project_hash`).
+- Normalized SIEM telemetry and curated, actionable Slack alerts via a central relay (`sir relay`) with deduplication, Block Kit messages, periodic digests, and an audit trail — alerting is centralized, never per-workstation.
+- A non-blocking "suspicion" taint tier raises visibility without changing verdicts.
+
+**CLI UX (backward-compatible)**
+
+- Unified `sir trust host|remote|mcp|path` grant verb; `sir status --json/--agents`; `sir doctor --json` CI health probe; `sir log --follow`; `sir config`; `sir update`; `sir completion`.
+- `sir <command> --help` is now safe (it no longer executes the command), and block/ask messages teach the exact fix and reassure when no data has left the machine.
+- Fixed multi-agent `uninstall.sh`, which previously removed only Claude hooks, by delegating to `sir uninstall`.
+
+**Docs**
+
+- Rewritten root README with a real recorded demo (`assets/demo.cast`), consolidated boilerplate across the docs set, and documented install/update/uninstall.
+
 ## v0.0.7 — 2026-04-24 — agent capability posture and recovery UX
 
 This release widens sir's observable protection surface beyond hook-presence checks and makes the supported agent posture easier to inspect before trusting it.
