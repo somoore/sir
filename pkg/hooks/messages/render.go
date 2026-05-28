@@ -84,7 +84,7 @@ func FormatBlock(action, causalChain, fix string) string {
 	b.WriteString(fix)
 	b.WriteString("\n\n")
 	b.WriteString("  details: ")
-	b.WriteString(colorize(colorDim, "sir explain --last"))
+	b.WriteString(colorize(colorDim, "sir why"))
 	return b.String()
 }
 
@@ -103,8 +103,11 @@ func FormatAsk(action, reason, consequence string) string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
+	b.WriteString("  approve: ")
+	b.WriteString(colorize(colorDim, "sir approve --last"))
+	b.WriteString("   (from YOUR terminal, then tell the agent to retry)\n\n")
 	b.WriteString("  details: ")
-	b.WriteString(colorize(colorDim, "sir explain --last"))
+	b.WriteString(colorize(colorDim, "sir why"))
 	return b.String()
 }
 
@@ -119,6 +122,9 @@ func FormatAskSensitive(target string, scope string) string {
 	b.WriteString("\n\n")
 	b.WriteString("  reason: This file contains credentials. Approving restricts\n")
 	b.WriteString("           external network requests to prevent leaks.\n\n")
+	b.WriteString("  safer:   sir secret view ")
+	b.WriteString(target)
+	b.WriteString("   (key names only, values redacted — no raw exposure)\n\n")
 	if scope == "turn" {
 		b.WriteString("  scope:   ")
 		b.WriteString(colorize(colorGreen, "turn"))
@@ -132,7 +138,7 @@ func FormatAskSensitive(target string, scope string) string {
 	b.WriteString("           sir unlock                (clear transient runtime restrictions)\n")
 	b.WriteString("           sir allow-host <host>     (permanently allow a specific host)\n\n")
 	b.WriteString("  details: ")
-	b.WriteString(colorize(colorDim, "sir explain --last"))
+	b.WriteString(colorize(colorDim, "sir why"))
 	return b.String()
 }
 
@@ -150,7 +156,7 @@ func FormatFatal(action, consequence, remedy string) string {
 	b.WriteString(remedy)
 	b.WriteString("\n\n")
 	b.WriteString("  details: ")
-	b.WriteString(colorize(colorDim, "sir explain --last"))
+	b.WriteString(colorize(colorDim, "sir why"))
 	return b.String()
 }
 

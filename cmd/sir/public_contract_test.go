@@ -67,12 +67,12 @@ func TestPublicContractParity(t *testing.T) {
 		body := readFile(t, root, "README.md")
 		requireOrderedSubstrings(t, body,
 			"## Quick start",
-			"## What it is",
-			"## Why use sir",
-			"## Install",
-			"## Prove it works",
-			"## Hard limits",
-			"## Contributing",
+			"## How it decides",
+			"## What it catches",
+			"## Install / update / uninstall",
+			"## Verify it",
+			"## Commands",
+			"## Honest limits",
 		)
 		requireContainsFile(t, root, "README.md", "sir status", "README verification status command")
 		requireContainsFile(t, root, "README.md", "sir doctor", "README verification doctor command")

@@ -398,6 +398,27 @@ func TestBuildOTLPPayload_IncludesEvidenceAndTamperAttrs(t *testing.T) {
 	}
 }
 
+func TestBuildOTLPPayload_IncludesDetectionAndLeaseVersion(t *testing.T) {
+	body, err := buildOTLPPayload(LogEvent{
+		ToolName:     "Bash",
+		Verb:         "net_external",
+		Verdict:      "deny",
+		ProjectHash:  "deadbeefcafe",
+		DetectionID:  "secret_to_external_egress",
+		Severity:     "HIGH",
+		LeaseVersion: "abc123def456",
+	}, "session-abc", "claude", "Claude Code", Version)
+	if err != nil {
+		t.Fatalf("buildOTLPPayload error: %v", err)
+	}
+	s := string(body)
+	for _, needle := range []string{`"sir.detection_id"`, `"secret_to_external_egress"`, `"sir.lease.version"`, `"abc123def456"`, `"sir.project_hash"`, `"deadbeefcafe"`} {
+		if !strings.Contains(s, needle) {
+			t.Fatalf("expected OTLP payload to contain %s: %s", needle, s)
+		}
+	}
+}
+
 func TestBuildOTLPPayload_IncludesGenesisLedgerIndex(t *testing.T) {
 	body, err := buildOTLPPayload(LogEvent{
 		ToolName:    "Read",

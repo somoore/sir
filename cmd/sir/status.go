@@ -34,10 +34,31 @@ type statusSnapshot struct {
 	operability       operabilitySnapshot
 }
 
-func cmdStatus(projectRoot string) {
+func cmdStatus(projectRoot string, args ...string) {
+	asJSON := false
+	for _, a := range args {
+		switch a {
+		case "--json":
+			asJSON = true
+		case "--agents":
+			// Per-agent hook coverage (consolidates `sir capabilities`).
+			cmdCapabilities(nil)
+			return
+		default:
+			fatal("usage: sir status [--json] [--agents]")
+		}
+	}
 	snapshot, err := buildStatusSnapshot(projectRoot)
 	if err != nil {
 		fatal("load managed policy: %v", err)
+	}
+	if asJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(buildPostureReport(snapshot)); err != nil {
+			fatal("encode status: %v", err)
+		}
+		return
 	}
 	renderStatusSnapshot(snapshot)
 }

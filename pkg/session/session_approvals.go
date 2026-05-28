@@ -17,6 +17,27 @@ func (s *State) AddApprovalGrant(grant ApprovalGrant) {
 	s.ApprovalGrants = append(s.ApprovalGrants, grant)
 }
 
+// HasApprovalGrant reports whether a live (non-expired) grant matches the
+// verb/target, without consuming it. Used by preflight gates that want to
+// defer to the normal ask→grant→allow path when the developer has explicitly
+// approved an action (e.g. `sir approve path <secret>`).
+func (s *State) HasApprovalGrant(verb, target string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	verb = strings.TrimSpace(verb)
+	target = strings.TrimSpace(target)
+	now := time.Now()
+	for _, grant := range s.ApprovalGrants {
+		if !grant.ExpiresAt.IsZero() && now.After(grant.ExpiresAt) {
+			continue
+		}
+		if grant.Verb == verb && (grant.Target == target || grant.Target == "*") {
+			return true
+		}
+	}
+	return false
+}
+
 // ConsumeApprovalGrant consumes an exact verb/target grant. Grants only apply
 // after the policy oracle has returned ASK; callers must not use this to
 // override DENY.

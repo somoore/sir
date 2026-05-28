@@ -1,7 +1,7 @@
 # sir Security Verification Guide
 
-> [!WARNING]
-> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+> [!NOTE]
+> sir is experimental — test on your own machine, not shared infrastructure. `sir doctor` recovers any wedged state; [report bugs](https://github.com/somoore/sir/issues).
 
 sir is an experimental security runtime for AI coding agents. Its core thesis is that the dangerous surface of an AI agent is not syscalls but *intents* — tool calls crossing from the model into the local machine — and that those intents can be mediated by hooks, classified through information flow control, and adjudicated by a Rust policy oracle before they execute.
 

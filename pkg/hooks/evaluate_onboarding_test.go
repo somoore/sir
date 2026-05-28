@@ -20,9 +20,9 @@ func writeOnboardingConfig(t *testing.T, home string, windowHours, callCount int
 		t.Fatal(err)
 	}
 	body := map[string]any{
-		"mcp_trust_posture":            "standard",
-		"mcp_onboarding_window_hours":  windowHours,
-		"mcp_onboarding_call_count":    callCount,
+		"mcp_trust_posture":           "standard",
+		"mcp_onboarding_window_hours": windowHours,
+		"mcp_onboarding_call_count":   callCount,
 	}
 	data, err := json.Marshal(body)
 	if err != nil {

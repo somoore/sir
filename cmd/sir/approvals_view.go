@@ -102,6 +102,10 @@ func renderApprovalsReport(report approvalsReport) {
 	if len(report.TrustedMCPServers) > 0 {
 		fmt.Printf("  MCP trusted:    %s\n", strings.Join(report.TrustedMCPServers, ", "))
 	}
+	if len(report.ApprovedHosts) > 0 || len(report.ApprovedRemotes) > 0 || len(report.TrustedMCPServers) > 0 {
+		fmt.Println()
+		fmt.Println("  revoke:         sir allow-host <h> --remove · sir allow-remote <r> --remove · sir trust <s> --remove")
+	}
 }
 
 func emptyList(xs []string) string {

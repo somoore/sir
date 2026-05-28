@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,7 +11,56 @@ import (
 	"github.com/somoore/sir/pkg/session"
 )
 
-func cmdDoctor(projectRoot string) {
+// doctorHealth is a read-only health probe suitable for CI gating. `sir doctor`
+// (no flag) repairs; `sir doctor --json` only reports, and exits non-zero when
+// unhealthy so a pipeline can fail closed without sir mutating anything.
+type doctorHealth struct {
+	Healthy     bool     `json:"healthy"`
+	Installed   bool     `json:"installed"`
+	DenyAll     bool     `json:"deny_all"`
+	LedgerValid bool     `json:"ledger_valid"`
+	BinaryOK    bool     `json:"binary_ok"`
+	Issues      []string `json:"issues,omitempty"`
+}
+
+func doctorHealthJSON(projectRoot string) {
+	h := doctorHealth{LedgerValid: true, BinaryOK: true, Issues: []string{}}
+	if snap, err := buildStatusSnapshot(projectRoot); err == nil {
+		h.Installed = snap.installed
+		if snap.ledgerVerifyErr != nil {
+			h.LedgerValid = false
+			h.Issues = append(h.Issues, "ledger chain invalid")
+		}
+		if snap.state != nil && snap.state.DenyAll {
+			h.DenyAll = true
+			h.Issues = append(h.Issues, "session in deny-all (run `sir doctor` or `sir unlock`)")
+		}
+	} else {
+		h.Issues = append(h.Issues, "cannot load status: "+err.Error())
+	}
+	if inspectDoctorBinaryIntegrity().issue {
+		h.BinaryOK = false
+		h.Issues = append(h.Issues, "binary integrity mismatch (run `sir verify`)")
+	}
+	h.Healthy = len(h.Issues) == 0
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(h)
+	if !h.Healthy {
+		os.Exit(1)
+	}
+}
+
+func cmdDoctor(projectRoot string, args ...string) {
+	for _, a := range args {
+		switch a {
+		case "--json":
+			doctorHealthJSON(projectRoot)
+			return
+		default:
+			fatal("usage: sir doctor [--json]")
+		}
+	}
 	policy, err := loadManagedPolicyForCLI()
 	if err != nil {
 		fatal("load managed policy: %v", err)

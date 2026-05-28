@@ -18,7 +18,7 @@ func FormatAskInstall(pkgName, manager string) string {
 	b.WriteString("  Approve to install, or deny to prevent.\n")
 	b.WriteString("  Review the package before approving.\n\n")
 	b.WriteString("  details: ")
-	b.WriteString(colorize(colorDim, "sir explain --last"))
+	b.WriteString(colorize(colorDim, "sir why"))
 	return b.String()
 }
 
@@ -116,6 +116,6 @@ func FormatAskPostureElevated(verb, target, posture string, signals []string) st
 	b.WriteString("\n\n")
 	b.WriteString("  Approve to proceed, or deny to block this call.\n\n")
 	b.WriteString("  details: ")
-	b.WriteString(colorize(colorDim, "sir explain --last"))
+	b.WriteString(colorize(colorDim, "sir why"))
 	return b.String()
 }

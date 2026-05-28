@@ -24,10 +24,16 @@ func RedactPreview(content string, isSecret bool) string {
 // a delimiter character embedded in one field colliding with the boundary in
 // another.
 func computeHash(e *Entry) string {
-	if hashVersionForEntry(e) <= legacyHashVersion {
+	switch v := hashVersionForEntry(e); {
+	case v <= legacyHashVersion:
 		return computeHashV1(e)
+	case v == 2:
+		return computeHashV2(e)
+	case v == 3:
+		return computeHashV3(e)
+	default:
+		return computeHashV4(e)
 	}
-	return computeHashV2(e)
 }
 
 func computeHashV1(e *Entry) string {
@@ -94,6 +100,94 @@ func computeHashV2(e *Entry) string {
 	} else {
 		writeField("false")
 	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// computeHashV3 extends V2 with the stable detection ID so that derived
+// detection metadata is tamper-evident in the chain. V2 entries are left
+// untouched and still verify under computeHashV2.
+func computeHashV3(e *Entry) string {
+	h := sha256.New()
+	writeField := func(value string) {
+		var lenBuf [8]byte
+		binary.BigEndian.PutUint64(lenBuf[:], uint64(len(value)))
+		h.Write(lenBuf[:])     //nolint:errcheck
+		h.Write([]byte(value)) //nolint:errcheck
+	}
+	writeField(e.PrevHash)
+	var idxBuf [8]byte
+	binary.BigEndian.PutUint64(idxBuf[:], uint64(e.Index))
+	h.Write(idxBuf[:]) //nolint:errcheck
+	var versionBuf [8]byte
+	binary.BigEndian.PutUint64(versionBuf[:], uint64(hashVersionForEntry(e)))
+	h.Write(versionBuf[:]) //nolint:errcheck
+	writeField(e.Timestamp.Format(time.RFC3339Nano))
+	writeField(e.ToolName)
+	writeField(e.Verb)
+	writeField(e.Target)
+	writeField(e.Sensitivity)
+	writeField(e.Trust)
+	writeField(e.Provenance)
+	writeField(e.Decision)
+	writeField(e.Reason)
+	writeField(e.ContentHash)
+	writeField(e.Preview)
+	writeField(e.Severity)
+	writeField(e.AlertType)
+	writeField(e.DetectionID)
+	writeField(e.Evidence)
+	writeField(e.Agent)
+	writeField(e.DiffSummary)
+	if e.Restored {
+		writeField("true")
+	} else {
+		writeField("false")
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// computeHashV4 extends V3 with the decision latency metric. V3 and earlier
+// entries are untouched and still verify under their own functions.
+func computeHashV4(e *Entry) string {
+	h := sha256.New()
+	writeField := func(value string) {
+		var lenBuf [8]byte
+		binary.BigEndian.PutUint64(lenBuf[:], uint64(len(value)))
+		h.Write(lenBuf[:])     //nolint:errcheck
+		h.Write([]byte(value)) //nolint:errcheck
+	}
+	writeField(e.PrevHash)
+	var idxBuf [8]byte
+	binary.BigEndian.PutUint64(idxBuf[:], uint64(e.Index))
+	h.Write(idxBuf[:]) //nolint:errcheck
+	var versionBuf [8]byte
+	binary.BigEndian.PutUint64(versionBuf[:], uint64(hashVersionForEntry(e)))
+	h.Write(versionBuf[:]) //nolint:errcheck
+	writeField(e.Timestamp.Format(time.RFC3339Nano))
+	writeField(e.ToolName)
+	writeField(e.Verb)
+	writeField(e.Target)
+	writeField(e.Sensitivity)
+	writeField(e.Trust)
+	writeField(e.Provenance)
+	writeField(e.Decision)
+	writeField(e.Reason)
+	writeField(e.ContentHash)
+	writeField(e.Preview)
+	writeField(e.Severity)
+	writeField(e.AlertType)
+	writeField(e.DetectionID)
+	writeField(e.Evidence)
+	writeField(e.Agent)
+	writeField(e.DiffSummary)
+	if e.Restored {
+		writeField("true")
+	} else {
+		writeField("false")
+	}
+	var latBuf [8]byte
+	binary.BigEndian.PutUint64(latBuf[:], uint64(e.LatencyMs))
+	h.Write(latBuf[:]) //nolint:errcheck
 	return hex.EncodeToString(h.Sum(nil))
 }
 

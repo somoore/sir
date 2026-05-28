@@ -26,8 +26,10 @@ func cmdLogLifecycle(projectRoot string, args []string) {
 		cmdLogArchive(projectRoot, args[1:])
 	case "export":
 		cmdLogExport(projectRoot, args[1:])
+	case "follow", "--follow", "-f", "tail":
+		cmdLogFollow(projectRoot)
 	default:
-		fatal("usage: sir log [verify|archive|export]")
+		fatal("usage: sir log [verify|archive|export|--follow]")
 	}
 }
 

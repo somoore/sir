@@ -1,7 +1,7 @@
 # Codex Support
 
-> [!WARNING]
-> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+> [!NOTE]
+> sir is experimental — test on your own machine, not shared infrastructure. `sir doctor` recovers any wedged state; [report bugs](https://github.com/somoore/sir/issues).
 
 sir — Sandbox in Reverse — is an experimental security runtime for AI coding agents. Codex has **limited support** today: sir now registers Bash, native-write, MCP, and permission-request hooks where Codex exposes them, but lifecycle coverage remains narrower than Claude Code and upstream hook delivery is still the boundary. If your Codex workflow is mostly shell, build, test, native patching, git, and approved MCP calls, you get meaningful enforcement. If it needs full lifecycle coverage, prefer Claude Code.
 

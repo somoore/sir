@@ -57,6 +57,12 @@ func Append(projectRoot string, entry *Entry) error {
 			entry.HashVersion = currentHashVersion
 		}
 		sanitizeEntry(entry)
+		// Stamp a stable detection ID at write time so the authoritative
+		// local ledger and the OTLP fan-out always agree, and so the ID is
+		// covered by the entry hash. Callers with full session context (the
+		// core evaluate path) set DetectionID first; here we derive only the
+		// alert/verb-local detections that are visible from the entry alone.
+		stampDetection(entry)
 		entry.EntryHash = computeHash(entry)
 
 		data, err := json.Marshal(entry)

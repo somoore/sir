@@ -12,7 +12,7 @@ func FormatPostureRestore(file string) string {
 	b.WriteString("  reason: This is a security configuration file.\n")
 	b.WriteString("           Unauthorized changes are reverted automatically.\n\n")
 	b.WriteString("  details: ")
-	b.WriteString(colorize(colorDim, "sir explain --last"))
+	b.WriteString(colorize(colorDim, "sir why"))
 	return b.String()
 }
 
@@ -53,7 +53,7 @@ func FormatDenyMCPCredential(toolName, serverName, patternHint string) string {
 	b.WriteString(serverName)
 	b.WriteString("  (only do this if this server is designed to receive tokens)\n\n")
 	b.WriteString("  details: ")
-	b.WriteString(colorize(colorDim, "sir explain --last"))
+	b.WriteString(colorize(colorDim, "sir why"))
 	return b.String()
 }
 
@@ -87,7 +87,7 @@ func FormatMCPInjectionWarning(serverName, severity string, patterns []string) s
 	b.WriteString("  sir has raised the alert level. Subsequent calls to this\n")
 	b.WriteString("  server may require your approval.\n\n")
 	b.WriteString("  details: ")
-	b.WriteString(colorize(colorDim, "sir explain --last"))
+	b.WriteString(colorize(colorDim, "sir why"))
 	return b.String()
 }
 
@@ -107,6 +107,6 @@ func FormatElicitationWarning(patterns []string) string {
 	b.WriteString("  Do NOT paste API keys, tokens, or passwords into the agent chat.\n")
 	b.WriteString("  Store credentials in .env files and let sir gate access.\n\n")
 	b.WriteString("  details: ")
-	b.WriteString(colorize(colorDim, "sir explain --last"))
+	b.WriteString(colorize(colorDim, "sir why"))
 	return b.String()
 }

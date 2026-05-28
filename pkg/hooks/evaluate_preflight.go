@@ -31,7 +31,7 @@ func evaluateMCPCredentialLeak(payload *HookPayload, l *lease.Lease, state *sess
 		ToolName:  payload.ToolName,
 		Verb:      string(policy.VerbMcpCredentialLeak),
 		Target:    serverName,
-		Decision:  "deny",
+		Decision:  recordedDecisionFor(l, policy.VerdictDeny),
 		Reason:    fmt.Sprintf("credential pattern in MCP args: %s", patternHint),
 		Severity:  "HIGH",
 		AlertType: "mcp_credential",
@@ -216,7 +216,7 @@ func evaluateMCPOnboarding(intent Intent, payload *HookPayload, l *lease.Lease, 
 		ToolName: payload.ToolName,
 		Verb:     string(policy.VerbMcpOnboarding),
 		Target:   serverName,
-		Decision: string(policy.VerdictAsk),
+		Decision: recordedDecisionFor(l, policy.VerdictAsk),
 		Reason: fmt.Sprintf(
 			"MCP onboarding: server %q within window (age=%s, session call %d/%d)",
 			serverName, age.Round(time.Second), newCount, cfg.MCPOnboardingCallCount,
@@ -249,7 +249,7 @@ func evaluateMCPOnboarding(intent Intent, payload *HookPayload, l *lease.Lease, 
 //     (`sir allow-host <host>`), so drift must not short-circuit them
 //   - MCPApprovals[name] carries a non-empty CommandHash
 //     (empty hash means "could not pin at approval time" — documented
-//      limitation, honest about what we cannot verify)
+//     limitation, honest about what we cannot verify)
 //
 // Scope honesty: this catches local binary substitution post-approval
 // (supply-chain replacement, malicious package upgrade). It does not
@@ -285,7 +285,7 @@ func evaluateMCPBinaryDrift(intent Intent, payload *HookPayload, l *lease.Lease,
 	// binary that MCP is allegedly still running must be surfaced to
 	// the user — something is wrong with their approval.
 	if currentHash == "" && record.CommandHash != "" {
-		return driftAsk(payload, serverName, record, "binary not found at recorded path", state, projectRoot), true
+		return driftAsk(payload, serverName, record, "binary not found at recorded path", l, state, projectRoot), true
 	}
 
 	if !record.CommandModTime.IsZero() && currentModTime.Equal(record.CommandModTime) && currentHash == record.CommandHash {
@@ -300,18 +300,21 @@ func evaluateMCPBinaryDrift(intent Intent, payload *HookPayload, l *lease.Lease,
 	}
 
 	return driftAsk(payload, serverName, record, fmt.Sprintf("hash mismatch (approved=%s, now=%s)",
-		shortHash(record.CommandHash), shortHash(currentHash)), state, projectRoot), true
+		shortHash(record.CommandHash), shortHash(currentHash)), l, state, projectRoot), true
 }
 
 // driftAsk builds the Ask response for the binary-drift gate and
 // appends a ledger entry capturing the mismatch detail.
-func driftAsk(payload *HookPayload, serverName string, record lease.MCPApproval, detail string, state *session.State, projectRoot string) *HookResponse {
+func driftAsk(payload *HookPayload, serverName string, record lease.MCPApproval, detail string, l *lease.Lease, state *session.State, projectRoot string) *HookResponse {
+	// Mark the trust-footing change so a later privileged action in this
+	// session is correlated into mcp_change_then_privileged_use.
+	state.RecordMCPAuthorityChange()
 	saveSessionBestEffort(state)
 	entry := &ledger.Entry{
 		ToolName:  payload.ToolName,
 		Verb:      string(policy.VerbMcpBinaryDrift),
 		Target:    serverName,
-		Decision:  string(policy.VerdictAsk),
+		Decision:  recordedDecisionFor(l, policy.VerdictAsk),
 		Reason:    fmt.Sprintf("binary drift: %s", detail),
 		Severity:  "MEDIUM",
 		AlertType: "mcp_binary_drift",

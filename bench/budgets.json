@@ -1,5 +1,5 @@
 {
-  "command": "go test ./cmd/sir ./pkg/core ./pkg/hooks ./pkg/ledger ./pkg/session ./pkg/runtime ./pkg/mcp ./pkg/telemetry -run '^$' -bench . -benchmem",
+  "command": "go test ./cmd/sir ./pkg/core ./pkg/hooks ./pkg/ledger ./pkg/session ./pkg/runtime ./pkg/mcp ./pkg/telemetry -run '^$' -bench . -benchmem -count=5",
   "benchmarks": {
     "github.com/somoore/sir/cmd/sir": {
       "BenchmarkBuildCausalChainLargeLedger": {

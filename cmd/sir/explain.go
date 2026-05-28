@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/somoore/sir/pkg/detect"
 	"github.com/somoore/sir/pkg/ledger"
 )
 
@@ -81,6 +82,19 @@ func cmdExplain(projectRoot string, index int) {
 		fmt.Printf("  Reason: %s\n", e.Reason)
 	}
 	fmt.Println()
+
+	// Section 4.5: Detection (stable behavior-detection taxonomy)
+	if det := ledger.DetectionID(e); det != "" {
+		if meta, ok := detect.Lookup(detect.ID(det)); ok {
+			fmt.Println("Detection:")
+			fmt.Printf("  ID:       %s\n", meta.ID)
+			fmt.Printf("  Severity: %s\n", meta.Severity)
+			fmt.Printf("  What:     %s\n", meta.What)
+			fmt.Printf("  Why:      %s\n", meta.Why)
+			fmt.Printf("  Next:     %s\n", meta.NextStep)
+			fmt.Println()
+		}
+	}
 
 	if e.Evidence != "" {
 		fmt.Println("Evidence (redacted):")
