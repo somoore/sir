@@ -37,15 +37,22 @@ type Entry struct {
 	Preview     string `json:"preview,omitempty"`      // first 80 chars, redacted if secret
 	Severity    string `json:"severity,omitempty"`     // HIGH, MEDIUM, LOW
 	AlertType   string `json:"alert_type,omitempty"`   // sentinel_mutation, posture_tamper, etc.
-	Evidence    string `json:"evidence,omitempty"`     // optional redacted investigation evidence
-	Agent       string `json:"agent,omitempty"`        // target agent id for tamper alerts
-	DiffSummary string `json:"diff_summary,omitempty"` // concise diff summary for posture alerts
-	Restored    bool   `json:"restored,omitempty"`     // whether auto-restore succeeded
+	DetectionID string `json:"detection_id,omitempty"` // stable behavior-detection ID (pkg/detect)
+	// DetectionRoute is the computed escalation route (silent/local/siem/slack)
+	// for this entry's detection, including dynamic promotion (suspicion,
+	// repetition). It is transient: not persisted and not hashed, set at stamp
+	// time and consumed by the same-process telemetry/Slack emit.
+	DetectionRoute string `json:"-"`
+	Evidence       string `json:"evidence,omitempty"`     // optional redacted investigation evidence
+	Agent          string `json:"agent,omitempty"`        // target agent id for tamper alerts
+	DiffSummary    string `json:"diff_summary,omitempty"` // concise diff summary for posture alerts
+	Restored       bool   `json:"restored,omitempty"`     // whether auto-restore succeeded
+	LatencyMs      int    `json:"latency_ms,omitempty"`   // sir decision latency in ms (perf metric)
 }
 
 const (
 	legacyHashVersion  = 1
-	currentHashVersion = 2
+	currentHashVersion = 4
 )
 
 // LedgerPath returns the path to the ledger file for a project.

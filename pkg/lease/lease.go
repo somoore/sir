@@ -105,6 +105,20 @@ type Lease struct {
 	ApprovalRisk    string `json:"approval_risk"`
 	AllowDelegation bool   `json:"allow_delegation"`
 	ObserveOnly     bool   `json:"observe_only"`
+	// AutoLeaseApprovedHosts, when true, lets sir mint a short TTL host lease
+	// after it observes the developer approve and execute an external-egress
+	// ask — so the same host stops prompting without any command. It only ever
+	// fires on observed approval (a PostToolUse for a host that was asked at
+	// PreToolUse), never from raw prompt counts, never under secret/tainted
+	// posture, and never in managed mode.
+	AutoLeaseApprovedHosts bool `json:"auto_lease_approved_hosts,omitempty"`
+
+	// DenyRawSecretReads, when true, denies a raw read of a sensitive file and
+	// directs the agent to the redacted `sir secret view` instead. This is a
+	// Go-side restriction (it narrows the oracle's ask to deny, never widens),
+	// used by the team and strict profiles so secret values never enter the
+	// model context without an explicit, separate approval.
+	DenyRawSecretReads bool `json:"deny_raw_secret_reads,omitempty"`
 }
 
 // DefaultLease returns the default lease for sir v1.
@@ -198,6 +212,11 @@ func DefaultLease() *Lease {
 		ApprovalRisk:    "R3",
 		AllowDelegation: true, // clean sessions: allowed; secret/untrusted sessions: still gated by policy
 		ObserveOnly:     false,
+		// On by default for fresh installs: turn an explicit host approval into
+		// a narrow, expiring lease so repeats stop. Strict profile disables it;
+		// existing leases (loaded without the field) default off, so upgrades
+		// do not silently change behavior.
+		AutoLeaseApprovedHosts: true,
 	}
 }
 

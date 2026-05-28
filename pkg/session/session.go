@@ -75,6 +75,28 @@ type State struct {
 	// `sir approve`. They only convert policy ASK verdicts into ALLOW for an
 	// exact verb/target retry; DENY verdicts are never overridden.
 	ApprovalGrants []ApprovalGrant `json:"approval_grants,omitempty"`
+
+	// PromptedIntents counts how many times each verb/target intent has been
+	// prompted (ask) or blocked (deny) in this session. It powers the
+	// real-time repeated_denied_intent detection and the dynamic egress
+	// escalation. Session-scoped; never used to widen authority on its own.
+	PromptedIntents map[string]int `json:"prompted_intents,omitempty"`
+
+	// DecisionStartedAt marks when the current decision began, for measuring
+	// decision latency. Transient: never persisted or hashed.
+	DecisionStartedAt time.Time `json:"-"`
+
+	// MCPAuthorityChangeAt is when an approved MCP server's trust footing last
+	// changed this session (binary/config drift). Used to correlate a later
+	// privileged action into the mcp_change_then_privileged_use detection.
+	MCPAuthorityChangeAt time.Time `json:"mcp_authority_change_at,omitempty"`
+
+	// PendingAutoLeaseHosts records hosts whose external-egress ask is awaiting
+	// observed approval. A PreToolUse ask marks the host; the matching
+	// PostToolUse (which only fires if the developer approved and the tool ran)
+	// consumes it to mint a short TTL host lease. Values are the mark time so
+	// stale markers are ignored.
+	PendingAutoLeaseHosts map[string]time.Time `json:"pending_auto_lease_hosts,omitempty"`
 }
 
 // ApprovalGrant records a manual approval for one retry or for a short-lived
@@ -107,6 +129,63 @@ func (s *State) MCPOnboardingCallCount(serverName string) int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.MCPOnboardingCalls[serverName]
+}
+
+// RecordPromptedIntent increments and returns the session count for an intent
+// key (a verb/target pair). Lock-safe; callers hold the session handle.
+func (s *State) RecordPromptedIntent(key string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.PromptedIntents == nil {
+		s.PromptedIntents = make(map[string]int, 4)
+	}
+	s.PromptedIntents[key]++
+	return s.PromptedIntents[key]
+}
+
+// PromptCount returns how many times an intent key has been prompted/blocked
+// this session without incrementing. Lock-safe.
+func (s *State) PromptCount(key string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.PromptedIntents[key]
+}
+
+// autoLeaseMarkWindow bounds how long a pending auto-lease marker stays
+// consumable. A PreToolUse ask and its PostToolUse fire back-to-back, so a
+// generous few-minute window is ample while preventing a much-later execution
+// from minting a lease.
+const autoLeaseMarkWindow = 10 * time.Minute
+
+// MarkPendingAutoLease records that an external-egress ask for host is awaiting
+// observed approval. Lock-safe.
+func (s *State) MarkPendingAutoLease(host string) {
+	if host == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.PendingAutoLeaseHosts == nil {
+		s.PendingAutoLeaseHosts = make(map[string]time.Time, 2)
+	}
+	s.PendingAutoLeaseHosts[host] = time.Now()
+}
+
+// ConsumePendingAutoLease reports whether host has a fresh pending marker and,
+// if so, deletes it. A stale marker (older than the window) is dropped and
+// returns false. Lock-safe.
+func (s *State) ConsumePendingAutoLease(host string) bool {
+	if host == "" {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	markedAt, ok := s.PendingAutoLeaseHosts[host]
+	if !ok {
+		return false
+	}
+	delete(s.PendingAutoLeaseHosts, host)
+	return time.Since(markedAt) <= autoLeaseMarkWindow
 }
 
 // PendingInstall tracks an in-progress install command for sentinel pre/post comparison.

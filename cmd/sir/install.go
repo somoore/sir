@@ -310,6 +310,9 @@ func cmdInstall(projectRoot, mode string) {
 			fmt.Println("Run 'claude' in any project. sir is invisible until something dangerous happens.")
 		}
 	}
+	fmt.Println()
+	fmt.Println("See it work now:  sir demo        (60-second tour of what sir catches)")
+	fmt.Println("Check anytime:    sir status      ·  if blocked: sir why")
 }
 
 // resolveMCPTrustPostureForInstall returns the posture to use for this

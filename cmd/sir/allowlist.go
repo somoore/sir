@@ -15,6 +15,20 @@ import (
 
 var afterLeaseSaveForTest func()
 
+// confirmYes prompts for [y/N] confirmation, returning true on yes. When
+// autoYes is set (--yes) it returns true without reading — so the documented
+// recovery commands work in non-interactive/piped contexts instead of silently
+// cancelling on EOF.
+func confirmYes(autoYes bool) bool {
+	if autoYes {
+		return true
+	}
+	var s string
+	fmt.Scanln(&s)
+	s = strings.TrimSpace(strings.ToLower(s))
+	return s == "y" || s == "yes"
+}
+
 func cmdAllowHost(projectRoot, host string) {
 	cmdAllowHostArgs(projectRoot, []string{host})
 }
@@ -24,10 +38,12 @@ func cmdAllowHostArgs(projectRoot string, args []string) {
 		fatal("%v", err)
 	}
 	if len(args) == 0 {
-		fatal("usage: sir allow-host <hostname> [--ttl <duration>]")
+		fatal("usage: sir allow-host <hostname> [--ttl <duration>] [--remove] [--yes]")
 	}
 	host := args[0]
 	var expiresAt time.Time
+	remove := false
+	autoYes := false
 	for rest := args[1:]; len(rest) > 0; {
 		arg := rest[0]
 		rest = rest[1:]
@@ -42,6 +58,10 @@ func cmdAllowHostArgs(projectRoot string, args []string) {
 			}
 			expiresAt = time.Now().Add(ttl).UTC()
 			rest = rest[1:]
+		case "--remove", "--revoke":
+			remove = true
+		case "--yes", "-y":
+			autoYes = true
 		default:
 			fatal("unknown flag: %s", arg)
 		}
@@ -49,6 +69,30 @@ func cmdAllowHostArgs(projectRoot string, args []string) {
 	l, err := loadProjectLease(projectRoot)
 	if err != nil {
 		fatal("load lease: %v", err)
+	}
+
+	if remove {
+		hostKey := strings.ToLower(host)
+		_, hadTTL := l.ApprovedHostExpires[hostKey]
+		if !l.IsApprovedHost(host) && !hadTTL {
+			fmt.Printf("Host %q is not in approved_hosts; nothing to remove.\n", host)
+			return
+		}
+		if err := updateProjectLeaseAndSessionBaseline(projectRoot, func(l *lease.Lease) error {
+			l.ApprovedHosts = removeString(l.ApprovedHosts, host)
+			delete(l.ApprovedHostExpires, hostKey)
+			return nil
+		}); err != nil {
+			fatal("update lease/session baseline: %v", err)
+		}
+		ledger.Append(projectRoot, &ledger.Entry{
+			Verb:     "lease_modify",
+			Target:   "approved_hosts",
+			Decision: "allow",
+			Reason:   fmt.Sprintf("removed host: %s", host),
+		})
+		fmt.Printf("Removed %q from approved_hosts. sir will block egress to this host again.\n", host)
+		return
 	}
 
 	if expiresAt.IsZero() && l.IsApprovedHost(host) {
@@ -74,10 +118,7 @@ func cmdAllowHostArgs(projectRoot string, args []string) {
 	fmt.Println()
 	fmt.Printf("  Add %q to approved_hosts? [y/N] ", host)
 
-	var confirmText string
-	fmt.Scanln(&confirmText)
-	confirmText = strings.TrimSpace(strings.ToLower(confirmText))
-	if confirmText != "y" && confirmText != "yes" {
+	if !confirmYes(autoYes) {
 		fmt.Println("Cancelled. No changes made.")
 		return
 	}
@@ -118,20 +159,52 @@ func cmdAllowHostArgs(projectRoot string, args []string) {
 }
 
 func cmdAllowRemote(projectRoot, remote string) {
+	cmdAllowRemoteArgs(projectRoot, []string{remote})
+}
+
+func cmdAllowRemoteArgs(projectRoot string, args []string) {
 	if err := ensureManagedCommandAllowed("allow-remote"); err != nil {
 		fatal("%v", err)
 	}
+	if len(args) == 0 {
+		fatal("usage: sir allow-remote <name> [--remove] [--yes]")
+	}
+	remote := args[0]
+	remove, autoYes := parseRemoveYes(args[1:])
 	l, err := loadProjectLease(projectRoot)
 	if err != nil {
 		fatal("load lease: %v", err)
 	}
 
-	// Check if already approved
+	approved := false
 	for _, r := range l.ApprovedRemotes {
 		if r == remote {
-			fmt.Printf("Remote %q is already in approved_remotes.\n", remote)
+			approved = true
+		}
+	}
+
+	if remove {
+		if !approved {
+			fmt.Printf("Remote %q is not in approved_remotes; nothing to remove.\n", remote)
 			return
 		}
+		if err := updateProjectLeaseAndSessionBaseline(projectRoot, func(l *lease.Lease) error {
+			l.ApprovedRemotes = removeString(l.ApprovedRemotes, remote)
+			return nil
+		}); err != nil {
+			fatal("update lease/session baseline: %v", err)
+		}
+		ledger.Append(projectRoot, &ledger.Entry{
+			Verb: "lease_modify", Target: "approved_remotes", Decision: "allow",
+			Reason: fmt.Sprintf("removed remote: %s", remote),
+		})
+		fmt.Printf("Removed %q from approved_remotes. Pushes to this remote will prompt again.\n", remote)
+		return
+	}
+
+	if approved {
+		fmt.Printf("Remote %q is already in approved_remotes.\n", remote)
+		return
 	}
 
 	// Warn and confirm
@@ -143,10 +216,7 @@ func cmdAllowRemote(projectRoot, remote string) {
 	fmt.Println()
 	fmt.Printf("  Add %q to approved_remotes? [y/N] ", remote)
 
-	var confirm string
-	fmt.Scanln(&confirm)
-	confirm = strings.TrimSpace(strings.ToLower(confirm))
-	if confirm != "y" && confirm != "yes" {
+	if !confirmYes(autoYes) {
 		fmt.Println("Cancelled. No changes made.")
 		return
 	}
@@ -169,15 +239,58 @@ func cmdAllowRemote(projectRoot, remote string) {
 	fmt.Printf("Added %q to approved_remotes. sir-protected agents can now push to this remote.\n", remote)
 }
 
+// parseRemoveYes extracts the shared --remove/--revoke and --yes flags.
+func parseRemoveYes(args []string) (remove, autoYes bool) {
+	for _, a := range args {
+		switch a {
+		case "--remove", "--revoke":
+			remove = true
+		case "--yes", "-y":
+			autoYes = true
+		default:
+			fatal("unknown flag: %s", a)
+		}
+	}
+	return remove, autoYes
+}
+
 // cmdTrustMCP adds an MCP server to the trusted list (exempt from credential scanning).
 // Same pattern as cmdAllowHost.
 func cmdTrustMCP(projectRoot, serverName string) {
+	cmdTrustMCPArgs(projectRoot, []string{serverName})
+}
+
+func cmdTrustMCPArgs(projectRoot string, args []string) {
 	if err := ensureManagedCommandAllowed("trust"); err != nil {
 		fatal("%v", err)
 	}
+	if len(args) == 0 {
+		fatal("usage: sir trust <server> [--remove] [--yes]")
+	}
+	serverName := args[0]
+	remove, autoYes := parseRemoveYes(args[1:])
 	l, err := loadProjectLease(projectRoot)
 	if err != nil {
 		fatal("load lease: %v", err)
+	}
+
+	if remove {
+		if !l.IsTrustedMCPServer(serverName) {
+			fmt.Printf("MCP server %q is not in trusted_mcp_servers; nothing to remove.\n", serverName)
+			return
+		}
+		if err := updateProjectLeaseAndSessionBaseline(projectRoot, func(l *lease.Lease) error {
+			l.TrustedMCPServers = removeString(l.TrustedMCPServers, serverName)
+			return nil
+		}); err != nil {
+			fatal("update lease/session baseline: %v", err)
+		}
+		ledger.Append(projectRoot, &ledger.Entry{
+			Verb: "lease_modify", Target: "trusted_mcp_servers", Decision: "allow",
+			Reason: fmt.Sprintf("removed trusted MCP server: %s", serverName),
+		})
+		fmt.Printf("Removed %q from trusted_mcp_servers. Credential scanning re-enabled for this server.\n", serverName)
+		return
 	}
 
 	// Check if already trusted
@@ -198,10 +311,7 @@ func cmdTrustMCP(projectRoot, serverName string) {
 	fmt.Println()
 	fmt.Printf("  Trust %q? [y/N] ", serverName)
 
-	var confirm string
-	fmt.Scanln(&confirm)
-	confirm = strings.TrimSpace(strings.ToLower(confirm))
-	if confirm != "y" && confirm != "yes" {
+	if !confirmYes(autoYes) {
 		fmt.Println("Cancelled. No changes made.")
 		return
 	}

@@ -50,6 +50,7 @@ func TestAppendEvaluationLedgerEntry_EmitsTelemetryWhenLedgerAppendFails(t *test
 		policy.VerdictDeny,
 		"test deny",
 		state,
+		false,
 		agent.NewClaudeAgent(),
 	)
 

@@ -58,7 +58,101 @@ func cmdApproveLast(projectRoot string, args []string) {
 		fmt.Println("No ask decision found in the ledger; nothing to approve.")
 		return
 	}
+
+	// Prefer turning the approval into a narrow, expiring lease so the same
+	// prompt stops recurring — instead of a brittle one-shot grant that only
+	// matches the exact target and re-asks on the next slightly different URL.
+	// --once/--session force the old grant behavior; security-sensitive intents
+	// (secret reads, posture, sudo, persistence, delegation) are never leased
+	// and always fall through to an explicit one-shot grant.
+	if !approveForcesGrant(args) {
+		if kind, target, ok := leaseableApproval(*lastAsk); ok {
+			fmt.Printf("Last ask was %s for %q — creating a scoped lease so it stops prompting.\n", lastAsk.Verb, target)
+			switch kind {
+			case "host":
+				cmdAllowHostArgs(projectRoot, hostLeaseArgs(target, args))
+			case "remote":
+				cmdAllowRemote(projectRoot, target)
+			case "mcp":
+				cmdMCPApprove(projectRoot, []string{target})
+			}
+			return
+		}
+	}
 	cmdApproveGrant(projectRoot, lastAsk.Verb, lastAsk.Target, args, fmt.Sprintf("approved ledger entry #%d", lastAsk.Index))
+}
+
+// approveForcesGrant reports whether the developer explicitly asked for the
+// one-shot/session grant behavior instead of a lease.
+func approveForcesGrant(args []string) bool {
+	for _, a := range args {
+		if a == "--once" || a == "--session" {
+			return true
+		}
+	}
+	return false
+}
+
+// leaseableApproval maps an ask entry to a scoped-lease action when the intent
+// is a low-risk friction prompt (host egress, push to origin, MCP onboarding).
+// Security-sensitive verbs return ok=false so they stay one-shot grants.
+func leaseableApproval(e ledger.Entry) (kind, target string, ok bool) {
+	switch e.Verb {
+	case "net_external", "net_allowlisted":
+		if h := approveHostFromTarget(e.Target); h != "" {
+			return "host", h, true
+		}
+	case "push_origin":
+		return "remote", "origin", true
+	case "mcp_onboarding", "mcp_unapproved", "mcp_network_unapproved":
+		if s := approveMCPServer(e.ToolName); s != "" {
+			return "mcp", s, true
+		}
+	}
+	return "", "", false
+}
+
+// hostLeaseArgs builds allow-host args from an ask, defaulting to a narrow 15m
+// TTL unless the developer passed their own --ttl.
+func hostLeaseArgs(host string, args []string) []string {
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--ttl" && i+1 < len(args) {
+			return []string{host, "--ttl", args[i+1]}
+		}
+	}
+	return []string{host, "--ttl", "15m"}
+}
+
+// approveHostFromTarget extracts a bare hostname from a network target,
+// stripping scheme, userinfo, path, and port. Returns "" when none is present.
+func approveHostFromTarget(target string) string {
+	s := strings.TrimSpace(target)
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
+	}
+	if i := strings.Index(s, "@"); i >= 0 {
+		s = s[i+1:]
+	}
+	if i := strings.IndexAny(s, "/?#"); i >= 0 {
+		s = s[:i]
+	}
+	if i := strings.LastIndex(s, ":"); i >= 0 {
+		s = s[:i]
+	}
+	return s
+}
+
+// approveMCPServer extracts the server name from an "mcp__<server>__<tool>"
+// tool name, or "" for non-MCP tools.
+func approveMCPServer(toolName string) string {
+	if !strings.HasPrefix(toolName, "mcp__") {
+		return ""
+	}
+	rest := strings.TrimPrefix(toolName, "mcp__")
+	if i := strings.Index(rest, "__"); i >= 0 {
+		return rest[:i]
+	}
+	return rest
 }
 
 func cmdApproveGrant(projectRoot, verb, target string, args []string, reason string) {

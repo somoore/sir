@@ -1,7 +1,7 @@
 # Observability Design — sir and the three-tier model
 
-> [!WARNING]
-> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+> [!NOTE]
+> sir is experimental — test on your own machine, not shared infrastructure. `sir doctor` recovers any wedged state; [report bugs](https://github.com/somoore/sir/issues).
 
 A useful way to frame AI coding agent observability is to separate three tiers of value: **governance** (checkbox compliance — "we have logs"), **detection** (real-time — "we catch bad things as they happen"), and **investigation** (backward-looking — "we can reconstruct what happened"). Most AI coding agent providers today stop at tier 1. Provider audit logs capture the user prompt and which tools ran, but not tool response content, not MCP arguments, and not the reasoning chain — so an investigator cannot reconstruct why an agent introduced a vulnerability, and a detector cannot catch a malicious MCP response because the response text was never logged.
 

@@ -93,19 +93,19 @@ func RedactURL(s string) string {
 }
 
 var credentialQueryKeys = map[string]struct{}{
-	"token":        {},
-	"access_token": {}, // #nosec G101
-	"api_key":      {}, // #nosec G101
-	"apikey":       {}, // #nosec G101
-	"auth":         {},
+	"token":         {},
+	"access_token":  {}, // #nosec G101
+	"api_key":       {}, // #nosec G101
+	"apikey":        {}, // #nosec G101
+	"auth":          {},
 	"authorization": {},
-	"key":          {},
-	"secret":       {},
-	"password":     {},
-	"passwd":       {},
-	"session":      {},
-	"sig":          {},
-	"signature":    {},
+	"key":           {},
+	"secret":        {},
+	"password":      {},
+	"passwd":        {},
+	"session":       {},
+	"sig":           {},
+	"signature":     {},
 }
 
 func isCredentialQueryKey(k string) bool {

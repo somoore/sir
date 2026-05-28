@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/somoore/sir/pkg/agent"
+	"github.com/somoore/sir/pkg/detect"
 	"github.com/somoore/sir/pkg/lease"
 	"github.com/somoore/sir/pkg/ledger"
 	"github.com/somoore/sir/pkg/policy"
@@ -145,6 +146,14 @@ func postEvaluatePayload(payload *PostHookPayload, l *lease.Lease, state *sessio
 		changed := checkPendingInstall(state, l, projectRoot)
 		if len(changed) > 0 {
 			entry := sentinelMutationEntry(payload, state.PendingInstall.Command, changed)
+			// When the install mutated a posture/control-plane file (not just a
+			// lockfile or .env), this is the higher-signal supply-chain
+			// detection — a package install rewriting the agent's future
+			// behavior — so stamp it explicitly over the generic tamper class.
+			if anyInstalledPostureFile(projectRoot, changed, l) {
+				entry.DetectionID = string(detect.PackageInstallPostureMutation)
+				entry.Severity = "HIGH"
+			}
 			if err := ledger.Append(projectRoot, entry); err != nil {
 				fmt.Fprintf(os.Stderr, "sir: ledger append error: %v\n", err)
 			} else {
@@ -168,6 +177,7 @@ func postEvaluatePayload(payload *PostHookPayload, l *lease.Lease, state *sessio
 	}
 
 	if !alertFired {
+		applyAutoLeaseOnApproval(payload, l, state, projectRoot, ag)
 		applyPostEvaluateAllowTrace(payload, state, projectRoot, ag, sensitiveTarget != "")
 	}
 
@@ -181,4 +191,16 @@ func checkPendingInstall(state *session.State, l *lease.Lease, projectRoot strin
 	}
 	afterHashes := HashSentinelFiles(projectRoot, l.SentinelFilesForInstall)
 	return CompareSentinelHashes(state.PendingInstall.SentinelHashes, afterHashes)
+}
+
+// anyInstalledPostureFile reports whether any changed install-sentinel file is
+// a posture/control-plane file (CLAUDE.md, .mcp.json, hook config, …) rather
+// than a benign lockfile or .env.
+func anyInstalledPostureFile(projectRoot string, changed []string, l *lease.Lease) bool {
+	for _, f := range changed {
+		if IsPostureFileResolvedIn(projectRoot, f, l) {
+			return true
+		}
+	}
+	return false
 }

@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/somoore/sir/pkg/friction"
 	"github.com/somoore/sir/pkg/lease"
 	"github.com/somoore/sir/pkg/ledger"
 	"github.com/somoore/sir/pkg/policy"
@@ -17,7 +18,7 @@ import (
 
 func cmdPolicy(projectRoot string, args []string) {
 	if len(args) == 0 {
-		fatal("usage: sir policy [show|diff|init|protect-path|unprotect-path] ...")
+		fatal("usage: sir policy [show|diff|init|suggest|protect-path|unprotect-path] ...")
 	}
 	subcmd := args[0]
 	args = args[1:]
@@ -28,13 +29,59 @@ func cmdPolicy(projectRoot string, args []string) {
 		cmdPolicyDiff(projectRoot, args)
 	case "init":
 		cmdPolicyInit(projectRoot, args)
+	case "suggest":
+		cmdPolicySuggest(projectRoot, args)
 	case "protect-path":
 		cmdProtectPath(projectRoot, args)
 	case "unprotect-path":
 		cmdUnprotectPath(projectRoot, args)
 	default:
-		fatal("usage: sir policy [show|diff|init|protect-path|unprotect-path] ...")
+		fatal("usage: sir policy [show|diff|init|suggest|protect-path|unprotect-path] ...")
 	}
+}
+
+// cmdPolicySuggest recommends safer, narrowly-scoped lease changes derived
+// from observed sessions in the ledger. It is advisory only — it prints the
+// exact commands to apply each suggestion rather than mutating the lease,
+// since posture/lease writes are an explicit, ask-gated developer action.
+func cmdPolicySuggest(projectRoot string, args []string) {
+	asJSON := false
+	for _, arg := range args {
+		switch arg {
+		case "--json":
+			asJSON = true
+		default:
+			fatal("usage: sir policy suggest [--json]")
+		}
+	}
+	entries, err := ledger.ReadAll(projectRoot)
+	if err != nil {
+		fatal("read ledger: %v", err)
+	}
+	report := friction.Analyze(entries)
+	if asJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(report.Suggestions); err != nil {
+			fatal("encode suggestions: %v", err)
+		}
+		return
+	}
+	fmt.Println("sir policy suggest")
+	if report.ObserveOnly {
+		fmt.Println("  (observe-only telemetry — these would reduce prompts once enforced)")
+	}
+	fmt.Println()
+	if len(report.Suggestions) == 0 {
+		fmt.Println("  No recommendations — sir is running quiet, or there is not enough")
+		fmt.Println("  observed activity yet. Run `sir friction` for the full breakdown.")
+		return
+	}
+	for _, s := range report.Suggestions {
+		fmt.Printf("  • %s\n    %s\n", s.Command, s.Reason)
+	}
+	fmt.Println()
+	fmt.Println("  These are scoped, reversible changes. Review before applying.")
 }
 
 func cmdPolicyShow(projectRoot string, args []string) {
@@ -59,6 +106,8 @@ func cmdPolicyShow(projectRoot string, args []string) {
 	fmt.Println()
 	fmt.Printf("  mode:            %s\n", l.Mode)
 	fmt.Printf("  delegation:      %v\n", l.AllowDelegation)
+	fmt.Printf("  auto-lease hosts:%v (mint short TTL host lease on observed egress approval)\n", l.AutoLeaseApprovedHosts)
+	fmt.Printf("  deny raw secrets:%v (raw secret reads blocked; use `sir secret view`)\n", l.DenyRawSecretReads)
 	fmt.Printf("  approved hosts:  %s\n", strings.Join(l.ActiveApprovedHosts(), ", "))
 	if len(l.ApprovedHostExpires) > 0 {
 		fmt.Println("  host TTLs:")
@@ -80,6 +129,12 @@ func cmdPolicyShow(projectRoot string, args []string) {
 	fmt.Printf("  ask verbs:      %s\n", joinVerbs(l.AskVerbs))
 	fmt.Printf("  forbidden verbs:%s\n", prefixedListVerbs(l.ForbiddenVerbs))
 	fmt.Printf("  lease path:     %s\n", filepath.Join(session.StateDir(projectRoot), "lease.json"))
+	fmt.Println()
+	fmt.Println("  Change it:")
+	fmt.Println("    sir trust host|remote|mcp|path <x> [--remove]   grant or revoke")
+	fmt.Println("    sir policy init --profile personal|team|strict   switch profile")
+	fmt.Println("    sir policy suggest                               recommend from observed sessions")
+	fmt.Println("    sir approvals                                    see everything granted")
 }
 
 func cmdPolicyDiff(projectRoot string, args []string) {
@@ -94,6 +149,10 @@ func cmdPolicyDiff(projectRoot string, args []string) {
 			i++
 		case "--strict":
 			profile = "strict"
+		case "--team":
+			profile = "team"
+		case "--personal":
+			profile = "personal"
 		}
 	}
 	current, err := loadProjectLease(projectRoot)
@@ -127,16 +186,26 @@ func cmdPolicyInit(projectRoot string, args []string) {
 	}
 	profile := "default"
 	yes := false
-	for _, arg := range args {
-		switch arg {
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
 		case "--strict":
 			profile = "strict"
+		case "--team":
+			profile = "team"
+		case "--personal":
+			profile = "personal"
 		case "--default", "--standard":
 			profile = "default"
+		case "--profile":
+			if i+1 >= len(args) {
+				fatal("--profile requires a name (personal, team, strict)")
+			}
+			profile = args[i+1] // #nosec G602 -- guarded by the i+1 bounds check above (fatal exits)
+			i++
 		case "--yes", "-y":
 			yes = true
 		default:
-			fatal("usage: sir policy init [--strict|--default] [--yes]")
+			fatal("usage: sir policy init [--personal|--team|--strict] [--yes]")
 		}
 	}
 	l, err := leaseForProfile(profile)
@@ -230,14 +299,26 @@ func cmdPathProtection(projectRoot string, args []string, protect bool) {
 
 func leaseForProfile(profile string) (*lease.Lease, error) {
 	switch profile {
-	case "default", "standard":
+	case "default", "standard", "personal":
+		// Low-friction balanced profile: a raw secret read prompts once
+		// (turn-scoped taint), approvals auto-lease, delegation allowed.
 		return lease.DefaultLease(), nil
+	case "team":
+		// Most companies: raw secret reads are denied and the agent uses the
+		// redacted `sir secret view` instead, so secret values never enter the
+		// model context without an explicit, separate approval.
+		l := lease.DefaultLease()
+		l.Mode = "team"
+		l.DenyRawSecretReads = true
+		return l, nil
 	case "strict":
 		l := lease.DefaultLease()
 		l.Mode = "strict"
 		l.ApprovedRemotes = nil
 		l.ApprovedMCPServers = nil
 		l.AllowDelegation = false
+		l.AutoLeaseApprovedHosts = false
+		l.DenyRawSecretReads = true
 		l.ApprovedHosts = []string{"localhost", "127.0.0.1", "::1"}
 		l.AllowedVerbs = removeVerb(l.AllowedVerbs, policy.VerbPushOrigin)
 		l.AllowedVerbs = removeVerb(l.AllowedVerbs, policy.VerbDelegate)
@@ -245,7 +326,7 @@ func leaseForProfile(profile string) (*lease.Lease, error) {
 		l.AskVerbs = appendUniqueVerb(l.AskVerbs, policy.VerbDelegate)
 		return l, nil
 	default:
-		return nil, fmt.Errorf("unknown profile %q (valid: default, strict)", profile)
+		return nil, fmt.Errorf("unknown profile %q (valid: personal, team, strict)", profile)
 	}
 }
 

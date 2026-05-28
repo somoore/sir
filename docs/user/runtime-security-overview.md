@@ -1,7 +1,7 @@
 # Runtime Security Overview
 
-> [!WARNING]
-> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+> [!NOTE]
+> sir is experimental — test on your own machine, not shared infrastructure. `sir doctor` recovers any wedged state; [report bugs](https://github.com/somoore/sir/issues).
 
 sir — Sandbox in Reverse — is an experimental security runtime for AI coding agents. Rather than jailing a process from below, it constrains the agent from above: intercepting tool calls at the hook layer, classifying intent, and deciding allow / ask / deny against a local policy oracle. Secret taint propagates through operations via information flow control (IFC), so reading `.env` in one step gates risky sinks in the next.
 

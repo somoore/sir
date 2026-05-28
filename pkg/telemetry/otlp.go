@@ -36,28 +36,34 @@ const (
 // OTLP export. All fields are optional; zero values are omitted from the
 // emitted payload via omitempty on the OTLP attribute encoding.
 type LogEvent struct {
-	Timestamp      time.Time
-	SessionID      string
-	ToolName       string
-	Verb           string
-	Verdict        string
-	Sensitivity    string
-	Trust          string
-	Provenance     string
-	Target         string
-	Reason         string
-	PostureState   string
-	InjectionAlert bool
-	MCPTaint       bool
-	SecretSession  bool
-	LedgerIndex    int
-	LedgerHash     string
-	AlertType      string
-	Severity       string
-	Evidence       string
-	AlertAgentID   string
-	DiffSummary    string
-	Restored       bool
+	Timestamp         time.Time
+	SessionID         string
+	ProjectHash       string
+	ToolName          string
+	Verb              string
+	Verdict           string
+	Sensitivity       string
+	Trust             string
+	Provenance        string
+	Target            string
+	Reason            string
+	PostureState      string
+	InjectionAlert    bool
+	MCPTaint          bool
+	SecretSession     bool
+	Suspicious        bool
+	LedgerIndex       int
+	LedgerHash        string
+	AlertType         string
+	DetectionID       string
+	Route             string
+	Severity          string
+	Evidence          string
+	AlertAgentID      string
+	DiffSummary       string
+	Restored          bool
+	LeaseVersion      string
+	DecisionLatencyMs int
 }
 
 // Exporter is a fire-and-forget OTLP/HTTP JSON log exporter. The zero value

@@ -89,6 +89,12 @@ func buildOTLPPayload(ev LogEvent, sessionID, agentID, agentName, version string
 	if sessionID != "" {
 		resourceAttrs = append(resourceAttrs, strAttr("sir.session_id", sessionID))
 	}
+	// Project/repo identity is emitted as a privacy-preserving hash, never the
+	// raw path, so a SIEM can group a fleet by project without leaking
+	// filesystem locations.
+	if ev.ProjectHash != "" {
+		resourceAttrs = append(resourceAttrs, strAttr("sir.project_hash", ev.ProjectHash))
+	}
 	// Agent attribution lives at resource level (not log-record level) so
 	// SIEMs can filter an entire fleet by host agent without regex-scanning
 	// every record.
@@ -136,6 +142,9 @@ func buildOTLPPayload(ev LogEvent, sessionID, agentID, agentName, version string
 	if ev.SecretSession {
 		logAttrs = append(logAttrs, boolAttr("sir.session.secret", true))
 	}
+	if ev.Suspicious {
+		logAttrs = append(logAttrs, boolAttr("sir.session.suspicion", true))
+	}
 	if ev.LedgerHash != "" || ev.LedgerIndex != 0 {
 		logAttrs = append(logAttrs, intAttr("sir.ledger.index", ev.LedgerIndex))
 	}
@@ -145,8 +154,20 @@ func buildOTLPPayload(ev LogEvent, sessionID, agentID, agentName, version string
 	if ev.AlertType != "" {
 		logAttrs = append(logAttrs, strAttr("sir.alert.type", ev.AlertType))
 	}
+	if ev.DetectionID != "" {
+		logAttrs = append(logAttrs, strAttr("sir.detection_id", ev.DetectionID))
+	}
+	if ev.Route != "" {
+		logAttrs = append(logAttrs, strAttr("sir.route", ev.Route))
+	}
 	if ev.Severity != "" {
 		logAttrs = append(logAttrs, strAttr("sir.alert.severity", ev.Severity))
+	}
+	if ev.LeaseVersion != "" {
+		logAttrs = append(logAttrs, strAttr("sir.lease.version", ev.LeaseVersion))
+	}
+	if ev.DecisionLatencyMs > 0 {
+		logAttrs = append(logAttrs, intAttr("sir.decision_latency_ms", ev.DecisionLatencyMs))
 	}
 	if ev.Evidence != "" {
 		logAttrs = append(logAttrs, strAttr("sir.evidence", ev.Evidence))

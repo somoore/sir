@@ -1,7 +1,7 @@
 # sir Troubleshooting
 
-> [!WARNING]
-> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+> [!NOTE]
+> sir is experimental — test on your own machine, not shared infrastructure. `sir doctor` recovers any wedged state; [report bugs](https://github.com/somoore/sir/issues).
 
 sir — Sandbox in Reverse — is an experimental security runtime for AI coding agents. It mediates tool calls at the hook layer and tracks secret taint via IFC, so a lot of its "blocks" are the intended design: you read a secret, and a later external sink is denied because the session is tainted. Use this page when sir is blocking something and you want the shortest path to the cause and the fix.
 
@@ -15,6 +15,24 @@ sir explain --last
 ```
 
 If those are healthy, sir itself is usually fine and the block is a real policy decision.
+
+## How do I install, update, or uninstall?
+
+```bash
+# Install — and the same command updates in place (overwrites binaries, keeps ~/.sir state):
+curl -fsSL https://raw.githubusercontent.com/somoore/sir/main/scripts/download.sh | bash
+
+sir update            # check for a newer release and print the exact upgrade command
+sir uninstall         # remove hooks from every detected agent (state preserved at ~/.sir)
+```
+
+For a full removal (binaries + all state, with confirmation):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/somoore/sir/main/uninstall.sh | bash
+```
+
+`sir update` never modifies the binary itself — a deliberate choice for a security tool; it tells you the verified command to run.
 
 ## Why is sir blocking `curl`?
 
@@ -39,10 +57,10 @@ That clears the active secret-session posture and records the action in the ledg
 ```bash
 sir mcp
 sir mcp wrap
-sir trust <server-name>
+sir trust mcp <server-name>            # --remove to revoke
 ```
 
-Use `sir mcp` to inventory servers, `sir mcp wrap` to harden raw command-based servers, and `sir trust` only for servers you control or have reviewed.
+Use `sir mcp` to inventory servers, `sir mcp wrap` to harden raw command-based servers, and `sir trust mcp` only for servers you control or have reviewed (revoke with `sir trust mcp <name> --remove`).
 
 ## What data does sir store?
 

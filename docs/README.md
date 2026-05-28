@@ -1,17 +1,23 @@
-# Documentation Hub
+# Documentation
 
-> [!WARNING]
-> **sir is experimental, in active development, and not yet suitable for production deployments.** No promises or guarantees are made at this stage. Test on your own machine, not shared infrastructure. If something goes wrong, run `sir doctor` to recover or `sir uninstall` to remove hooks cleanly. Report bugs via [GitHub issues](https://github.com/somoore/sir/issues) — contributions welcome.
+> [!NOTE]
+> sir is experimental — test on your own machine, not shared infrastructure. `sir doctor` recovers any wedged state; [report bugs](https://github.com/somoore/sir/issues).
 
-sir — Sandbox in Reverse — is an experimental security runtime for AI coding agents. It mediates agent tool calls at the hook layer, tracks secret taint through IFC, and writes every decision to a hash-chained ledger. This repo keeps one small active docs surface. Start with the shortest path that matches your job:
+Start with the [README](../README.md). Then pick the shortest path for your job.
 
-- Thesis, install, and first-run walkthrough: [README.md](../README.md)
-- Runtime behavior: [docs/user/runtime-security-overview.md](user/runtime-security-overview.md)
-- Claude / Gemini / Codex details: [docs/user/claude-code-hooks-integration.md](user/claude-code-hooks-integration.md), [docs/user/gemini-support.md](user/gemini-support.md), [docs/user/codex-support.md](user/codex-support.md)
-- Troubleshooting and daily commands: [docs/user/faq.md](user/faq.md)
-- SIEM integration and OTLP attribute reference: [docs/user/siem-integration.md](user/siem-integration.md)
-- Contributor setup, subsystem ownership, and visible backlog tracks: [CONTRIBUTING.md](../CONTRIBUTING.md)
-- Fast contributor orientation: [docs/contributor/first-30-minutes.md](contributor/first-30-minutes.md)
-- Architecture and invariants: [ARCHITECTURE.md](../ARCHITECTURE.md), [docs/contributor/security-engineering-core.md](contributor/security-engineering-core.md)
-- Release verification and threat model: [docs/research/security-verification-guide.md](research/security-verification-guide.md), [docs/research/validation-summary.md](research/validation-summary.md), [docs/research/sir-threat-model.md](research/sir-threat-model.md)
-- Observability framing and the three-tier model: [docs/research/observability-design.md](research/observability-design.md)
+### Use sir
+- [Runtime behavior](user/runtime-security-overview.md) — what sir catches at the boundary, and what it doesn't.
+- [FAQ](user/faq.md) — daily commands and troubleshooting.
+- Agent setup — [Claude Code](user/claude-code-hooks-integration.md) · [Gemini CLI](user/gemini-support.md) · [Codex](user/codex-support.md).
+- [SIEM integration](user/siem-integration.md) — OTLP attributes, detection IDs, and the Slack relay.
+
+### Contribute
+- [CONTRIBUTING.md](../CONTRIBUTING.md) — setup, standards, PR process.
+- [first-30-minutes](contributor/first-30-minutes.md) — fast orientation.
+- [core-mental-model](contributor/core-mental-model.md) · [security-engineering-core](contributor/security-engineering-core.md) — how decisions are made and where the trust boundary sits.
+- [ARCHITECTURE.md](../ARCHITECTURE.md) — system design and invariants.
+
+### Verify the claims
+- [Threat model](research/sir-threat-model.md) — attacker model and scope.
+- [Security verification guide](research/security-verification-guide.md) — reproduce the guarantees.
+- [Observability design](research/observability-design.md) — the three-tier (governance / detection / investigation) model.

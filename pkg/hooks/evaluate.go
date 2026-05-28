@@ -105,29 +105,46 @@ func EvaluatePermissionRequest(projectRoot string, ag agent.Agent) error {
 // a required parameter so the dozens of existing test callers don't need
 // to be touched; when omitted, agent attribution is simply absent from the
 // telemetry payload.
-func evaluatePayload(payload *HookPayload, l *lease.Lease, state *session.State, projectRoot string, agOpt ...agent.Agent) (*HookResponse, error) {
+func evaluatePayload(payload *HookPayload, l *lease.Lease, state *session.State, projectRoot string, agOpt ...agent.Agent) (resp *HookResponse, err error) {
 	var ag agent.Agent
 	if len(agOpt) > 0 {
 		ag = agOpt[0]
 	}
-	if resp, handled := evaluateSessionIntegrityGuard(state); handled {
-		return resp, nil
+	state.DecisionStartedAt = time.Now()
+	if r, handled := evaluateSessionIntegrityGuard(state); handled {
+		return r, nil
 	}
 
 	state.MaybeAdvanceTurn(time.Now())
 
-	if resp, handled := evaluateDenyAllGuard(state); handled {
-		return resp, nil
+	if r, handled := evaluateDenyAllGuard(state); handled {
+		return r, nil
 	}
 
 	pendingInjectionDetail := consumePendingInjectionAlert(state)
 
-	if resp, handled := evaluateLeaseIntegrityGuard(projectRoot, state); handled {
-		return resp, nil
+	if r, handled := evaluateLeaseIntegrityGuard(projectRoot, state); handled {
+		return r, nil
+	}
+
+	// Observe-only rollout: from here on, nothing blocks. The would-be verdict
+	// is recorded in the ledger as a would_* decision (with detection IDs), and
+	// the wire response is downgraded to allow on every return path below. The
+	// control-plane integrity guards above run first and are never suppressed.
+	if l != nil && l.ObserveOnly {
+		defer func() {
+			if err == nil {
+				applyObserveMode(resp)
+			}
+		}()
 	}
 
 	intent := MapToolToIntent(payload.ToolName, payload.ToolInput, l)
 	labels := labelsForEvaluation(payload, intent, l, projectRoot)
+
+	if resp, handled := evaluateRawSecretReadGate(payload, intent, labels, l, state, projectRoot, ag); handled {
+		return resp, nil
+	}
 
 	if resp, handled := evaluateMCPCredentialLeak(payload, l, state, projectRoot); handled {
 		return resp, nil
@@ -144,7 +161,7 @@ func evaluatePayload(payload *HookPayload, l *lease.Lease, state *session.State,
 
 	if resp, handled := evaluateDelegationHardDeny(intent, l, state, ag); handled {
 		overlayPendingInjectionWarning(resp, pendingInjectionDetail)
-		appendEvaluationLedgerEntry(projectRoot, payload, intent, labels, resp.Decision, resp.Reason, state, ag)
+		appendEvaluationLedgerEntry(projectRoot, payload, intent, labels, resp.Decision, resp.Reason, state, l.ObserveOnly, ag)
 		return resp, nil
 	}
 
@@ -155,7 +172,7 @@ func evaluatePayload(payload *HookPayload, l *lease.Lease, state *session.State,
 		}
 		overlayPendingInjectionWarning(resp, pendingInjectionDetail)
 		saveSessionBestEffort(state)
-		appendEvaluationLedgerEntry(projectRoot, payload, intent, labels, resp.Decision, resp.Reason, state, ag)
+		appendEvaluationLedgerEntry(projectRoot, payload, intent, labels, resp.Decision, resp.Reason, state, l.ObserveOnly, ag)
 		return resp, nil
 	}
 
@@ -200,11 +217,19 @@ func evaluatePayload(payload *HookPayload, l *lease.Lease, state *session.State,
 	hookResp := applyCoreEvaluationResult(coreResp, intent, labels, state, ag)
 	overlayPendingInjectionWarning(hookResp, pendingInjectionDetail)
 
+	// Track repeated prompts/blocks for the same intent so repeated_denied_intent
+	// fires in real time and the egress escalation can see repetition. Recorded
+	// before Save so the increment persists; stamping reads the count after.
+	if coreResp.Decision == policy.VerdictDeny || coreResp.Decision == policy.VerdictAsk {
+		state.RecordPromptedIntent(promptKey(intent.Verb, intent.Target))
+	}
+	maybeMarkAutoLeasePending(l, state, intent, coreResp.Decision)
+
 	if err := state.Save(); err != nil {
 		return nil, fmt.Errorf("save session: %w", err)
 	}
 
-	appendEvaluationLedgerEntry(projectRoot, payload, intent, labels, coreResp.Decision, coreResp.Reason, state, ag)
+	appendEvaluationLedgerEntry(projectRoot, payload, intent, labels, coreResp.Decision, coreResp.Reason, state, l.ObserveOnly, ag)
 
 	return hookResp, nil
 }

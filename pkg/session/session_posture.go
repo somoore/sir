@@ -1,6 +1,10 @@
 package session
 
-import "github.com/somoore/sir/pkg/policy"
+import (
+	"time"
+
+	"github.com/somoore/sir/pkg/policy"
+)
 
 // MarkUntrustedRead flags that untrusted content was recently read.
 func (s *State) MarkUntrustedRead() {
@@ -50,6 +54,42 @@ func (s *State) RaisePosture(level policy.PostureState) {
 	if postureOrd(level) > postureOrd(s.Posture) {
 		s.Posture = level
 	}
+}
+
+// RecordMCPAuthorityChange marks that an approved MCP server's trust footing
+// changed in this session (today: binary/config drift). A later privileged
+// action within the correlation window is flagged as a compound detection.
+func (s *State) RecordMCPAuthorityChange() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.MCPAuthorityChangeAt = time.Now()
+}
+
+// RecentMCPAuthorityChange reports whether an MCP authority change occurred
+// within the window ending now.
+func (s *State) RecentMCPAuthorityChange(window time.Duration) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return !s.MCPAuthorityChangeAt.IsZero() && time.Since(s.MCPAuthorityChangeAt) <= window
+}
+
+// IsSuspicious reports the non-blocking "third taint tier": soft session risk
+// that does not block on its own but warrants extra detection visibility. It
+// is derived from existing posture signals (an untrusted read this session, an
+// acknowledged-tainted MCP server still in use, or elevated/critical posture)
+// and is cleared by the same actions that clear those signals (unlock, turn
+// boundary). Secret-session is intentionally excluded — that is the stronger,
+// blocking tier, not mere suspicion.
+func (s *State) IsSuspicious() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.RecentlyReadUntrusted {
+		return true
+	}
+	if len(s.AcknowledgedTaintedMCPServers) > 0 {
+		return true
+	}
+	return s.Posture == policy.PostureStateElevated || s.Posture == policy.PostureStateCritical
 }
 
 // AddTaintedMCPServer records an MCP server that returned injection signals.

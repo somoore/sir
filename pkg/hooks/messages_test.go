@@ -43,7 +43,7 @@ func TestFormatBlock_WhatWhyHow(t *testing.T) {
 	// HOW
 	assertContains(t, "FormatBlock", msg, "fix:", "sir unlock")
 	// Details hint
-	assertContains(t, "FormatBlock", msg, "sir explain --last")
+	assertContains(t, "FormatBlock", msg, "sir why")
 }
 
 func TestFormatAsk_WhatWhyHow(t *testing.T) {
@@ -55,13 +55,13 @@ func TestFormatAsk_WhatWhyHow(t *testing.T) {
 	// consequence
 	assertContains(t, "FormatAsk", msg, "requires approval")
 	// Details hint
-	assertContains(t, "FormatAsk", msg, "sir explain --last")
+	assertContains(t, "FormatAsk", msg, "sir why")
 }
 
 func TestFormatAsk_EmptyConsequence(t *testing.T) {
 	msg := FormatAsk("action", "reason", "")
 	assertContains(t, "FormatAsk", msg, "reason:", "reason")
-	assertContains(t, "FormatAsk", msg, "sir explain --last")
+	assertContains(t, "FormatAsk", msg, "sir why")
 }
 
 func TestFormatAskSensitive_WhatWhyHow(t *testing.T) {
@@ -73,7 +73,7 @@ func TestFormatAskSensitive_WhatWhyHow(t *testing.T) {
 	// HOW (after approval)
 	assertContains(t, "FormatAskSensitive", msg, "sir allow-host", "sir unlock")
 	// Details hint
-	assertContains(t, "FormatAskSensitive", msg, "sir explain --last")
+	assertContains(t, "FormatAskSensitive", msg, "sir why")
 	// No secret content
 	assertNotContains(t, "FormatAskSensitive", msg, "API_KEY", "password", "token")
 }
@@ -87,7 +87,7 @@ func TestFormatFatal_WhatWhyHow(t *testing.T) {
 	// HOW
 	assertContains(t, "FormatFatal", msg, "fix:", "NEW terminal", "sir doctor")
 	// Details hint
-	assertContains(t, "FormatFatal", msg, "sir explain --last")
+	assertContains(t, "FormatFatal", msg, "sir why")
 }
 
 func TestFormatDenyAll_WhatWhyHow(t *testing.T) {
@@ -263,7 +263,7 @@ func TestFormatPostureRestore_WhatWhyHow(t *testing.T) {
 	// WHY
 	assertContains(t, "FormatPostureRestore", msg, "reason:", "security configuration")
 	// Details hint
-	assertContains(t, "FormatPostureRestore", msg, "sir explain --last")
+	assertContains(t, "FormatPostureRestore", msg, "sir why")
 }
 
 func TestFormatSessionCleared_WhatHow(t *testing.T) {
@@ -287,63 +287,63 @@ func TestFormatAskInstall_WhatWhyHow(t *testing.T) {
 	// HOW
 	assertContains(t, "FormatAskInstall", msg, "Review the package")
 	// Details hint
-	assertContains(t, "FormatAskInstall", msg, "sir explain --last")
+	assertContains(t, "FormatAskInstall", msg, "sir why")
 }
 
 func TestFormatAskPosture_WhatWhyHow(t *testing.T) {
 	msg := FormatAskPosture("CLAUDE.md")
 	assertContains(t, "FormatAskPosture", msg, "? ask", "Write CLAUDE.md")
 	assertContains(t, "FormatAskPosture", msg, "reason:", "security settings")
-	assertContains(t, "FormatAskPosture", msg, "sir explain --last")
+	assertContains(t, "FormatAskPosture", msg, "sir why")
 }
 
 func TestFormatAskEnvRead_WhatWhyHow(t *testing.T) {
 	msg := FormatAskEnvRead("printenv")
 	assertContains(t, "FormatAskEnvRead", msg, "? ask", "Environment variable")
 	assertContains(t, "FormatAskEnvRead", msg, "reason:", "printenv", "credentials")
-	assertContains(t, "FormatAskEnvRead", msg, "sir explain --last")
+	assertContains(t, "FormatAskEnvRead", msg, "sir why")
 }
 
 func TestFormatAskEphemeral_WhatWhyHow(t *testing.T) {
 	msg := FormatAskEphemeral("npx create-react-app")
 	assertContains(t, "FormatAskEphemeral", msg, "? ask", "npx create-react-app")
 	assertContains(t, "FormatAskEphemeral", msg, "reason:", "remote code")
-	assertContains(t, "FormatAskEphemeral", msg, "sir explain --last")
+	assertContains(t, "FormatAskEphemeral", msg, "sir why")
 }
 
 func TestFormatAskPersistence_WhatWhyHow(t *testing.T) {
 	msg := FormatAskPersistence("crontab -e")
 	assertContains(t, "FormatAskPersistence", msg, "? ask", "Scheduled task")
 	assertContains(t, "FormatAskPersistence", msg, "reason:", "crontab -e", "outlive")
-	assertContains(t, "FormatAskPersistence", msg, "sir explain --last")
+	assertContains(t, "FormatAskPersistence", msg, "sir why")
 }
 
 func TestFormatAskSudo_WhatWhyHow(t *testing.T) {
 	msg := FormatAskSudo("sudo rm -rf /")
 	assertContains(t, "FormatAskSudo", msg, "? ask", "Elevated")
 	assertContains(t, "FormatAskSudo", msg, "reason:", "sudo")
-	assertContains(t, "FormatAskSudo", msg, "sir explain --last")
+	assertContains(t, "FormatAskSudo", msg, "sir why")
 }
 
 func TestFormatAskSirSelf_WhatWhyHow(t *testing.T) {
 	msg := FormatAskSirSelf("sir uninstall")
 	assertContains(t, "FormatAskSirSelf", msg, "? ask", "self-modification")
 	assertContains(t, "FormatAskSirSelf", msg, "reason:", "sir uninstall", "modifies sir")
-	assertContains(t, "FormatAskSirSelf", msg, "sir explain --last")
+	assertContains(t, "FormatAskSirSelf", msg, "sir why")
 }
 
 func TestFormatAskDeletePosture_WhatWhyHow(t *testing.T) {
 	msg := FormatAskDeletePosture("CLAUDE.md")
 	assertContains(t, "FormatAskDeletePosture", msg, "? ask", "CLAUDE.md")
 	assertContains(t, "FormatAskDeletePosture", msg, "reason:", "security configuration")
-	assertContains(t, "FormatAskDeletePosture", msg, "sir explain --last")
+	assertContains(t, "FormatAskDeletePosture", msg, "sir why")
 }
 
 func TestFormatAskMCPUnapproved_WhatWhyHow(t *testing.T) {
 	msg := FormatAskMCPUnapproved("mcp__evil__steal")
 	assertContains(t, "FormatAskMCPUnapproved", msg, "? ask", "mcp__evil__steal")
 	assertContains(t, "FormatAskMCPUnapproved", msg, "reason:", "sir hasn't seen before")
-	assertContains(t, "FormatAskMCPUnapproved", msg, "sir explain --last")
+	assertContains(t, "FormatAskMCPUnapproved", msg, "sir why")
 }
 
 func TestFormatLeaseIntegrityFatal_WhatWhyHow(t *testing.T) {
@@ -351,7 +351,7 @@ func TestFormatLeaseIntegrityFatal_WhatWhyHow(t *testing.T) {
 	assertContains(t, "FormatLeaseIntegrityFatal", msg, "\u00d7 deny", "Security policy")
 	assertContains(t, "FormatLeaseIntegrityFatal", msg, "reason:", "hash", "changed")
 	assertContains(t, "FormatLeaseIntegrityFatal", msg, "sir doctor", "sir install --force")
-	assertContains(t, "FormatLeaseIntegrityFatal", msg, "sir explain --last")
+	assertContains(t, "FormatLeaseIntegrityFatal", msg, "sir why")
 }
 
 func TestFormatInstallPreview(t *testing.T) {

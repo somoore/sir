@@ -15,6 +15,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	// `sir <cmd> --help` must show help, never execute the command (a
+	// destructive command like uninstall would otherwise start running).
+	// Passthrough commands forward args to a subprocess, so skip them.
+	if os.Args[1] != "help" && !passthroughCommands[os.Args[1]] && wantsHelp(os.Args[2:]) {
+		printCommandHelp(os.Args[1])
+		return
+	}
+
 	projectRoot, err := os.Getwd()
 	if err != nil {
 		fatal("cannot determine working directory: %v", err)
@@ -24,8 +32,13 @@ func main() {
 	case "install":
 		mode := "guard"
 		for _, arg := range os.Args[2:] {
-			if arg == "guard" || arg == "observe" {
+			switch arg {
+			case "guard", "observe":
 				mode = arg
+			case "--observe":
+				mode = "observe"
+			case "--guard":
+				mode = "guard"
 			}
 		}
 		cmdInstall(projectRoot, mode)
@@ -34,7 +47,7 @@ func main() {
 	case "uninstall":
 		cmdUninstall(projectRoot)
 	case "status":
-		cmdStatus(projectRoot)
+		cmdStatus(projectRoot, os.Args[2:]...)
 	case "support":
 		cmdSupport(os.Args[2:])
 	case "capabilities":
@@ -42,7 +55,7 @@ func main() {
 	case "posture":
 		cmdPosture(projectRoot, os.Args[2:])
 	case "doctor":
-		cmdDoctor(projectRoot)
+		cmdDoctor(projectRoot, os.Args[2:]...)
 	case "approvals":
 		cmdApprovals(projectRoot, os.Args[2:])
 	case "log", "ledger":
@@ -61,6 +74,8 @@ func main() {
 		cmdGuard(projectRoot, os.Args[2:])
 	case "demo":
 		cmdDemo()
+	case "secret":
+		cmdSecret(projectRoot, os.Args[2:])
 	case "unlock", "reset":
 		// `sir unlock` is the canonical name — it clears developer-recoverable
 		// runtime restriction state (including secret-session locks and
@@ -73,22 +88,25 @@ func main() {
 		cmdAllowHostArgs(projectRoot, os.Args[2:])
 	case "allow-remote":
 		if len(os.Args) < 3 {
-			fatal("usage: sir allow-remote <remote-name>")
+			fatal("usage: sir allow-remote <remote-name> [--remove] [--yes]")
 		}
-		cmdAllowRemote(projectRoot, os.Args[2])
+		cmdAllowRemoteArgs(projectRoot, os.Args[2:])
 	case "approve":
 		cmdApprove(projectRoot, os.Args[2:])
 	case "policy":
 		cmdPolicy(projectRoot, os.Args[2:])
+	case "config":
+		// Memorable alias for the canonical config view.
+		cmdPolicy(projectRoot, append([]string{"show"}, os.Args[2:]...))
 	case "protect-path":
 		cmdProtectPath(projectRoot, os.Args[2:])
 	case "unprotect-path":
 		cmdUnprotectPath(projectRoot, os.Args[2:])
 	case "trust", "trust-mcp":
 		if len(os.Args) < 3 {
-			fatal("usage: sir trust <server-name>")
+			fatal("usage: sir trust host|remote|mcp|path <name> [--ttl D] [--remove] [--yes]")
 		}
-		cmdTrustMCP(projectRoot, os.Args[2])
+		cmdTrust(projectRoot, os.Args[2:])
 	case "mcp":
 		cmdMCP(projectRoot, os.Args[2:])
 	case "mcp-proxy":
@@ -99,15 +117,29 @@ func main() {
 	case "trace":
 		cmdTrace(projectRoot)
 	case "audit":
-		cmdAudit(projectRoot)
+		if wantsFriction(os.Args[2:]) {
+			cmdFriction(projectRoot, filterFlag(os.Args[2:], "--friction"))
+		} else {
+			cmdAudit(projectRoot)
+		}
+	case "friction":
+		cmdFriction(projectRoot, os.Args[2:])
 	case "replay":
 		cmdReplay(projectRoot, os.Args[2:])
 	case "run", "launch", "contain":
 		cmdRun(projectRoot, os.Args[2:])
+	case "relay":
+		cmdRelay(os.Args[2:])
+	case "completion":
+		cmdCompletion(os.Args[2:])
 	case "verify":
 		cmdVerify()
 	case "version":
 		cmdVersion(os.Args[2:])
+	case "update", "upgrade":
+		// Update is a deliberate, non-self-modifying action for a security
+		// tool: show current vs latest and the exact verified upgrade command.
+		cmdVersion([]string{"--check"})
 	case "help", "--help", "-h":
 		printUsage()
 	default:
@@ -124,16 +156,20 @@ Invisible during normal work. Loud at the exits.
 
 Get started
   sir setup [--strict|--default]  Guided first-run setup for policy + hooks
-  sir install [--agent <id>] [--no-rebaseline]
+  sir install [--agent <id>] [--observe] [--no-rebaseline]
                                  Auto-detect installed agents and set up hooks
                                  (--agent: claude, codex, gemini)
+                                 --observe records would_allow/ask/deny and
+                                 detections without blocking (observe-only
+                                 rollout); enable enforcement later without
+                                 losing telemetry.
                                  --no-rebaseline skips refreshing posture
                                  baselines in other project sessions. Default
                                  behavior refreshes them so sessions that were
                                  alive across the upgrade do not wedge into
                                  deny-all. Use only if you need a per-project
                                  'sir doctor' pass for auditing.
-  sir status                     Show whether sir is active and what it sees
+  sir status [--json]            Show whether sir is active and what it sees
   sir support --json             Emit the public support manifests as JSON
   sir capabilities [--json]      Show per-agent support and hook coverage
   sir posture [--json]           Show install, policy, MCP, runtime, ledger posture
@@ -142,37 +178,47 @@ Get started
 When sir asks or blocks
   sir why                        Explain the most recent decision
   sir approvals [--json]         Show pending asks, retry grants, and trust approvals
-  sir approve --last             Approve the next exact retry for the last ask
+  sir approve --last             Turn the last ask into a scoped, expiring lease
+                                 (host/remote/MCP); --once for a single retry
   sir unlock                     Clear transient runtime restrictions, restore operability
-  sir allow-host <hostname>      Permanently allow requests to a host
-  sir allow-host <host> --ttl 2h Temporarily allow requests to a host
-  sir allow-remote <name>        Permanently allow pushes to a git remote
-  sir trust <mcp-server>         Trust an MCP server with credentials (rare)
+  sir secret view <path>         Show a sensitive file's keys with values redacted
+  sir trust host <h> [--ttl 2h]      Allow a host          (--remove to revoke)
+  sir trust remote <name>            Allow a git remote    (--remove to revoke)
+  sir trust mcp <server>             Trust an MCP server with credentials (--remove)
+  sir trust path <p> [--posture]     Mark a path sensitive (--remove to unprotect)
+                                     (aliases: allow-host, allow-remote, protect-path)
 
 Policy
   sir policy show                Show this project's lease and policy profile
   sir policy diff --strict       Compare the active lease with strict defaults
-  sir policy init --strict       Initialize a stricter local policy profile
+  sir policy init --profile P    Initialize a policy profile (personal|team|strict)
+                                 team/strict deny raw secret reads (use sir secret view)
+  sir policy suggest [--json]    Recommend safer scoped leases from observed sessions
   sir protect-path <path>        Add a sensitive path pattern
   sir unprotect-path <path>      Remove a sensitive path pattern
 
 Review a session
   sir audit                      One-screen security summary of this session
+  sir friction [--json]          Summarize prompts, blocks, noisy rules, and scoped-lease suggestions
   sir replay [--profile strict]  Project ledger decisions under another policy profile
   sir trace                      Export this session's ledger as a shareable HTML timeline
   sir log [verify|archive|export] Show, verify, archive, or export the decision log
+  sir log --follow               Live-stream decisions as the agent works
   sir explain [--last|--index N] Explain any decision with full causal chain
   sir mcp [status]               Inspect discovered MCP servers and their runtime posture
   sir mcp wrap [--yes]           Rewrite raw command-based MCP servers through sir mcp-proxy
   sir mcp scope <name> [flags]   Add per-server MCP capability scopes
 
 Maintenance
-  sir doctor                     Check sir's health and auto-repair
+  sir doctor [--json]            Check sir's health and auto-repair (--json: read-only probe for CI)
   sir verify                     Verify binary integrity against install-time manifest
   sir uninstall [--agent <id>]   Remove sir hooks from one or all installed agents
+  sir update                     Check for a newer release and show the upgrade command
   sir version [--check]          Show sir's version (--check compares with GitHub Releases)
+  sir completion bash|zsh|fish   Print a shell completion script
 
 	Advanced
+	  sir relay [--addr :8787]       Run the central Slack relay (dedup, digest, buttons)
 	  sir mcp-proxy <command>        Wrap an MCP server with OS-level MCP hardening
 	  sir run <agent>               Host-agent containment launcher
 	  sir launch <agent>            Alias for sir run

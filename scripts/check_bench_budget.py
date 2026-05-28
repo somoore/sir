@@ -35,6 +35,13 @@ def run_benchmarks(command):
 
 
 def parse_metrics(output):
+    # The benchmark command runs with -count=N, so each benchmark prints N
+    # samples. We keep the best (minimum) value seen for each metric: the
+    # least-noise-contaminated estimate of the true cost. ns/op is the only
+    # metric that varies between samples on a shared CI runner; b/op and
+    # allocs/op are deterministic, so their minimum equals every sample. Gating
+    # on the best sample removes false failures from transient scheduler spikes
+    # while still catching real regressions (which raise even the best sample).
     metrics = {}
     current_pkg = None
     for raw_line in output.splitlines():
@@ -46,11 +53,18 @@ def parse_metrics(output):
         match = BENCH_LINE.match(line)
         if not match or current_pkg is None:
             continue
-        metrics[current_pkg][match.group(1)] = {
+        sample = {
             "ns_op": float(match.group(2)),
             "b_op": float(match.group(3)),
             "allocs_op": float(match.group(4)),
         }
+        existing = metrics[current_pkg].get(match.group(1))
+        if existing is None:
+            metrics[current_pkg][match.group(1)] = sample
+        else:
+            for metric, value in sample.items():
+                if value < existing[metric]:
+                    existing[metric] = value
     return metrics
 
 
