@@ -38,7 +38,7 @@ jobs:
       go: ${{ steps.detect.outputs.go }}
       rust: ${{ steps.detect.outputs.rust }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
           # pull_request runs use a synthetic merge commit; depth 2 is enough
@@ -110,7 +110,7 @@ jobs:
         if: needs.changes.outputs.rust != 'true'
         run: echo "No Rust-relevant changes; required check succeeds without full Rust CI."
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         if: needs.changes.outputs.rust == 'true'
         with:
           persist-credentials: false
@@ -171,7 +171,7 @@ jobs:
         if: needs.changes.outputs.go != 'true'
         run: echo "No Go-relevant changes; required check succeeds without full Go CI."
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         if: needs.changes.outputs.go == 'true'
         with:
           persist-credentials: false
@@ -283,7 +283,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
 
