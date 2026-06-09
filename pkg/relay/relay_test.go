@@ -285,3 +285,39 @@ func TestRelay_RunStopsOnContextCancel(t *testing.T) {
 		t.Fatal("Run did not return after context cancel")
 	}
 }
+
+func TestSanitizeLogValue(t *testing.T) {
+	cases := []struct {
+		name, in, want string
+	}{
+		{"plain", "secret_to_external_egress", "secret_to_external_egress"},
+		{"crlf forged line", "ok\r\nFORGED: admin login", "okFORGED: admin login"},
+		{"newline only", "a\nb", "ab"},
+		{"tab and bell", "a\tb\x07c", "abc"},
+		{"empty", "", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := sanitizeLogValue(c.in); got != c.want {
+				t.Errorf("sanitizeLogValue(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+func TestRelayLogfStripsInjection(t *testing.T) {
+	var buf bytes.Buffer
+	r, err := New("https://example.invalid/webhook", Options{Logger: log.New(&buf, "", 0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A string carrying CR/LF must be flattened; an int passes through verbatim.
+	r.logf("forwarded %s (ledger #%d)", "bad\r\ninjected", 7)
+	out := buf.String()
+	if strings.ContainsAny(out, "\r") || strings.Count(out, "\n") != 1 {
+		t.Errorf("logf left line breaks from a string arg: %q", out)
+	}
+	if !strings.Contains(out, "ledger #7") {
+		t.Errorf("logf dropped a non-string arg: %q", out)
+	}
+}
