@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Local fast-feedback gate: reject AI-assisted / co-authored commit messages.
+#
+# Bypassable (git commit --no-verify) and requires per-clone enablement:
+#   git config core.hooksPath .githooks
+# The non-bypassable guarantee is the GitHub ruleset commit_message_pattern rule.
+set -euo pipefail
+repo_root="$(git rev-parse --show-toplevel)"
+exec "$repo_root/scripts/check-no-assisted-commits.sh" "$1"
