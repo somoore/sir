@@ -20,7 +20,7 @@ The supply chain has to stay boring, auditable, and hard to widen by accident. T
 | Toolchain | Version | Source of truth |
 | --- | --- | --- |
 | Rust | 1.94.0 | `rust-toolchain.toml` |
-| Go | 1.22 minimum / 1.25.10 toolchain | `go.mod` |
+| Go | 1.22 minimum / 1.25.11 toolchain | `go.mod` |
 
 CI, `Makefile`, and `install.sh` must match those pins.
 
