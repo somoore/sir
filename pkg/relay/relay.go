@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/somoore/sir/pkg/detect"
 	"github.com/somoore/sir/pkg/telemetry"
@@ -118,9 +119,31 @@ func (r *Relay) handleStats(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (r *Relay) logf(format string, args ...any) {
-	if r.logger != nil {
-		r.logger.Printf(format, args...)
+	if r.logger == nil {
+		return
 	}
+	// Defense in depth at the single logging choke point for network-ingested
+	// telemetry: strip CR/LF and other control characters from any string
+	// argument before it reaches the log so a malicious request body cannot
+	// forge log lines (CWE-117). Non-string args (e.g. int ledger indices)
+	// cannot carry injection and pass through untouched.
+	for i, a := range args {
+		if s, ok := a.(string); ok {
+			args[i] = sanitizeLogValue(s)
+		}
+	}
+	r.logger.Printf(format, args...)
+}
+
+// sanitizeLogValue removes characters that could be used to forge or corrupt
+// log entries: line breaks (CR/LF) and other ASCII/Unicode control characters.
+func sanitizeLogValue(s string) string {
+	return strings.Map(func(c rune) rune {
+		if c == '\n' || c == '\r' || unicode.IsControl(c) {
+			return -1
+		}
+		return c
+	}, s)
 }
 
 // detectionLabel resolves an incoming detection ID to a known label from the

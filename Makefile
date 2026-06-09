@@ -2,7 +2,7 @@
 
 # Toolchain versions — keep in sync with .github/workflows/ci.yml
 RUST_VERSION ?= 1.94.0
-GO_VERSION   ?= 1.25.10
+GO_VERSION   ?= 1.25.11
 REPLAY_ARGS  ?=
 BENCH_ARGS   ?= -run '^$$' -bench . -benchmem
 RELEASE_TAG  ?=

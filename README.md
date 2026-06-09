@@ -91,7 +91,7 @@ The installer verifies the tarball SHA-256 (and the cosign signature on `checksu
 ```bash
 git clone https://github.com/somoore/sir.git && cd sir
 # Requires [Rust 1.94.0](https://rustup.rs/) (pinned in rust-toolchain.toml)
-# Requires [Go 1.22+](https://go.dev/dl/) with toolchain auto-fetch to go1.25.10
+# Requires [Go 1.22+](https://go.dev/dl/) with toolchain auto-fetch to go1.25.11
 make build && make install
 ```
 </details>
