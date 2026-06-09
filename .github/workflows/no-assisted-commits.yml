@@ -1,0 +1,47 @@
+name: no-assisted-commits
+
+# Fails if any commit in the push / PR is marked AI-assisted or co-authored.
+# This is the in-repo, version-controlled layer. The non-bypassable guarantee
+# is the GitHub ruleset commit_message_pattern rule (scripts/apply-commit-policy-ruleset.sh).
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Reject assisted/co-authored commits
+        # SHAs are passed via env (never inlined into the shell) per Actions
+        # injection-hardening guidance, even though commit SHAs are hex-only.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_HEAD: ${{ github.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base="$PR_BASE"
+            head="$PR_HEAD"
+          else
+            base="$PUSH_BEFORE"
+            head="$PUSH_HEAD"
+          fi
+          # New-branch / first-push sentinel: scan only the tip commit.
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            range="${head}~1..${head}"
+          else
+            range="${base}..${head}"
+          fi
+          echo "Checking range: $range"
+          bash scripts/check-no-assisted-commits.sh --range "$range"
