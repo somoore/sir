@@ -22,9 +22,36 @@ PATTERN='^[[:space:]]*(co-authored-by:|assisted-by:|🤖[[:space:]]*generated wi
 TRUSTED_DEPENDABOT_TRAILER='^[[:space:]]*co-authored-by:[[:space:]]*dependabot\[bot\][[:space:]]*<49699333\+dependabot\[bot\]@users\.noreply\.github\.com>[[:space:]]*$'
 
 find_hits() {
-	# GitHub adds this exact trailer when a reviewed Dependabot PR is
-	# squash-merged. Dependabot is dependency automation, not an AI co-author.
-	grep -iE "$PATTERN" | grep -ivE "$TRUSTED_DEPENDABOT_TRAILER" || true
+	grep -iE "$PATTERN" || true
+}
+
+is_verified_dependabot_commit() {
+	local sha="$1" metadata response
+
+	# Text attribution is forgeable. Require both the immutable git identities
+	# and GitHub's valid-signature record for the Dependabot-authored commit.
+	metadata="$(git show -s --format='%an|%ae|%cn|%ce' "$sha")"
+	[ "$metadata" = 'dependabot[bot]|49699333+dependabot[bot]@users.noreply.github.com|GitHub|noreply@github.com' ] || return 1
+	[ -n "${GITHUB_REPOSITORY:-}" ] && [ -n "${GITHUB_TOKEN:-}" ] || return 1
+
+	response="$(
+		curl --fail --silent --show-error --retry 2 \
+			-H "Authorization: Bearer $GITHUB_TOKEN" \
+			-H 'Accept: application/vnd.github+json' \
+			-H 'X-GitHub-Api-Version: 2022-11-28' \
+			"https://api.github.com/repos/${GITHUB_REPOSITORY}/commits/${sha}"
+	)"
+	printf '%s' "$response" | python3 -c '
+import json, sys
+c = json.load(sys.stdin)
+ok = (
+    c.get("author", {}).get("login") == "dependabot[bot]"
+    and c.get("committer", {}).get("login") == "web-flow"
+    and c.get("commit", {}).get("verification", {}).get("verified") is True
+    and c.get("commit", {}).get("verification", {}).get("reason") == "valid"
+)
+raise SystemExit(0 if ok else 1)
+'
 }
 
 fail() {
@@ -55,6 +82,11 @@ if [ "${1:-}" = "--range" ]; then
 		msg="$(git log -1 --format='%B' "$sha")"
 		hits="$(printf '%s\n' "$msg" | find_hits)"
 		if [ -n "$hits" ]; then
+			non_dependabot_hits="$(printf '%s\n' "$hits" | grep -ivE "$TRUSTED_DEPENDABOT_TRAILER" || true)"
+			if [ -z "$non_dependabot_hits" ] && is_verified_dependabot_commit "$sha"; then
+				echo "✔ ${sha:0:9} verified Dependabot merge trailer"
+				continue
+			fi
 			echo "✖ ${sha:0:9} $(git log -1 --format='%s' "$sha")" >&2
 			printf '%s\n' "$hits" | sed 's/^/    /' >&2
 			rc=1
