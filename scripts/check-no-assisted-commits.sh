@@ -4,10 +4,11 @@
 # Shared logic for three enforcement layers:
 #   - local commit-msg hook (.githooks/commit-msg)        — fast feedback, bypassable
 #   - CI status check (.github/workflows/no-assisted-commits.yml) — PR gate
-#   - GitHub ruleset commit_message_pattern               — non-bypassable push gate
+#   - GitHub ruleset commit_message_pattern               — AI-marker push gate
 #
-# The ruleset regex is kept in lockstep with $PATTERN below; if you change one,
-# change both and re-run scripts/apply-commit-policy-ruleset.sh.
+# The server-side ruleset rejects the AI-specific subset of $PATTERN. GitHub's
+# RE2 ruleset syntax cannot express the exact Dependabot exception below, so
+# co-author policy is enforced by this script in the hook and required CI check.
 #
 # Usage:
 #   check-no-assisted-commits.sh <file-with-message>   # check a single message (hook)
@@ -17,7 +18,6 @@ set -euo pipefail
 # Case-insensitive markers, anchored to the start of a line so that prose that
 # merely *mentions* a trailer (e.g. this policy's own commit message) does not
 # trip the check — only real trailers/footers do. Leading whitespace tolerated.
-# Keep aligned with the ruleset pattern in apply-commit-policy-ruleset.sh.
 PATTERN='^[[:space:]]*(co-authored-by:|assisted-by:|🤖[[:space:]]*generated with|generated with \[?(claude|codex))'
 TRUSTED_DEPENDABOT_TRAILER='^[[:space:]]*co-authored-by:[[:space:]]*dependabot\[bot\][[:space:]]*<49699333\+dependabot\[bot\]@users\.noreply\.github\.com>[[:space:]]*$'
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Create/update the GitHub ruleset that rejects AI-assisted / co-authored commits
-# on ALL branches at push time. This is the non-bypassable enforcement layer.
+# Create/update the GitHub ruleset that rejects explicit AI-assistance markers
+# on ALL branches at push time. Co-author policy is enforced by the required CI
+# check because GitHub's RE2 syntax cannot express the exact Dependabot exception.
 #
-# The regex here MUST stay aligned with $PATTERN in check-no-assisted-commits.sh.
 # Requires: gh CLI authenticated with admin on the repo, and python3.
 set -euo pipefail
 
@@ -10,9 +10,9 @@ REPO="${1:-somoore/sir}"
 RULESET_NAME="Block assisted/co-authored commits"
 
 # GitHub ruleset regex (RE2). Case-insensitivity via inline (?i); (?m) so ^
-# anchors per line. Mirrors the line-anchored matcher in
-# check-no-assisted-commits.sh: only real trailers/footers match, not prose.
-PATTERN='(?im)^[[:space:]]*(co-authored-by:|assisted-by:|🤖[[:space:]]*generated with|generated with \[?(claude|codex))'
+# anchors per line. This mirrors the AI-specific subset of the shell matcher:
+# only real trailers/footers match, not prose.
+PATTERN='(?im)^[[:space:]]*(assisted-by:|🤖[[:space:]]*generated with|generated with \[?(claude|codex))'
 
 # Build the JSON payload with python3 so the regex backslashes and the emoji are
 # encoded safely (shell heredocs mangle both).
@@ -26,7 +26,7 @@ print(json.dumps({
     "rules": [{
         "type": "commit_message_pattern",
         "parameters": {
-            "name": "No assisted or co-authored commits",
+            "name": "No AI-assisted commits",
             "negate": True,
             "operator": "regex",
             "pattern": os.environ["PATTERN"],
