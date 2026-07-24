@@ -19,6 +19,13 @@ set -euo pipefail
 # trip the check — only real trailers/footers do. Leading whitespace tolerated.
 # Keep aligned with the ruleset pattern in apply-commit-policy-ruleset.sh.
 PATTERN='^[[:space:]]*(co-authored-by:|assisted-by:|🤖[[:space:]]*generated with|generated with \[?(claude|codex))'
+TRUSTED_DEPENDABOT_TRAILER='^[[:space:]]*co-authored-by:[[:space:]]*dependabot\[bot\][[:space:]]*<49699333\+dependabot\[bot\]@users\.noreply\.github\.com>[[:space:]]*$'
+
+find_hits() {
+	# GitHub adds this exact trailer when a reviewed Dependabot PR is
+	# squash-merged. Dependabot is dependency automation, not an AI co-author.
+	grep -iE "$PATTERN" | grep -ivE "$TRUSTED_DEPENDABOT_TRAILER" || true
+}
 
 fail() {
 	echo "✖ Rejected: commit message marks this commit as AI-assisted or co-authored." >&2
@@ -34,7 +41,7 @@ fail() {
 check_message() {
 	# $1 = label, $2 = message text
 	local label="$1" msg="$2" hits
-	hits="$(printf '%s\n' "$msg" | grep -iE "$PATTERN" || true)"
+	hits="$(printf '%s\n' "$msg" | find_hits)"
 	if [ -n "$hits" ]; then
 		fail "$label" "$hits"
 	fi
@@ -46,7 +53,7 @@ if [ "${1:-}" = "--range" ]; then
 	while IFS= read -r sha; do
 		[ -z "$sha" ] && continue
 		msg="$(git log -1 --format='%B' "$sha")"
-		hits="$(printf '%s\n' "$msg" | grep -iE "$PATTERN" || true)"
+		hits="$(printf '%s\n' "$msg" | find_hits)"
 		if [ -n "$hits" ]; then
 			echo "✖ ${sha:0:9} $(git log -1 --format='%s' "$sha")" >&2
 			printf '%s\n' "$hits" | sed 's/^/    /' >&2
