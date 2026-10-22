@@ -27,7 +27,7 @@ env:
   CGO_ENABLED: "0"
   GOFLAGS: "-trimpath"
   RUST_VERSION: "1.94.0"
-  GO_VERSION: "1.25.12"
+  GO_VERSION: "1.26.10"
   # Opt into Node.js 24 now ahead of the June 2, 2026 forced migration
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -68,7 +68,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.25.12"
+          go-version: "1.26.10"
           cache: false  # no external Go deps → no go.sum → caching not applicable
 
       - name: Build mister-core (Rust)
