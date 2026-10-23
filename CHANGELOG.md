@@ -7,6 +7,16 @@ sir is experimental. Each release listed here is a snapshot of the "sandbox in r
 
 This file tracks shipped releases only. Historical planning notes, launch copy, and exploratory findings live in git history rather than on the production repo surface.
 
+## v0.1.7 — 2026-10-23 — security maintenance release
+
+No behavior changes. This release rebuilds sir with patched toolchains and dependencies.
+
+- Go toolchain 1.25.12 → 1.26.10 (Go 1.25 is end-of-life; 1.26.10 fixes GO-2026-6809 in `crypto/x509`).
+- Network-ingested strings are sanitized at the relay log choke point.
+- CI actions refreshed and SHA-pinned (CodeQL 4.39.0, checkout 7.0.1, setup-go 7.0.0, goreleaser-action 7.3.0, Scorecard 2.5.0).
+
+Versions v0.1.1–v0.1.6 were never published; the version number skips them to avoid colliding with pre-rollback development tags.
+
 ## v0.1.0 — 2026-05-28 — friction reduction, behavior detections, and CLI/docs overhaul
 
 This release makes sir quiet during normal coding and loud on dangerous transitions: friction is now measurable and reducible, detections are causal rather than command-string matches, and the CLI/docs surface was reworked. Legacy command names are kept as aliases.

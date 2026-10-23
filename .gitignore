@@ -74,3 +74,7 @@ docs/competitive-analysis.md
 docs/brand-guide.md
 docs/onboarding-review.md
 docs/docs-qa-report.md
+
+# Local evaluation runs and generated promo renders (never committed)
+/eval/results/
+/brag-output/
