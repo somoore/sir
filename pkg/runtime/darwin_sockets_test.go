@@ -32,3 +32,13 @@ func TestDarwinHostControlSocketsAreDenied(t *testing.T) {
 		t.Error("host-control socket denies must come after the blanket unix-socket allow (last match wins)")
 	}
 }
+
+func TestDarwinHostControlSocketRulesEscapePaths(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("SSH_AUTH_SOCK", `/tmp/user"name\agent.sock`)
+	rules := DarwinHostControlSocketDenyRules()
+	want := `(deny network-outbound (remote unix-socket (path-literal "/tmp/user\"name\\agent.sock")))`
+	if !strings.Contains(rules, want) {
+		t.Fatalf("socket rule must escape the path; want %s in:\n%s", want, rules)
+	}
+}
