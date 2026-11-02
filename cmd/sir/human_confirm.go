@@ -25,12 +25,16 @@ func requireHumanConfirmation(action string) {
 	}
 }
 
-func confirmOnControllingTerminal(action string) error {
-	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
-	if err != nil {
+func confirmOnControllingTerminal(action string) (err error) {
+	tty, openErr := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if openErr != nil {
 		return fmt.Errorf("refusing to %s without an interactive terminal: this grants the agent authority and requires human confirmation (run it from your own terminal)", action)
 	}
-	defer tty.Close()
+	defer func() {
+		if closeErr := tty.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close terminal: %w", closeErr)
+		}
+	}()
 
 	fmt.Fprintf(tty, "sir: %s changes agent authority.\nType 'yes' to confirm: ", action)
 	line, readErr := bufio.NewReader(io.LimitReader(tty, 64)).ReadString('\n')
