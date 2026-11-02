@@ -2,8 +2,10 @@ package ledger
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -88,5 +90,73 @@ func TestKeyedChainDetectsFieldTamper(t *testing.T) {
 	}
 	if _, err := Verify(projectRoot); err == nil {
 		t.Fatal("Verify accepted a tampered entry")
+	}
+}
+
+func resetLedgerKeyCache(t *testing.T) {
+	t.Helper()
+	ledgerKeyMu.Lock()
+	ledgerKeyCache = nil
+	ledgerKeyMu.Unlock()
+	t.Cleanup(func() {
+		ledgerKeyMu.Lock()
+		ledgerKeyCache = nil
+		ledgerKeyMu.Unlock()
+	})
+}
+
+func TestLedgerKeyCreationPublishesOnlyTheFinishedKey(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("SIR_STATE_HOME", state)
+	resetLedgerKeyCache(t)
+
+	key, err := ledgerKey()
+	if err != nil {
+		t.Fatalf("ledgerKey: %v", err)
+	}
+	dir := filepath.Join(state, ".sir")
+	names, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read key dir: %v", err)
+	}
+	if len(names) != 1 || names[0].Name() != "ledger.key" {
+		t.Fatalf("key dir must hold only ledger.key, got %v", names)
+	}
+	info, err := os.Stat(filepath.Join(dir, "ledger.key"))
+	if err != nil {
+		t.Fatalf("stat key: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("key mode = %v, want 0600", info.Mode().Perm())
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "ledger.key"))
+	if err != nil {
+		t.Fatalf("read key: %v", err)
+	}
+	onDisk, err := decodeLedgerKey(data)
+	if err != nil || !bytes.Equal(onDisk, key) {
+		t.Fatalf("on-disk key does not match returned key (err=%v)", err)
+	}
+}
+
+func TestLedgerKeyNeverReplacesAnExistingKey(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("SIR_STATE_HOME", state)
+	resetLedgerKeyCache(t)
+
+	existing := bytes.Repeat([]byte{0x42}, 32)
+	dir := filepath.Join(state, ".sir")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ledger.key"), []byte(hex.EncodeToString(existing)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	key, err := ledgerKey()
+	if err != nil {
+		t.Fatalf("ledgerKey: %v", err)
+	}
+	if !bytes.Equal(key, existing) {
+		t.Fatal("ledgerKey must return the existing key")
 	}
 }
