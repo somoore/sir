@@ -112,7 +112,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0 # history scan, not just the worktree
-      - uses: gitleaks/gitleaks-action@4036f303133f36c5017e03c31446353f31572e9e # v2.1.2
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: .gitleaks.toml
