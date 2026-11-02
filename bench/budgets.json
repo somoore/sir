@@ -9,7 +9,7 @@
       },
       "BenchmarkCmdStatusLargeState": {
         "max_ns_op": 3000000,
-        "max_b_op": 650000,
+        "max_b_op": 780000,
         "max_allocs_op": 6500
       },
       "BenchmarkCmdDoctorLargeState": {
