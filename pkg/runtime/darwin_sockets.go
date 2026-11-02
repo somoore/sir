@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -108,9 +109,9 @@ func DarwinHostControlSocketDenyRules() string {
 	paths := darwinHostControlSocketPathsLocked(cacheKey)
 	var rules strings.Builder
 	for _, path := range paths {
-		rules.WriteString("(deny network-outbound (remote unix-socket (path-literal \"")
-		rules.WriteString(path)
-		rules.WriteString("\")))\n")
+		// %q, like the write guards, so a quote or backslash in HOME or
+		// SSH_AUTH_SOCK cannot break out of the profile string.
+		fmt.Fprintf(&rules, "(deny network-outbound (remote unix-socket (path-literal %q)))\n", path)
 	}
 	darwinSocketCache.rules = rules.String()
 	return darwinSocketCache.rules

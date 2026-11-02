@@ -321,7 +321,14 @@ func mergeCommandSubstitutions(cmd string, base Intent, l *lease.Lease) Intent {
 		return base
 	}
 	merged := base
+	// A sensitive read in the enclosing command must survive the merge just
+	// like one inside a substitution, or a harmless `$(printf ...)` would
+	// raise the verb to execute_dry_run and drop the sensitive target.
 	var substituteRead *Intent
+	if base.Verb == policy.VerbReadRef && base.IsSensitive {
+		captured := base
+		substituteRead = &captured
+	}
 	for _, sub := range subs {
 		sub = strings.TrimSpace(sub)
 		if sub == "" {

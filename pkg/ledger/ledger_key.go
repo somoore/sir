@@ -65,8 +65,31 @@ func ledgerKey() ([]byte, error) {
 		return nil, err
 	}
 	encoded := []byte(hex.EncodeToString(key) + "\n")
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	// Publish the key only once it is fully written: write a private temp
+	// file in the same directory, then hard-link it into place. Link fails
+	// if the key already exists, so another process's key is never
+	// replaced, and a concurrent reader never sees a partial file.
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".ledger.key.*")
 	if err != nil {
+		return nil, err
+	}
+	tmpPath := tmp.Name()
+	defer func() { _ = os.Remove(tmpPath) }()
+	if _, err := tmp.Write(encoded); err != nil {
+		_ = tmp.Close()
+		return nil, err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return nil, err
+	}
+	if err := tmp.Close(); err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(tmpPath, 0o600); err != nil {
+		return nil, err
+	}
+	if err := os.Link(tmpPath, path); err != nil {
 		if os.IsExist(err) {
 			// Lost a creation race; read the winner's key.
 			data, readErr := os.ReadFile(path)
@@ -82,14 +105,6 @@ func ledgerKey() ([]byte, error) {
 		}
 		return nil, err
 	}
-	if _, err := f.Write(encoded); err != nil {
-		_ = f.Close()
-		return nil, err
-	}
-	if err := f.Close(); err != nil {
-		return nil, err
-	}
-	_ = os.Chmod(path, 0o600)
 
 	ledgerKeyCache = key
 	return key, nil

