@@ -11,7 +11,6 @@ updates:
     # action release has time to be reported. Security updates are not
     # delayed by cooldown.
     cooldown:
-      default-days: 3
-      semver-major-days: 7
+      default-days: 7
     commit-message:
       prefix: "ci"
