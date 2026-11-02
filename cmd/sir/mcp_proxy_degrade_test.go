@@ -22,6 +22,13 @@ func TestRunMCPProxyDarwin_AutoDegradesMacAppHelper(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("darwin-only code path")
 	}
+	// This integration test launches a real GUI helper from /Applications.
+	// Such helpers do not exit on their own, so without an explicit opt-in
+	// the test hangs the whole package (and the macOS CI job) until the
+	// go test timeout. The classifier itself is covered by unit tests.
+	if os.Getenv("SIR_TEST_MAC_HELPER") == "" {
+		t.Skip("set SIR_TEST_MAC_HELPER=1 to launch a real /Applications helper")
+	}
 	realHelper := findRealAppHelper(t)
 	if realHelper == "" {
 		t.Skip("no /Applications/*.app/Contents/MacOS/* helper available on this host")

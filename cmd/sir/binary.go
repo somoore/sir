@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/somoore/sir/pkg/agent"
 )
 
 // sirBinaryPath is the resolved absolute path to the sir binary.
@@ -63,16 +65,26 @@ func resolveSirBinaryPath() string {
 // match; that's a vanishingly small false-positive surface relative to
 // the false-negative the path-pinned version produced.
 func isSirHookCommand(cmd string) bool {
-	if sirBinaryPath != "" && strings.Contains(cmd, sirBinaryPath+" guard ") {
+	if sirBinaryPath != "" && (strings.Contains(cmd, sirBinaryPath+" guard ") ||
+		strings.Contains(cmd, agent.ShellQuotePath(sirBinaryPath)+" guard ")) {
 		return true
 	}
-	fields := strings.Fields(cmd)
-	if len(fields) < 2 {
+	// Structural fallback: "<...>/sir guard <subcommand>", optionally with
+	// the path single-quoted (install paths containing spaces/metacharacters
+	// are now shell-quoted). This keeps reinstall from a different binary
+	// path recognizing existing entries instead of duplicating them.
+	idx := strings.Index(cmd, " guard ")
+	if idx <= 0 {
 		return false
 	}
-	base := strings.ToLower(filepath.Base(fields[0]))
+	pathPart := strings.TrimSpace(cmd[:idx])
+	if strings.HasPrefix(pathPart, "'") {
+		pathPart = strings.Trim(pathPart, "'")
+		pathPart = strings.ReplaceAll(pathPart, `'\''`, `'`)
+	}
+	base := strings.ToLower(filepath.Base(pathPart))
 	if base != "sir" && base != "sir.exe" {
 		return false
 	}
-	return fields[1] == "guard"
+	return true
 }

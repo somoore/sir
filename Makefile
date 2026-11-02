@@ -21,7 +21,7 @@ build:
 
 # Run only Go tests
 test-go:
-	go test ./... -v -count=1
+	go test ./... -v -count=1 -timeout 600s
 
 # Run only Rust tests
 test-rust:
@@ -32,7 +32,7 @@ test: test-rust test-go
 
 # Run tests with race detector
 test-race:
-	go test -race ./... -count=1
+	go test -race ./... -count=1 -timeout 900s
 	cargo test --locked
 
 # Coverage report

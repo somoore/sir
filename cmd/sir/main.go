@@ -59,6 +59,9 @@ func main() {
 	case "approvals":
 		cmdApprovals(projectRoot, os.Args[2:])
 	case "log", "ledger":
+		if !logCommandIsReadOnly(os.Args[2:]) {
+			requireHumanConfirmation("archive the audit log")
+		}
 		cmdLogLifecycle(projectRoot, os.Args[2:])
 	case "explain", "why":
 		index := -1 // default: last entry
@@ -83,31 +86,44 @@ func main() {
 		// compatibility alias for older docs and muscle memory. The old
 		// `sir clear session` form has been removed: it was undocumented,
 		// footgun-shaped, and duplicated `sir unlock` exactly.
+		requireHumanConfirmation("clear runtime restrictions")
 		cmdClearSession(projectRoot)
 	case "allow-host":
+		requireHumanConfirmation("allow a network host")
 		cmdAllowHostArgs(projectRoot, os.Args[2:])
 	case "allow-remote":
 		if len(os.Args) < 3 {
 			fatal("usage: sir allow-remote <remote-name> [--remove] [--yes]")
 		}
+		requireHumanConfirmation("allow a git remote")
 		cmdAllowRemoteArgs(projectRoot, os.Args[2:])
 	case "approve":
+		requireHumanConfirmation("approve")
 		cmdApprove(projectRoot, os.Args[2:])
 	case "policy":
+		if !policyCommandIsReadOnly(os.Args[2:]) {
+			requireHumanConfirmation("change policy")
+		}
 		cmdPolicy(projectRoot, os.Args[2:])
 	case "config":
 		// Memorable alias for the canonical config view.
 		cmdPolicy(projectRoot, append([]string{"show"}, os.Args[2:]...))
 	case "protect-path":
+		requireHumanConfirmation("protect a path")
 		cmdProtectPath(projectRoot, os.Args[2:])
 	case "unprotect-path":
+		requireHumanConfirmation("unprotect a path")
 		cmdUnprotectPath(projectRoot, os.Args[2:])
 	case "trust", "trust-mcp":
 		if len(os.Args) < 3 {
 			fatal("usage: sir trust host|remote|mcp|path <name> [--ttl D] [--remove] [--yes]")
 		}
+		requireHumanConfirmation("change trust")
 		cmdTrust(projectRoot, os.Args[2:])
 	case "mcp":
+		if !mcpCommandIsReadOnly(os.Args[2:]) {
+			requireHumanConfirmation("change MCP approval")
+		}
 		cmdMCP(projectRoot, os.Args[2:])
 	case "mcp-proxy":
 		if len(os.Args) < 3 {

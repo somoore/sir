@@ -173,6 +173,12 @@ func DefaultLease() *Lease {
 			"AGENTS.md",
 			".codex/config.toml",
 			".codex/hooks.json",
+			// sir's own control plane. The agent must not be able to
+			// rewrite its lease/session/ledger or the binary manifest
+			// through the host Write/Edit tools (the same-user direct-FS
+			// case remains out of scope, as documented).
+			".sir/*",
+			".sir/projects/*/*",
 		},
 
 		SentinelFilesForInstall: []string{

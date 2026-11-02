@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -209,26 +210,42 @@ func TestEscalatingSignalForwarder_FirstSignalForwards(t *testing.T) {
 	forwarderDone := make(chan struct{})
 
 	var (
+		mu        sync.Mutex
 		killCalls []killCall
 		exitCalls []int
 	)
 	killFn := func(pid int, sig syscall.Signal) error {
+		mu.Lock()
 		killCalls = append(killCalls, killCall{pid: pid, sig: sig})
+		mu.Unlock()
 		return nil
 	}
-	exitFn := func(code int) { exitCalls = append(exitCalls, code) }
+	exitFn := func(code int) {
+		mu.Lock()
+		exitCalls = append(exitCalls, code)
+		mu.Unlock()
+	}
 
 	go escalatingSignalForwarder(sigCh, done, forwarderDone, 9999, killFn, exitFn)
 
 	sigCh <- syscall.SIGTERM
 	// Give the goroutine a tick to process the signal before we assert.
 	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && len(killCalls) == 0 {
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		n := len(killCalls)
+		mu.Unlock()
+		if n > 0 {
+			break
+		}
 		time.Sleep(10 * time.Millisecond)
 	}
 
 	close(done)
 	<-forwarderDone
+
+	mu.Lock()
+	defer mu.Unlock()
 
 	if len(killCalls) != 1 {
 		t.Fatalf("killFn called %d times, want 1: %+v", len(killCalls), killCalls)

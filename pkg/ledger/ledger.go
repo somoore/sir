@@ -52,7 +52,7 @@ type Entry struct {
 
 const (
 	legacyHashVersion  = 1
-	currentHashVersion = 4
+	currentHashVersion = 5
 )
 
 // LedgerPath returns the path to the ledger file for a project.

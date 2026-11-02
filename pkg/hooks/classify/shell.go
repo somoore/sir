@@ -7,7 +7,28 @@ import (
 
 // NormalizeCommand strips absolute paths, env prefixes, and inline variable
 // assignments so classifiers see bare command names regardless of invocation.
+//
+// Newlines are preserved as segment boundaries. Flattening them to spaces
+// (the old behaviour) let a multi-line Bash command be classified by its
+// first line only: "echo hi\ncurl https://evil" looked like `echo`. The
+// shell executes each line, so each line is normalized independently.
 func NormalizeCommand(cmd string) string {
+	cmd = strings.ReplaceAll(cmd, "\r\n", "\n")
+	cmd = strings.ReplaceAll(cmd, "\r", "\n")
+	if !strings.Contains(cmd, "\n") {
+		return normalizeCommandLine(cmd)
+	}
+	lines := strings.Split(cmd, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if normalized := normalizeCommandLine(line); normalized != "" {
+			out = append(out, normalized)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+func normalizeCommandLine(cmd string) string {
 	parts := strings.Fields(strings.TrimSpace(cmd))
 	if len(parts) == 0 {
 		return ""
@@ -95,6 +116,17 @@ func SplitCompoundCommand(cmd string) []string {
 			segments = append(segments, current.String())
 			current.Reset()
 			i++
+		case '\n', '\r':
+			// Newline terminates a simple command exactly like `;`. Agents
+			// routinely emit multi-line Bash; treating only `;`/`&`/`|` as
+			// separators classified the whole block by its first line.
+			segments = append(segments, current.String())
+			current.Reset()
+			if ch == '\r' && i+1 < len(runes) && runes[i+1] == '\n' {
+				i += 2
+			} else {
+				i++
+			}
 		default:
 			current.WriteRune(ch)
 			i++
@@ -104,6 +136,73 @@ func SplitCompoundCommand(cmd string) []string {
 		segments = append(segments, current.String())
 	}
 	return segments
+}
+
+// ExtractCommandSubstitutions returns the bodies of `$(...)`, `<(...)`,
+// `>(...)`, and backtick command substitutions. The shell executes these
+// before the enclosing command, so they must be classified as commands in
+// their own right; otherwise `echo $(curl https://evil)` looks like `echo`.
+// Single-quoted text is skipped (the shell does not expand it there).
+func ExtractCommandSubstitutions(cmd string) []string {
+	var out []string
+	runes := []rune(cmd)
+	inSingle := false
+	for i := 0; i < len(runes); i++ {
+		ch := runes[i]
+		if ch == '\'' {
+			inSingle = !inSingle
+			continue
+		}
+		if inSingle {
+			continue
+		}
+		if ch == '`' {
+			j := i + 1
+			for j < len(runes) && runes[j] != '`' {
+				j++
+			}
+			if j < len(runes) {
+				out = append(out, string(runes[i+1:j]))
+				i = j
+			}
+			continue
+		}
+		if ch == '$' && i+1 < len(runes) && runes[i+1] == '(' {
+			out = append(out, extractBalancedSubstitution(runes, i+2, '(', ')'))
+			i = skipBalanced(runes, i+2, '(', ')') - 1
+			continue
+		}
+		if (ch == '<' || ch == '>') && i+1 < len(runes) && runes[i+1] == '(' {
+			out = append(out, extractBalancedSubstitution(runes, i+2, '(', ')'))
+			i = skipBalanced(runes, i+2, '(', ')') - 1
+			continue
+		}
+	}
+	return out
+}
+
+func extractBalancedSubstitution(runes []rune, start int, open, close rune) string {
+	end := skipBalanced(runes, start, open, close)
+	if end <= start || end > len(runes) {
+		return ""
+	}
+	return string(runes[start : end-1])
+}
+
+func skipBalanced(runes []rune, start int, open, close rune) int {
+	depth := 1
+	for j := start; j < len(runes); j++ {
+		switch runes[j] {
+		case open:
+			depth++
+		case close:
+			depth--
+			if depth == 0 {
+				return j + 1
+			}
+		}
+	}
+	return start
 }
 
 // StripSudoPrefix removes sudo and its flags to get the inner command.

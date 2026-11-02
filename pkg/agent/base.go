@@ -203,6 +203,33 @@ func baseDetectInstallation(spec *AgentSpec) bool {
 	return false
 }
 
+// ShellQuotePath quotes a binary path for a POSIX shell command. Host agents
+// execute hook commands through `/bin/sh -c`, so an unquoted install path
+// containing a space (e.g. `/Users/Jane Doe/...`) or a shell metacharacter
+// either fails to exec or changes what runs. Paths made only of safe
+// characters are returned unchanged so existing generated hook strings stay
+// byte-identical.
+func ShellQuotePath(path string) string {
+	if path == "" {
+		return ""
+	}
+	safe := true
+	for _, r := range path {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case strings.ContainsRune("_-./+:@,=%", r):
+		default:
+			safe = false
+		}
+	}
+	if safe {
+		return path
+	}
+	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
+}
+
 // baseGenerateHooksConfigMap walks Spec.HookRegistrations and builds the
 // nested map shape: { ManagedSubtreeKey: { WireEvent: [ { matcher?, hooks: [
 // { type, command, timeout } ] } ] } }. Event name in the emitted config is
@@ -228,7 +255,7 @@ func baseGenerateHooksConfigMap(spec *AgentSpec, sirBinaryPath, mode string) (ma
 
 	hooks := make(map[string]interface{}, len(spec.HookRegistrations))
 	for _, reg := range spec.HookRegistrations {
-		command := sirBinaryPath + " " + reg.Command
+		command := ShellQuotePath(sirBinaryPath) + " " + reg.Command
 		if spec.CommandFlag != "" {
 			command = command + " " + spec.CommandFlag
 		}

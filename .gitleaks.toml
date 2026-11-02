@@ -1,0 +1,25 @@
+# gitleaks configuration for sir.
+#
+# The only secret-shaped strings in this repository are detector fixtures:
+# the jwt.io example token, AWS's published documentation key, and synthetic
+# `sk-...`/`sk-secret-...` values used as inputs and negative assertions by
+# pkg/secretscan, pkg/hooks, and the security-invariant suite. They are not
+# credentials and must not be replaced: the tests assert that these exact
+# shapes are detected and redacted.
+#
+# Allowlists are deliberately narrow (test files and fixture directories
+# only). A real token committed to production code is still caught, and the
+# repo's own scanner tests continue to exercise the patterns.
+title = "sir"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Synthetic credential fixtures in tests and golden data"
+paths = [
+  '''(^|/)pkg/.*_test\.go$''',
+  '''(^|/)tests/.*_test\.go$''',
+  '''(^|/)internal/testsecrets/.*\.go$''',
+  '''(^|/)testdata/.*''',
+]

@@ -3,7 +3,8 @@
 > [!NOTE]
 > sir is experimental — test on your own machine, not shared infrastructure. `sir doctor` recovers any wedged state; [report bugs](https://github.com/somoore/sir/issues).
 
-sir ("Sandbox in Reverse") is an experimental security runtime for AI coding agents. Traditional sandboxes constrain a process from below — syscalls, filesystem jails, seccomp. sir inverts that: it constrains the *agent* from above, intercepting tool calls at the hook layer before they execute and routing them through a Rust policy oracle (`mister-core`) that returns allow, ask, or deny. Every decision is appended to an immutable hash-chained ledger.
+sir ("Sandbox in Reverse") is an experimental security runtime for AI coding agents. Traditional sandboxes constrain a process from below — syscalls, filesystem jails, seccomp. sir inverts that: it constrains the *agent* from above, intercepting tool calls at the hook layer before they execute and routing them through a Rust policy oracle (`mister-core`) that returns allow, ask, or deny. Every decision is appended to an append-only, hash-chained ledger (HMAC-SHA256 with a per-install key at `~/.sir/ledger.key`, so entries detect local tampering; it is not a remote notarization service).
+
 
 This approach exists because AI coding agents are not a single sandboxable process. They orchestrate tools, spawn subprocesses, and call MCP servers. The dangerous surface is not syscalls — it is *intents* like "read `.env`, then `curl` an external host." sir uses **information flow control (IFC)** to track data sensitivity across operations: if the agent reads a secret file, that taint propagates to any file it writes, any commit, and any push attempt in the same session.
 
@@ -116,8 +117,10 @@ Managed mode shifts the trust anchor from the local working copy to an org-owned
 
 `sir run <agent>` is the optional below-hook layer:
 
-- **macOS** uses localhost-only `sandbox-exec` plus a provider-aware local proxy with launch-time DNS pinning.
+- **macOS** uses localhost-only `sandbox-exec` plus a provider-aware local proxy with launch-time DNS pinning. Host-control unix sockets (docker/colima/podman/containerd/buildkit, `SSH_AUTH_SOCK`, gpg-agent) are denied after the blanket unix-socket allow; other unix sockets remain available for apps that XPC/IPC.
 - **Linux** uses `unshare --net` containment with exact-destination egress allowlisting and durable-state protection.
+
+Authority-mutating CLI verbs (`sir approve`, `sir trust`/`allow-host`, `sir protect-path`, `sir unprotect-path`, `sir policy init`, `sir mcp approve|revoke|scope`, `sir unlock`) require confirmation on the controlling terminal (`/dev/tty`), not stdin. A command spawned by the agent has no controlling terminal, so it cannot answer its own prompt; read-only verbs (`status`, `log verify`, `policy show`, `mcp status`) stay non-interactive.
 
 Both are meaningful hardening layers and are the only parts of sir that provide OS-level prevention rather than hook-layer policy. They remain experimental and are not yet a cross-platform transparent egress firewall.
 
@@ -133,6 +136,7 @@ Being explicit about what sir does not cover matters more than claiming broad pr
 - **Unrecognized child-process behavior below the shell classifier** — the shell classifier is lexical and can be evaded by novel wrappers.
 - **Complete host containment on every platform** — `sir run` is macOS and Linux only, and still experimental.
 - **Same-user OS-level protection** without help from the host agent or operating system.
+- **Ledger-key recovery** — the HMAC key is per install (`~/.sir/ledger.key`); losing it makes existing V5 entries unverifiable. Back it up alongside incident evidence. It is not a signature and does not prove freshness against an actor who can also read the key.
 - **Turn-boundary precision** — sir uses a 30-second gap heuristic to approximate turn boundaries, which can be wrong under unusual pacing.
 - **The default lease**, which is deliberately permissive to reduce developer friction and is not a hardened profile.
 

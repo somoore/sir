@@ -290,6 +290,7 @@ func activeDocAllowlist() []string {
 		"docs/user/gemini-support.md",
 		"docs/user/runtime-security-overview.md",
 		"docs/user/siem-integration.md",
+		"findings.md",
 	}
 }
 

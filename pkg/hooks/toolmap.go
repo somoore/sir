@@ -71,7 +71,7 @@ func mapWrite(toolInput map[string]interface{}, l *lease.Lease) Intent {
 		if len(targets) > 0 {
 			target = strings.Join(targets, ", ")
 			for _, candidate := range targets {
-				if IsPostureFileResolved(candidate, l) {
+				if IsPostureFileResolved(candidate, l) || hookclassify.IsSirControlPlanePath(candidate) {
 					return Intent{
 						Verb:      policy.VerbStageWrite,
 						Target:    target,
@@ -84,7 +84,7 @@ func mapWrite(toolInput map[string]interface{}, l *lease.Lease) Intent {
 	return Intent{
 		Verb:      policy.VerbStageWrite,
 		Target:    target,
-		IsPosture: IsPostureFileResolved(target, l),
+		IsPosture: IsPostureFileResolved(target, l) || hookclassify.IsSirControlPlanePath(target),
 	}
 }
 

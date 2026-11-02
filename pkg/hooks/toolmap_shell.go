@@ -9,7 +9,18 @@ import (
 )
 
 // mapShellCommand classifies a shell command into a sir verb.
+//
+// Classification runs on the original command (never on a flattened form)
+// so newline-separated statements survive, and command substitutions are
+// classified recursively: the shell executes `$(...)` before the enclosing
+// command, so `echo $(curl https://evil)` is an external-egress attempt, not
+// an echo.
 func mapShellCommand(cmd string, l *lease.Lease) Intent {
+	intent := classifyShellCommandCore(cmd, l)
+	return mergeCommandSubstitutions(cmd, intent, l)
+}
+
+func classifyShellCommandCore(cmd string, l *lease.Lease) Intent {
 	trimmed := strings.TrimSpace(cmd)
 	// Normalize before any classification so "/usr/bin/curl" and "env curl"
 	// match the same prefixes as bare "curl". We pass `trimmed` (the original)
@@ -17,6 +28,13 @@ func mapShellCommand(cmd string, l *lease.Lease) Intent {
 	normalized := hookclassify.NormalizeCommand(trimmed)
 	if normalized == "" {
 		normalized = trimmed
+	}
+
+	// An unresolved variable in command position (`c=curl; $c https://evil`)
+	// means we cannot know which program runs. Treat it as external egress
+	// rather than the default execute_dry_run.
+	if first := firstCommandField(normalized); strings.HasPrefix(first, "$") || strings.HasPrefix(first, "`") {
+		return Intent{Verb: policy.VerbNetExternal, Target: trimmed}
 	}
 
 	// Compound command check: split on |, &&, ||, ; and evaluate each segment.
@@ -206,6 +224,13 @@ func mapShellCommand(cmd string, l *lease.Lease) Intent {
 
 	// Check for network commands (curl, wget)
 	if hookclassify.IsNetworkCommand(normalized) {
+		// A unix-socket destination is never host-granular: curl's
+		// --unix-socket=/var/run/docker.sock reaches a host-control
+		// socket while the URL itself looks like loopback. Treat it as
+		// external so the ask/deny gate applies.
+		if socket, ok := hookclassify.ExtractUnixSocketDestination(normalized); ok {
+			return Intent{Verb: policy.VerbNetExternal, Target: socket}
+		}
 		dest := hookclassify.ExtractNetworkDest(normalized)
 		classification := ClassifyNetworkDest(dest, l)
 		verb := policy.VerbNetExternal
@@ -276,4 +301,57 @@ func mapShellCommand(cmd string, l *lease.Lease) Intent {
 		Verb:   policy.VerbExecuteDryRun,
 		Target: trimmed,
 	}
+}
+
+// firstCommandField returns the first whitespace-delimited token of the first
+// line of a normalized command.
+func firstCommandField(normalized string) string {
+	fields := strings.Fields(normalized)
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
+}
+
+// mergeCommandSubstitutions classifies the bodies of command substitutions
+// and merges the highest-risk result into the enclosing intent.
+func mergeCommandSubstitutions(cmd string, base Intent, l *lease.Lease) Intent {
+	subs := hookclassify.ExtractCommandSubstitutions(cmd)
+	if len(subs) == 0 {
+		return base
+	}
+	merged := base
+	var substituteRead *Intent
+	for _, sub := range subs {
+		sub = strings.TrimSpace(sub)
+		if sub == "" {
+			continue
+		}
+		inner := mapShellCommand(sub, l)
+		if hookclassify.VerbRisk(inner.Verb) > hookclassify.VerbRisk(merged.Verb) {
+			merged.Verb = inner.Verb
+		}
+		merged.IsPosture = merged.IsPosture || inner.IsPosture
+		merged.IsSensitive = merged.IsSensitive || inner.IsSensitive
+		merged.IsInstall = merged.IsInstall || inner.IsInstall
+		if merged.Manager == "" {
+			merged.Manager = inner.Manager
+		}
+		if merged.RemoteName == "" {
+			merged.RemoteName = inner.RemoteName
+		}
+		if substituteRead == nil && inner.Verb == policy.VerbReadRef && inner.IsSensitive {
+			captured := inner
+			substituteRead = &captured
+		}
+	}
+	if substituteRead != nil && hookclassify.VerbRisk(merged.Verb) <= hookclassify.VerbRisk(policy.VerbExecuteDryRun) {
+		return Intent{
+			Verb:        policy.VerbReadRef,
+			Target:      substituteRead.Target,
+			IsSensitive: true,
+		}
+	}
+	merged.Target = strings.TrimSpace(cmd)
+	return merged
 }
