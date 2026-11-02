@@ -34,7 +34,9 @@ fail() {
 check_message() {
 	# $1 = label, $2 = message text
 	local label="$1" msg="$2" hits
-	hits="$(printf '%s\n' "$msg" | grep -iE "$PATTERN" || true)"
+	# Bot co-authors (Dependabot, github-actions) are automation, not an AI
+	# generation footer, so they do not trip this policy.
+	hits="$(printf '%s\n' "$msg" | grep -iE "$PATTERN" | grep -viE 'co-authored-by:.*\[bot\]' || true)"
 	if [ -n "$hits" ]; then
 		fail "$label" "$hits"
 	fi
@@ -46,7 +48,9 @@ if [ "${1:-}" = "--range" ]; then
 	while IFS= read -r sha; do
 		[ -z "$sha" ] && continue
 		msg="$(git log -1 --format='%B' "$sha")"
-		hits="$(printf '%s\n' "$msg" | grep -iE "$PATTERN" || true)"
+		# Bot co-authors (Dependabot, github-actions) are automation, not an AI
+	# generation footer, so they do not trip this policy.
+	hits="$(printf '%s\n' "$msg" | grep -iE "$PATTERN" | grep -viE 'co-authored-by:.*\[bot\]' || true)"
 		if [ -n "$hits" ]; then
 			echo "✖ ${sha:0:9} $(git log -1 --format='%s' "$sha")" >&2
 			printf '%s\n' "$hits" | sed 's/^/    /' >&2
