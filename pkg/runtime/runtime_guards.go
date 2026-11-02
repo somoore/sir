@@ -81,6 +81,25 @@ func runProtectedWriteGuards(projectRoot string) (runWriteGuards, error) {
 	}
 	addLiteral(filepath.Join(homeDir, ".codex", "config.toml"))
 	addSubpath(filepath.Join(homeDir, ".sir", "projects"))
+	// Control-plane files outside the per-project state dir: the install
+	// manifest, global config, and the binaries themselves. Only guard
+	// paths that exist — the Linux bootstrap fails closed on a missing
+	// protected path, and a machine without a global config should still
+	// launch.
+	addLiteralIfExists := func(path string) {
+		if _, err := os.Lstat(path); err == nil {
+			addLiteral(path)
+		}
+	}
+	for _, rel := range []string{"config.json", "binary-manifest.json"} {
+		addLiteralIfExists(filepath.Join(homeDir, ".sir", rel))
+	}
+	for _, rel := range []string{".local/bin/sir", ".local/bin/mister-core"} {
+		addLiteralIfExists(filepath.Join(homeDir, rel))
+	}
+	if exe, err := os.Executable(); err == nil {
+		addLiteral(exe)
+	}
 	for _, rel := range []string{".mcp.json", "CLAUDE.md", "GEMINI.md", "AGENTS.md"} {
 		addLiteral(filepath.Join(projectRoot, rel))
 	}
@@ -124,6 +143,20 @@ func runProtectedWriteGuardsForAgent(projectRoot string, ag agent.Agent) (runWri
 	}
 
 	addSubpath(filepath.Join(homeDir, ".sir", "projects"))
+	addLiteralIfExists := func(path string) {
+		if _, err := os.Lstat(path); err == nil {
+			addLiteral(path)
+		}
+	}
+	for _, rel := range []string{"config.json", "binary-manifest.json"} {
+		addLiteralIfExists(filepath.Join(homeDir, ".sir", rel))
+	}
+	for _, rel := range []string{".local/bin/sir", ".local/bin/mister-core"} {
+		addLiteralIfExists(filepath.Join(homeDir, rel))
+	}
+	if exe, err := os.Executable(); err == nil {
+		addLiteral(exe)
+	}
 	for _, rel := range runProjectPostureFilesForAgent(ag) {
 		addLiteral(filepath.Join(projectRoot, rel))
 	}

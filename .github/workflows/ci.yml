@@ -99,6 +99,25 @@ jobs:
           echo "go=${go}"
           echo "rust=${rust}"
 
+  secret-scan:
+    # Runs on every PR regardless of path filters: a credential can be
+    # committed next to docs or workflows. .gitleaks.toml allowlists only
+    # test fixtures and testdata, so production-code leaks still fail.
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # history scan, not just the worktree
+      - uses: gitleaks/gitleaks-action@4036f303133f36c5017e03c31446353f31572e9e # v2.1.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_ENABLE_COMMENTS: "false"
+
   rust:
     name: Rust (mister-core)
     runs-on: ubuntu-latest
@@ -235,6 +254,18 @@ jobs:
       - name: Test
         if: needs.changes.outputs.go == 'true'
         run: go test ./...
+
+      - name: Test (race detector)
+        if: needs.changes.outputs.go == 'true'
+        env:
+          # The race detector needs cgo; the workflow-level CGO_ENABLED=0
+          # applies to the build only.
+          CGO_ENABLED: "1"
+        run: go test -race ./... -count=1 -timeout 900s
+
+      - name: Replay security fixtures
+        if: needs.changes.outputs.go == 'true'
+        run: bash testdata/run_fixtures.sh
 
       - name: Vet
         if: needs.changes.outputs.go == 'true'

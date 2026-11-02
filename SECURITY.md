@@ -4,9 +4,9 @@ We take the security of **sir** extremely seriously. A compromised security tool
 
 ## Reporting a Vulnerability
 
-To report a security issue, **[open a GitHub issue](https://github.com/somoore/sir/issues/new)** using the template below.
+To report a security issue, **use GitHub's private vulnerability reporting**: repository **Security → Advisories → Report a vulnerability**. That channel is private, attributed, and lets us coordinate a fix and disclosure with you.
 
-> **Note:** sir is an experimental, pre-1.0 project. We use public GitHub issues for vulnerability reports to keep the process simple and transparent.
+> **Note:** sir is an experimental, pre-1.0 project. Public GitHub issues are for non-sensitive hardening suggestions and ordinary bugs; please do not open a public issue for a working bypass or a leaked credential.
 
 ### Disclosure Template
 

@@ -15,6 +15,7 @@ import (
 	"github.com/somoore/sir/pkg/hooks"
 	"github.com/somoore/sir/pkg/ledger"
 	mcppkg "github.com/somoore/sir/pkg/mcp"
+	sirruntime "github.com/somoore/sir/pkg/runtime"
 	"github.com/somoore/sir/pkg/session"
 )
 
@@ -382,6 +383,8 @@ func darwinSandboxProfile(allowedHosts []string) string {
 		profile.WriteString("(deny network-outbound)\n")
 		profile.WriteString("(allow network-outbound (remote unix-socket))\n")
 		profile.WriteString("(allow network-outbound (remote ip \"localhost:*\"))\n")
+		// Deny host-control sockets after the blanket allow (last match wins).
+		profile.WriteString(sirruntime.DarwinHostControlSocketDenyRules())
 	}
 
 	profile.WriteString("(deny file-write*)\n")

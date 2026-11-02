@@ -36,7 +36,7 @@ sir's design rule is "quiet on normal coding, loud on dangerous transitions." No
 
 The optional below-hook layer is `sir run <agent>`:
 
-- macOS uses localhost-only `sandbox-exec` plus a provider-aware local proxy with launch-time DNS pinning and exact-destination allowlisting.
+- macOS uses localhost-only `sandbox-exec` plus a provider-aware local proxy with launch-time DNS pinning and exact-destination allowlisting. Host-control unix sockets (container runtimes, `SSH_AUTH_SOCK`, gpg-agent) are denied even though other unix sockets stay open for app IPC.
 - On macOS, host-only allowlist entries expand to exact destinations on `22`, `80`, and `443`; use `host:port` for non-standard ports. Loopback entries stay wildcarded.
 - Linux uses `unshare --net` namespace mode with exact-destination egress allowlisting, durable-state protection, and fail-closed startup if the current-agent policy roots it must guard are missing.
 
@@ -49,7 +49,7 @@ sir is v1 and experimental. Be aware of the tradeoffs before you rely on it:
 - Hook-layer enforcement depends on the host agent honoring the hook response. If a tool executor ignores it, the operation proceeds.
 - MCP injection detection is heuristic (~50 regex patterns). Tainted servers require re-approval as the mitigation; the detection itself is an arms race.
 - Turn boundaries are detected via a 30-second gap heuristic and are gameable in theory.
-- Shell classification is wrapper-aware and prefix-aware but not a full POSIX parser.
+- Shell classification splits compound operators, newlines, `$(...)`, backticks, and process substitutions, and treats an unresolved variable in command position as external egress — but it is still lexical, not a full POSIX parser, so novel wrappers remain a known evasion.
 - The default lease is permissive (allows push_origin, commit, loopback, delegate) to reduce developer friction. Tighten with managed policy if you need more.
 - If `mister-core` is absent from PATH, Go falls back to a deliberately restrictive subset of the policy, enforced by parity tests to never be more permissive than Rust.
 

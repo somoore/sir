@@ -46,6 +46,32 @@ func ExtractNetworkDest(cmd string) string {
 	return ""
 }
 
+// ExtractUnixSocketDestination returns the unix-socket path when the command
+// targets one, either via curl's --unix-socket[=]flag, socat's
+// UNIX-CONNECT: form, or a unix:// URL. A unix socket is a host-local
+// control channel (docker.sock, ssh-agent, dbus) rather than a loopback HTTP
+// hop, so callers must not classify it from the URL's hostname alone.
+func ExtractUnixSocketDestination(cmd string) (string, bool) {
+	parts := strings.Fields(cmd)
+	for i := 0; i < len(parts); i++ {
+		p := parts[i]
+		lower := strings.ToLower(p)
+		switch {
+		case lower == "--unix-socket" || lower == "-unix-socket":
+			if i+1 < len(parts) {
+				return parts[i+1], true
+			}
+		case strings.HasPrefix(lower, "--unix-socket="):
+			return p[len("--unix-socket="):], true
+		case strings.HasPrefix(lower, "unix://"):
+			return p, true
+		case strings.HasPrefix(lower, "unix-connect:"):
+			return p[len("unix-connect:"):], true
+		}
+	}
+	return "", false
+}
+
 // IsDNSCommand detects DNS exfiltration prefixes.
 func IsDNSCommand(cmd string) bool {
 	lower := strings.ToLower(strings.TrimSpace(cmd))

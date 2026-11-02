@@ -56,6 +56,11 @@ func Append(projectRoot string, entry *Entry) error {
 		if entry.HashVersion == 0 {
 			entry.HashVersion = currentHashVersion
 		}
+		if entry.HashVersion >= 5 {
+			if _, err := ledgerKey(); err != nil {
+				return fmt.Errorf("ledger key unavailable: %w", err)
+			}
+		}
 		sanitizeEntry(entry)
 		// Stamp a stable detection ID at write time so the authoritative
 		// local ledger and the OTLP fan-out always agree, and so the ID is
@@ -144,6 +149,17 @@ func Verify(projectRoot string) (int, error) {
 	}
 	if len(entries) == 0 {
 		return 0, nil
+	}
+
+	// A V5+ chain cannot be verified without the per-install key. Report
+	// that explicitly instead of letting every entry fail as a mismatch.
+	for _, e := range entries {
+		if e.HashVersion >= 5 {
+			if _, err := ledgerKey(); err != nil {
+				return 0, fmt.Errorf("ledger key unavailable: %w", err)
+			}
+			break
+		}
 	}
 
 	genesis := "0000000000000000000000000000000000000000000000000000000000000000"

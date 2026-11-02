@@ -3,6 +3,7 @@
 import json
 import pathlib
 import re
+import shlex
 import subprocess
 import sys
 
@@ -21,9 +22,9 @@ def load_budgets():
 
 def run_benchmarks(command):
     result = subprocess.run(
-        command,
+        shlex.split(command),
         cwd=ROOT,
-        shell=True,
+        shell=False,
         text=True,
         capture_output=True,
     )
