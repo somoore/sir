@@ -57,16 +57,38 @@ func policyCommandIsReadOnly(args []string) bool {
 }
 
 // mcpCommandIsReadOnly reports whether `sir mcp <args>` only inspects MCP
-// state. Anything unrecognised is treated as mutating (fail closed).
+// state. It mirrors the routing in cmdMCP and cmdMCPScope: a flag-only
+// invocation defaults to status, and `scope` with no server (or `scope list`)
+// only lists scopes. Anything unrecognised is treated as mutating (fail
+// closed).
 func mcpCommandIsReadOnly(args []string) bool {
-	if len(args) == 0 {
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
 		return true
 	}
 	switch strings.ToLower(args[0]) {
 	case "status", "inventory", "list":
 		return true
+	case "scope":
+		rest := withoutProjectFlag(args[1:])
+		return len(rest) == 0 || rest[0] == "list"
 	}
 	return false
+}
+
+// withoutProjectFlag drops `--project <path>` and `--project=<path>` the way
+// extractProjectFlag does, without resolving or validating the path.
+func withoutProjectFlag(args []string) []string {
+	out := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		switch {
+		case args[i] == "--project":
+			i++
+		case strings.HasPrefix(args[i], "--project="):
+		default:
+			out = append(out, args[i])
+		}
+	}
+	return out
 }
 
 // logCommandIsReadOnly reports whether `sir log <args>` only reads the audit

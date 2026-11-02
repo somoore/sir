@@ -30,12 +30,12 @@ func TestMutatingCommandPredicates(t *testing.T) {
 		}
 	}
 
-	for _, args := range [][]string{{}, {"status"}, {"inventory"}, {"list"}} {
+	for _, args := range [][]string{{}, {"status"}, {"inventory"}, {"list"}, {"--agent", "claude"}, {"scope"}, {"scope", "list"}, {"scope", "--project", "/tmp/x", "list"}, {"scope", "--project=/tmp/x"}} {
 		if !mcpCommandIsReadOnly(args) {
 			t.Errorf("mcpCommandIsReadOnly(%v) = false, want true", args)
 		}
 	}
-	for _, args := range [][]string{{"approve", "x"}, {"revoke", "x"}, {"scope", "x", "--allow-network"}, {"wrap", "--yes"}} {
+	for _, args := range [][]string{{"approve", "x"}, {"revoke", "x"}, {"scope", "x", "--allow-network"}, {"scope", "revoke", "x"}, {"scope", "--project", "/tmp/x", "x"}, {"wrap", "--yes"}} {
 		if mcpCommandIsReadOnly(args) {
 			t.Errorf("mcpCommandIsReadOnly(%v) = true, want false", args)
 		}
