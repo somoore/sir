@@ -26,7 +26,16 @@ set -euo pipefail
 # the pattern: the loop after `co-authored-by:` stops at a complete `[bot]`,
 # so such lines never match. A trailing incomplete bracket prefix (`[`, `[b`,
 # `[bo`, `[bot`) is still matched via the final group, so it cannot escape.
-PATTERN='^[[:space:]]*(assisted-by:|🤖[[:space:]]*generated with|generated with \[?(claude|codex)|co-authored-by:([^[]|\[[^b]|\[b[^o]|\[bo[^t]|\[bot[^] <])*(\[|\[b|\[bo|\[bot)?$)'
+# The trailer markers are matched in one pass, then the bot exemption is
+# applied as a second filter. Doing the exemption inside the alternation
+# (as the ruleset's RE2 pattern does) is fragile in ERE: a name containing
+# `[bot` followed by a space stopped the loop without reaching the end
+# anchor, which exempted non-bot trailers like
+# `Co-authored-by: Alice [bot reviewer <alice@example.com>`. Requiring a
+# complete `[bot]` immediately before the email is exact and easy to read.
+PATTERN='^[[:space:]]*(co-authored-by:|assisted-by:|🤖[[:space:]]*generated with|generated with \[?(claude|codex))'
+# Only a complete `[bot]` immediately before the email is automation.
+BOT_COAUTHOR='co-authored-by:[^<]*\[bot\][[:space:]]*<'
 
 fail() {
 	echo "✖ Rejected: commit message marks this commit as AI-assisted or co-authored." >&2
@@ -45,7 +54,7 @@ check_message() {
 	# Bot co-authors (Dependabot, github-actions) are automation, not an AI
 	# generation footer, so they do not trip this policy; the exemption is
 	# built into $PATTERN (see above), matching the GitHub ruleset pattern.
-	hits="$(printf '%s\n' "$msg" | grep -iE "$PATTERN" || true)"
+	hits="$(printf '%s\n' "$msg" | grep -iE "$PATTERN" | grep -viE "$BOT_COAUTHOR" || true)"
 	if [ -n "$hits" ]; then
 		fail "$label" "$hits"
 	fi
@@ -60,7 +69,7 @@ if [ "${1:-}" = "--range" ]; then
 		# Bot co-authors (Dependabot, github-actions) are automation, not an AI
 		# generation footer, so they do not trip this policy; the exemption is
 		# built into $PATTERN (see above).
-		hits="$(printf '%s\n' "$msg" | grep -iE "$PATTERN" || true)"
+		hits="$(printf '%s\n' "$msg" | grep -iE "$PATTERN" | grep -viE "$BOT_COAUTHOR" || true)"
 		if [ -n "$hits" ]; then
 			echo "✖ ${sha:0:9} $(git log -1 --format='%s' "$sha")" >&2
 			printf '%s\n' "$hits" | sed 's/^/    /' >&2
