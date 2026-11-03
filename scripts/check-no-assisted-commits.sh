@@ -19,6 +19,10 @@ set -euo pipefail
 # trip the check — only real trailers/footers do. Leading whitespace tolerated.
 # Keep aligned with the ruleset pattern in apply-commit-policy-ruleset.sh.
 PATTERN='^[[:space:]]*(co-authored-by:|assisted-by:|🤖[[:space:]]*generated with|generated with \[?(claude|codex))'
+# Bot co-author trailers name the bot account itself, e.g.
+# "Co-authored-by: dependabot[bot] <...>". Only exempt a trailer whose name
+# ends in [bot]; the ruleset pattern encodes the same rule.
+BOT_COAUTHOR='co-authored-by:[^<]*\[bot\][[:space:]]*<'
 
 fail() {
 	echo "✖ Rejected: commit message marks this commit as AI-assisted or co-authored." >&2
@@ -36,7 +40,7 @@ check_message() {
 	local label="$1" msg="$2" hits
 	# Bot co-authors (Dependabot, github-actions) are automation, not an AI
 	# generation footer, so they do not trip this policy.
-	hits="$(printf '%s\n' "$msg" | grep -iE "$PATTERN" | grep -viE 'co-authored-by:.*\[bot\]' || true)"
+	hits="$(printf '%s\n' "$msg" | grep -iE "$PATTERN" | grep -viE "$BOT_COAUTHOR" || true)"
 	if [ -n "$hits" ]; then
 		fail "$label" "$hits"
 	fi
@@ -50,7 +54,7 @@ if [ "${1:-}" = "--range" ]; then
 		msg="$(git log -1 --format='%B' "$sha")"
 		# Bot co-authors (Dependabot, github-actions) are automation, not an AI
 	# generation footer, so they do not trip this policy.
-	hits="$(printf '%s\n' "$msg" | grep -iE "$PATTERN" | grep -viE 'co-authored-by:.*\[bot\]' || true)"
+	hits="$(printf '%s\n' "$msg" | grep -iE "$PATTERN" | grep -viE "$BOT_COAUTHOR" || true)"
 		if [ -n "$hits" ]; then
 			echo "✖ ${sha:0:9} $(git log -1 --format='%s' "$sha")" >&2
 			printf '%s\n' "$hits" | sed 's/^/    /' >&2

@@ -12,7 +12,11 @@ RULESET_NAME="Block assisted/co-authored commits"
 # GitHub ruleset regex (RE2). Case-insensitivity via inline (?i); (?m) so ^
 # anchors per line. Mirrors the line-anchored matcher in
 # check-no-assisted-commits.sh: only real trailers/footers match, not prose.
-PATTERN='(?im)^[[:space:]]*(co-authored-by:|assisted-by:|🤖[[:space:]]*generated with|generated with \[?(claude|codex))'
+#
+# RE2 has no lookahead, so the bot co-author exemption is spelled out: a
+# Co-authored-by: trailer is rejected when it has no <email>, or when the name
+# before the <email> does not end in "[bot]" (e.g. dependabot[bot]).
+PATTERN='(?im)^[[:space:]]*(co-authored-by:([^<\n]*$|[^<\n]*([^][:space:]<\n]|[^t<\n]\]|[^o<\n]t\]|[^b<\n]ot\]|[^[<\n]bot\])[[:space:]]*<)|assisted-by:|🤖[[:space:]]*generated with|generated with \[?(claude|codex))'
 
 # Build the JSON payload with python3 so the regex backslashes and the emoji are
 # encoded safely (shell heredocs mangle both).
