@@ -14,11 +14,19 @@
 #   check-no-assisted-commits.sh --range <base>..<head> # check a commit range (CI)
 set -euo pipefail
 
-# Case-insensitive markers, anchored to the start of a line so that prose that
-# merely *mentions* a trailer (e.g. this policy's own commit message) does not
-# trip the check — only real trailers/footers do. Leading whitespace tolerated.
-# Keep aligned with the ruleset pattern in apply-commit-policy-ruleset.sh.
-PATTERN='^[[:space:]]*(co-authored-by:|assisted-by:|🤖[[:space:]]*generated with|generated with \[?(claude|codex))'
+# Case-insensitive markers, anchored to the start/end of a line so that prose
+# that merely *mentions* a trailer (e.g. this policy's own commit message)
+# does not trip the check — only real trailers/footers do. Leading whitespace
+# tolerated. Keep aligned with the ruleset pattern in
+# apply-commit-policy-ruleset.sh (same tempered loop, grep/ERE spelling: grep
+# is line-based so `\n` is dropped from the bracket classes, and there is no
+# inline (?im) because grep(1) applies the pattern per line with -i).
+#
+# The `[bot]` exemption (Dependabot/github-actions co-authors) is built into
+# the pattern: the loop after `co-authored-by:` stops at a complete `[bot]`,
+# so such lines never match. A trailing incomplete bracket prefix (`[`, `[b`,
+# `[bo`, `[bot`) is still matched via the final group, so it cannot escape.
+PATTERN='^[[:space:]]*(assisted-by:|🤖[[:space:]]*generated with|generated with \[?(claude|codex)|co-authored-by:([^[]|\[[^b]|\[b[^o]|\[bo[^t]|\[bot[^] <])*(\[|\[b|\[bo|\[bot)?$)'
 
 fail() {
 	echo "✖ Rejected: commit message marks this commit as AI-assisted or co-authored." >&2
@@ -35,10 +43,9 @@ check_message() {
 	# $1 = label, $2 = message text
 	local label="$1" msg="$2" hits
 	# Bot co-authors (Dependabot, github-actions) are automation, not an AI
-	# generation footer, so they do not trip this policy. The GitHub ruleset
-	# pattern in apply-commit-policy-ruleset.sh implements the same exemption
-	# for `co-authored-by:` trailers (and still rejects empty display names).
-	hits="$(printf '%s\n' "$msg" | grep -iE "$PATTERN" | grep -viE 'co-authored-by:.*\[bot\]' || true)"
+	# generation footer, so they do not trip this policy; the exemption is
+	# built into $PATTERN (see above), matching the GitHub ruleset pattern.
+	hits="$(printf '%s\n' "$msg" | grep -iE "$PATTERN" || true)"
 	if [ -n "$hits" ]; then
 		fail "$label" "$hits"
 	fi
@@ -51,8 +58,9 @@ if [ "${1:-}" = "--range" ]; then
 		[ -z "$sha" ] && continue
 		msg="$(git log -1 --format='%B' "$sha")"
 		# Bot co-authors (Dependabot, github-actions) are automation, not an AI
-	# generation footer, so they do not trip this policy.
-	hits="$(printf '%s\n' "$msg" | grep -iE "$PATTERN" | grep -viE 'co-authored-by:.*\[bot\]' || true)"
+		# generation footer, so they do not trip this policy; the exemption is
+		# built into $PATTERN (see above).
+		hits="$(printf '%s\n' "$msg" | grep -iE "$PATTERN" || true)"
 		if [ -n "$hits" ]; then
 			echo "✖ ${sha:0:9} $(git log -1 --format='%s' "$sha")" >&2
 			printf '%s\n' "$hits" | sed 's/^/    /' >&2
