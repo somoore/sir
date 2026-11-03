@@ -57,12 +57,39 @@ PY
 
 existing_id="$(gh api "repos/${REPO}/rulesets" --jq ".[] | select(.name==\"${RULESET_NAME}\") | .id" 2>/dev/null || true)"
 
+# GitHub rejects commit_message_pattern on repositories where the rule type is
+# not available, with a bare "Invalid rule" 422. Say so instead of leaving a
+# confusing API error: enforcement still happens in the commit-msg hook and in
+# the no-assisted-commits CI check.
+if ! gh api "repos/${REPO}/rulesets" >/dev/null 2>&1; then
+	echo "gh cannot list rulesets for ${REPO}; check auth and admin rights." >&2
+	exit 1
+fi
+
+apply() {
+	# $1 = method, $2 = path
+	printf '%s' "$payload" | gh api -X "$1" "$2" --input - \
+		--jq '{id, name, enforcement, scope: .conditions.ref_name.include}'
+}
+
 if [ -n "$existing_id" ]; then
 	echo "Updating existing ruleset id=${existing_id}"
-	printf '%s' "$payload" | gh api -X PUT "repos/${REPO}/rulesets/${existing_id}" --input - \
-		--jq '{id, name, enforcement, scope: .conditions.ref_name.include}'
+	if ! output="$(apply PUT "repos/${REPO}/rulesets/${existing_id}")"; then
+		echo "The ruleset could not be updated; GitHub rejected commit_message_pattern." >&2
+		echo "This repository or plan does not support that rule type, so the" >&2
+		echo "non-bypassable push layer cannot exist here. Enforcement remains with" >&2
+		echo "the commit-msg hook and the no-assisted-commits CI check." >&2
+		exit 1
+	fi
+	echo "$output"
 else
 	echo "Creating new ruleset"
-	printf '%s' "$payload" | gh api -X POST "repos/${REPO}/rulesets" --input - \
-		--jq '{id, name, enforcement, scope: .conditions.ref_name.include}'
+	if ! output="$(apply POST "repos/${REPO}/rulesets")"; then
+		echo "The ruleset could not be created; GitHub rejected commit_message_pattern." >&2
+		echo "This repository or plan does not support that rule type, so the" >&2
+		echo "non-bypassable push layer cannot exist here. Enforcement remains with" >&2
+		echo "the commit-msg hook and the no-assisted-commits CI check." >&2
+		exit 1
+	fi
+	echo "$output"
 fi
