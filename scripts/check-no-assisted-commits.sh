@@ -35,7 +35,9 @@ check_message() {
 	# $1 = label, $2 = message text
 	local label="$1" msg="$2" hits
 	# Bot co-authors (Dependabot, github-actions) are automation, not an AI
-	# generation footer, so they do not trip this policy.
+	# generation footer, so they do not trip this policy. The GitHub ruleset
+	# pattern in apply-commit-policy-ruleset.sh implements the same exemption
+	# for `co-authored-by:` trailers (and still rejects empty display names).
 	hits="$(printf '%s\n' "$msg" | grep -iE "$PATTERN" | grep -viE 'co-authored-by:.*\[bot\]' || true)"
 	if [ -n "$hits" ]; then
 		fail "$label" "$hits"
