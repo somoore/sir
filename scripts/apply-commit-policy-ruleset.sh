@@ -16,25 +16,22 @@ RULESET_NAME="Block assisted/co-authored commits"
 # co-authored-by handling mirrors check-no-assisted-commits.sh, which exempts
 # a trailer whose name contains a COMPLETE `[bot]` immediately before the
 # email. RE2 has no lookahead, so the exemption is a tempered loop that can
-# consume anything except a `[bot]` — including `[bot` followed by something
+# consume anything except a `[bot]` - including `[bot` followed by something
 # other than `]`, which is what keeps `Alice [bot reviewer <a@b>` blocked
 # (only a closing `]` grants the exemption). A trailing incomplete bracket
 # prefix is absorbed before the end anchor so `... [`, `[b`, `[bo`, `[bot` and
 # `[bot]` with no email still match (are rejected).
-#   [^[
-]           — any char but `[`/newline
-#   \[[^b
-]         — `[` not starting `[bot]`
-#   \[b[^o
-]        — `[b` not starting `[bot]`
-#   \[bo[^t
-]       — `[bo` not starting `[bot]`
-#   \[bot[^\]
-]     — `[bot` not closing the marker
-#   (?:\[(?:b(?:o(?:t)?)?)?\]?)?$ — absorb a trailing incomplete prefix
+#
+# Loop alternatives, in order:
+#     [^<bracket><newline>            any char but an opening bracket
+#     <bracket>[^b<newline>           an opening bracket not starting the marker
+#     <bracket>b[^o<newline>          `[b` not starting the marker
+#     <bracket>bo[^t<newline>         `[bo` not starting the marker
+#     <bracket>bot[^close<newline>    `[bot` not closing the marker
+# Final group: absorb a trailing incomplete prefix before the end anchor.
 #
 # The hook reaches the same verdicts with a simpler two-step grep (base
-# pattern + a `[bot] <` exemption filter); see check-no-assisted-commits.sh.
+# pattern plus a `[bot] <` exemption filter); see check-no-assisted-commits.sh.
 PATTERN='(?im)^[[:space:]]*(assisted-by:|🤖[[:space:]]*generated with|generated with \[?(claude|codex)|co-authored-by:(?:[^\[\n]|\[[^b\n]|\[b[^o\n]|\[bo[^t\n]|\[bot[^\]\n])*(?:\[(?:b(?:o(?:t)?)?)?\]?)?$)'
 
 # Build the JSON payload with python3 so the regex backslashes and the emoji are
