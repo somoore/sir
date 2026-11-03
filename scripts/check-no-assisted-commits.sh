@@ -23,10 +23,12 @@ set -euo pipefail
 # inline (?im) because grep(1) applies the pattern per line with -i).
 #
 # The `[bot]` exemption (Dependabot/github-actions co-authors) is built into
-# the pattern: the loop after `co-authored-by:` stops at a complete `[bot]`,
-# so such lines never match. A trailing incomplete bracket prefix (`[`, `[b`,
-# `[bo`, `[bot`) is still matched via the final group, so it cannot escape.
-PATTERN='^[[:space:]]*(assisted-by:|🤖[[:space:]]*generated with|generated with \[?(claude|codex)|co-authored-by:([^[]|\[[^b]|\[b[^o]|\[bo[^t]|\[bot[^] <])*(\[|\[b|\[bo|\[bot)?$)'
+# the pattern: the loop after `co-authored-by:` can consume any line except
+# one containing a complete `[bot]`, so only those lines never match. A
+# trailing incomplete prefix (`[`, `[b`, `[bo`, `[bot`) and `[bot` followed
+# by anything but `]` (e.g. `[bot reviewer <...>`) still match, so they
+# cannot escape.
+PATTERN='^[[:space:]]*(assisted-by:|🤖[[:space:]]*generated with|generated with \[?(claude|codex)|co-authored-by:([^[]|(\[+(b(ot?)?)?)*\[+([^b[]|b([^o[]|o([^t[]|t[^][]))))*(\[+(b(ot?)?)?)*$)'
 
 fail() {
 	echo "✖ Rejected: commit message marks this commit as AI-assisted or co-authored." >&2

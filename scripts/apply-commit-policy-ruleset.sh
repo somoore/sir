@@ -14,24 +14,22 @@ RULESET_NAME="Block assisted/co-authored commits"
 # check-no-assisted-commits.sh: only real trailers/footers match, not prose.
 #
 # co-authored-by handling mirrors check-no-assisted-commits.sh, which exempts
-# lines matching `co-authored-by:.*\[bot\]` (Dependabot/github-actions are
-# automation, not an AI generation footer). RE2 has no lookahead, so that
-# exemption is written as a tempered loop: after the colon, the line is
-# consumed by repeated steps that (a) can never run past a literal `[bot]`
-# followed by `]`/space/`<`/end-of-line, and (b) cannot strand an incomplete
-# bracket prefix before the end of the line. The loop gets stuck exactly at
-# `[bot]` (case-insensitive) or at a trailing `[`/`[b`/`[bo`/`[bot`, so a
-# trailer matches (is rejected) exactly when it does not contain a complete
-# `[bot]` — including when the display name is empty, which still matches and
-# is still rejected.
-#   [^[\n]           — any char but `[`/newline
-#   \[[^b\n]         — `[` not starting `[bot]`
-#   \[b[^o\n]        — `[b` not starting `[bot]`
-#   \[bo[^t\n]       — `[bo` not starting `[bot]`
-#   \[bot[^\] <\n]   — stop the loop at `[bot]` before `]`/space/`<`
-#   (?:\[(?:b(?:o(?:t)?)?)?)?$ — absorb a trailing incomplete `[bot]` prefix so
-#                      `... [`, `[b`, `[bo`, `[bot` at end-of-line still match
-PATTERN='(?im)^[[:space:]]*(assisted-by:|🤖[[:space:]]*generated with|generated with \[?(claude|codex)|co-authored-by:(?:[^[\n]|\[[^b\n]|\[b[^o\n]|\[bo[^t\n]|\[bot[^\] <\n])*(?:\[(?:b(?:o(?:t)?)?)?)?$)'
+# trailers containing `[bot]` (Dependabot/github-actions are automation, not an
+# AI generation footer). RE2 has no lookahead, so the exemption is written as
+# a loop that can consume any line EXCEPT one containing a complete `[bot]`
+# (case-insensitive). A trailer therefore matches (is rejected) exactly when
+# it lacks `[bot]`, including when the display name is empty.
+#   [^\[\n]                  — any char but `[`/newline
+#   (?:\[+(?:b(?:ot?)?)?)*   — runs of `[` each followed by an incomplete
+#                              `b`/`bo`/`bot` cut short by another `[`
+#   \[+(?:[^b\[\n]|b(?:[^o\[\n]|o(?:[^t\[\n]|t[^\]\[\n])))
+#                            — then `[` plus a char that breaks `[bot]`
+#   (?:\[+(?:b(?:ot?)?)?)*$  — a line may END in `[`, `[b`, `[bo` or `[bot`
+# Every char after `[bot` other than `]` (space, `<`, letters...) keeps the
+# line rejectable, so `[bot reviewer <...>` is not exempt. Checked
+# exhaustively against "line contains [bot]" for every suffix of up to 7
+# chars over [ b o t ] x space <: no disagreement in either direction.
+PATTERN='(?im)^[[:space:]]*(assisted-by:|🤖[[:space:]]*generated with|generated with \[?(claude|codex)|co-authored-by:(?:[^\[\n]|(?:\[+(?:b(?:ot?)?)?)*\[+(?:[^b\[\n]|b(?:[^o\[\n]|o(?:[^t\[\n]|t[^\]\[\n]))))*(?:\[+(?:b(?:ot?)?)?)*$)'
 
 # Build the JSON payload with python3 so the regex backslashes and the emoji are
 # encoded safely (shell heredocs mangle both).
