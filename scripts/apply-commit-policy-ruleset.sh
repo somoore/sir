@@ -12,7 +12,22 @@ RULESET_NAME="Block assisted/co-authored commits"
 # GitHub ruleset regex (RE2). Case-insensitivity via inline (?i); (?m) so ^
 # anchors per line. Mirrors the line-anchored matcher in
 # check-no-assisted-commits.sh: only real trailers/footers match, not prose.
-PATTERN='(?im)^[[:space:]]*(co-authored-by:|assisted-by:|🤖[[:space:]]*generated with|generated with \[?(claude|codex))'
+#
+# co-authored-by handling mirrors check-no-assisted-commits.sh, which drops
+# lines matching `co-authored-by:.*\[bot\]` (Dependabot/github-actions are
+# automation, not an AI generation footer). RE2 has no lookahead, so the
+# "rest of line does not contain [bot]" side of that exemption is written as
+# a tempered loop: after the colon, the line is consumed by repeated steps
+# that can never complete the substring `[bot]`. The loop gets stuck only at
+# a literal `[bot]` (case-insensitive), so a trailer passes the ruleset
+# exactly when it contains `[bot]` — including when the display name is
+# empty, which still matches and is still rejected.
+#   [^\[\n]          — any char but `[`/newline
+#   \[[^b\n]         — `[` not starting `[bot]`
+#   \[b[^o\n]        — `[b` not starting `[bot]`
+#   \[bo[^t\n]       — `[bo` not starting `[bot]`
+#   \[bot[^\]\n]     — `[bot` not closing as `[bot]`
+PATTERN='(?im)^[[:space:]]*(assisted-by:|🤖[[:space:]]*generated with|generated with \[?(claude|codex)|co-authored-by:(?:[^\[\n]|\[[^b\n]|\[b[^o\n]|\[bo[^t\n]|\[bot[^\]\n])*$)'
 
 # Build the JSON payload with python3 so the regex backslashes and the emoji are
 # encoded safely (shell heredocs mangle both).
