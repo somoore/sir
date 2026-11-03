@@ -34,8 +34,12 @@ set -euo pipefail
 # `Co-authored-by: Alice [bot reviewer <alice@example.com>`. Requiring a
 # complete `[bot]` immediately before the email is exact and easy to read.
 PATTERN='^[[:space:]]*(co-authored-by:|assisted-by:|🤖[[:space:]]*generated with|generated with \[?(claude|codex))'
-# Only a complete `[bot]` immediately before the email is automation.
-BOT_COAUTHOR='co-authored-by:[^<]*\[bot\][[:space:]]*<'
+# Only a line that IS a bot co-author trailer is exempt. Anchoring both ends
+# matters: an unanchored filter discarded any prohibited line that merely
+# contained a bot co-author substring, so a line like
+# `Assisted-by: Codex; Co-authored-by: dependabot[bot] <a@b>` slipped through
+# even though its leading `Assisted-by:` is prohibited.
+BOT_COAUTHOR='^[[:space:]]*co-authored-by:[^<]*\[bot\][[:space:]]*<[^>]*>[[:space:]]*$'
 
 fail() {
 	echo "✖ Rejected: commit message marks this commit as AI-assisted or co-authored." >&2
