@@ -9,11 +9,12 @@ module github.com/somoore/sir
 go 1.22
 
 // Build-time toolchain. CI, release.yml, and `go build` on a developer
-// machine will auto-download and use Go 1.26.10 when this directive is
+// machine will auto-download and use Go 1.26.11 when this directive is
 // present (GOTOOLCHAIN=auto is the default since Go 1.21). Go 1.25 left
 // support when 1.27 shipped, so it no longer receives security fixes;
-// 1.26.10 ships GO-2026-6809 (crypto/x509) on top of the net/http,
+// 1.26.11 ships GO-2026-6859 (net/http MaxBytesReader header race) on
+// top of GO-2026-6809 (crypto/x509) from 1.26.10 and the net/http,
 // net/textproto, mime/multipart and crypto/tls set fixed in 1.26.9
 // (GO-2026-6603..6617).
 // Do not downgrade without replacing the pin with an equally-patched version.
-toolchain go1.26.10
+toolchain go1.26.11
